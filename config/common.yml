@@ -1,0 +1,22 @@
+# 协议配置文件
+protoFile: proto-train2sam-v0.0.1.yml
+
+# 检查CRC校验码：true启用，false禁用
+check_crc: true
+
+
+log:
+  log_path: ./logs
+  # MaxSize：在进行切割之前，日志文件的最大大小（以MB为单位）
+  max_size: 600
+  # MaxBackups：保留旧文件的最大个数
+  max_backups: 1000
+  # MaxAge：保留旧文件的最大天数
+  max_age: 30
+  # Compress：是否压缩/归档旧文件
+  compress: true
+  level: info
+
+
+influxdb:
+  url :
