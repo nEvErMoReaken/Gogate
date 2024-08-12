@@ -24,4 +24,5 @@ func main() {
 		}
 	}(logger.SugarLogger)
 	logger.SugarLogger.Infof("[main]日志加载成功: %+v", viper)
+
 }
