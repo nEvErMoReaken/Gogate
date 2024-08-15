@@ -17,7 +17,7 @@ log:
   compress: true
   level: info
 
-nameList:
+nameMap:
   172.25.3.108: ER2_1_1_1
   172.25.3.109: ER2_1_5_1
   172.25.5.108: ER2_2_1_1

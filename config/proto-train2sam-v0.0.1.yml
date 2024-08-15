@@ -1,2 +1,15 @@
-# 用于获取地址设备id
-
+# 用于表示帧开头的配置
+# 流程  ： 接收tcp-> 从tcp通过method解析出数据 -> 将数据赋值给对应设备物模型 -> 发送至 kafka-数据库
+proto:
+  - from:  # 没有解码方式的即为不用处理，jump即可
+      byte: 72
+  - from:
+      byte: 1  # 字节长度
+      bitAfterByte: 0 # 字节偏移量基础上的位偏移量
+    decoding:
+      method:
+    to: # 转换相关配置
+      devName: # 转换目标设备的设备名称
+      devType: # 转换目标设备的设备类型
+      fieldName: # 转换目标设备的遥测名
+    desc: #字段说明

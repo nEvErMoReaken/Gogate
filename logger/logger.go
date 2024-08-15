@@ -7,7 +7,7 @@ import (
 	"os"
 )
 
-var SugarLogger *zap.SugaredLogger
+var Log *zap.SugaredLogger
 
 // InitLogger initializes the logger
 func InitLogger(filename string, maxSize, maxBackups, maxAge int, compress bool) {
@@ -50,5 +50,5 @@ func InitLogger(filename string, maxSize, maxBackups, maxAge int, compress bool)
 
 	// 创建 Logger 并添加调用者信息和堆栈跟踪
 	logger := zap.New(core, zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel))
-	SugarLogger = logger.Sugar()
+	Log = logger.Sugar()
 }

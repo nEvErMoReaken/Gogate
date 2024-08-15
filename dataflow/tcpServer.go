@@ -16,10 +16,10 @@ func Start() {
 	defer func(listener net.Listener) {
 		err := listener.Close()
 		if err != nil {
-			logger.SugarLogger.Infof("监听程序关闭")
+			logger.Log.Infof("监听程序关闭")
 		}
 	}(listener)
-	logger.SugarLogger.Infof("TCP dataflow listening on port 8080")
+	logger.Log.Infof("TCP dataflow listening on port 8080")
 
 	for {
 		// 2. 等待客户端连接

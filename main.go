@@ -22,7 +22,7 @@ func main() {
 		if err != nil {
 			logger.Errorf("[main]同步日志失败: %s", err)
 		}
-	}(logger.SugarLogger)
-	logger.SugarLogger.Infof("[main]日志加载成功: %+v", viper)
+	}(logger.Log)
+	logger.Log.Infof("[main]日志加载成功: %+v", viper)
 
 }
