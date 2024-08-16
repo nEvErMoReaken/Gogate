@@ -42,3 +42,13 @@ func NewConfig() *viper.Viper {
 	}
 	return v
 }
+
+// 初始化该文件
+func init() {
+	// 初始化viper
+	viper := NewConfig()
+	// 读取配置文件
+	if err := viper.ReadInConfig(); err != nil {
+		fmt.Println("读取配置文件失败：", err)
+	}
+}
