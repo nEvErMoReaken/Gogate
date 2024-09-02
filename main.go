@@ -24,7 +24,6 @@ func main() {
 		}
 	}(logger.Log)
 	logger.Log.Infof("[main]日志加载成功: %+v", viper)
-
 	// 3. 初始化脚本模块
 	// 4. 初始化所有物模型
 	// 5. 初始化所有正则结果
