@@ -50,28 +50,34 @@ parsing: # frame 由多个section组成，列表形式，顺序不能乱。
       byte: 1 # 字节偏移量基础上的位偏移量
     decoding:
       method: # 解码脚本
-    to: # 转换相关配置
-      influxdb:
-        measurement: others
-        fieldMappings:
-          - RIOM_sta_1
-          - RIOM_sta_2
-          - RIOM_sta_3
-          - RIOM_sta_4
-          - RIOM_sta_5
-          - RIOM_sta_6
-          - RIOM_sta_7
-          - RIOM_sta_8
+    to:
+      device: "vobc"
+      type: "vobc.info"
+      fields:
+        - RIOM_sta_1
+        - RIOM_sta_2
+        - RIOM_sta_3
+        - RIOM_sta_4
+        - RIOM_sta_5
+        - RIOM_sta_6
+        - RIOM_sta_7
+        - RIOM_sta_8
   - from:
       byte: 6
     decoding:
       method:
     to: # 转换相关配置
-      influxdb:
-        measurement: others
-        for:
-          - "timestamp"
+
     desc: "协议中的时间戳" #字段说明
+
+finally:
+  InfluxDB:
+    url:
+    password:
+    deviceFilter:
+      - "vobc.*"
+      - "btm.abc*"
+  mqtt:
 
 
 
