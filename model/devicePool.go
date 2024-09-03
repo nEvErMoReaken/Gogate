@@ -11,7 +11,9 @@ var deviceModelPool = sync.Pool{
 	New: func() interface{} {
 		// 当池中没有对象时，创建一个新的 DeviceModel 实例
 		return &DeviceModel{
-			Fields: make(map[string]interface{}),
+			Fields:       make(map[string]interface{}),
+			CachedFields: make(map[string]interface{}),
+			StableFields: make(map[string]interface{}),
 		}
 	},
 }
@@ -28,6 +30,8 @@ func ReleaseDeviceModel(dm *DeviceModel) {
 	dm.DeviceName = ""
 	dm.DeviceType = ""
 	dm.Fields = make(map[string]interface{})
+	dm.CachedFields = make(map[string]interface{})
+	dm.StableFields = make(map[string]interface{})
 	dm.ts = 0
 
 	// 将实例放回池中
