@@ -1,24 +1,11 @@
 package eventbus
 
-import (
-	"sync"
+import "github.com/asaskevich/EventBus"
 
-	"github.com/asaskevich/EventBus"
-)
+// 初始化全局 EventBus
+var bus EventBus.Bus
 
-// 定义一个全局的 EventBus 变量
-var (
-	globalEventBus EventBus.Bus
-	once           sync.Once
-	mu             sync.Mutex
-)
-
-// GetEventBus 返回全局唯一的 EventBus 实例
-func GetEventBus() EventBus.Bus {
-	once.Do(func() {
-		mu.Lock()
-		defer mu.Unlock()
-		globalEventBus = EventBus.New()
-	})
-	return globalEventBus
+// InitBus 方法初始化 EventBus
+func InitBus() {
+	bus = EventBus.New()
 }
