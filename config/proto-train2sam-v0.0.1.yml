@@ -70,14 +70,7 @@ parsing: # frame 由多个section组成，列表形式，顺序不能乱。
 
     desc: "协议中的时间戳" #字段说明
 
-finally:
-  InfluxDB:
-    url:
-    password:
-    deviceFilter:
-      - "vobc.*"
-      - "btm.abc*"
-  mqtt:
+
 
 
 

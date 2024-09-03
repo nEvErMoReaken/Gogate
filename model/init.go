@@ -2,7 +2,7 @@ package model
 
 import "sync"
 
-// 使用 sync.Once 确保初始化只执行一次
+// 确保初始化只执行一次
 var once sync.Once
 
 func Init() {
