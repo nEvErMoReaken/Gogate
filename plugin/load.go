@@ -12,11 +12,11 @@ import (
 	"github.com/traefik/yaegi/stdlib"
 )
 
-// 脚本函数缓存
-var scriptFuncCache = make(map[string]func([]byte) interface{})
+// ScriptFuncCache 脚本函数缓存
+var ScriptFuncCache = make(map[string]func([]byte) interface{})
 
-// loadAllScripts 函数：加载/script目录下的所有脚本并缓存
-func loadAllScripts(scriptDir string, methods []string) error {
+// LoadAllScripts 函数：加载/script目录下的所有脚本并缓存
+func LoadAllScripts(scriptDir string, methods []string) error {
 	// 初始化yaegi解释器
 	i := interp.New(interp.Options{})
 	err := i.Use(stdlib.Symbols)
@@ -51,15 +51,13 @@ func loadAllScripts(scriptDir string, methods []string) error {
 	}
 
 	// 脚本已经全部加载并解释，现在可以缓存其中的函数
-	// 假设函数名称和脚本文件名无关，需要单独指定
 	for _, funcName := range methods {
-		v, err := i.Eval("script.Decode" + funcName)
+		v, err := i.Eval("script." + funcName)
 		if err != nil {
-			//fmt.Printf("[Warning]: 未找到 %s 方法在已读取脚本中 %v\n", funcName, err)
 			logger.Log.Errorf("[Warning]: 在已读取脚本中未找到 %s 方法 %v\n", funcName, err)
 			continue
 		}
-		scriptFuncCache[funcName] = v.Interface().(func([]byte) interface{})
+		ScriptFuncCache[funcName] = v.Interface().(func([]byte) interface{})
 	}
 
 	return nil
@@ -67,7 +65,7 @@ func loadAllScripts(scriptDir string, methods []string) error {
 
 // GetScriptFunc 获取缓存的脚本函数
 func GetScriptFunc(funcName string) (func([]byte) interface{}, error) {
-	if decodeFunc, exists := scriptFuncCache[funcName]; exists {
+	if decodeFunc, exists := ScriptFuncCache[funcName]; exists {
 		return decodeFunc, nil
 	}
 	return nil, fmt.Errorf("方法名 %s 未注册", funcName)

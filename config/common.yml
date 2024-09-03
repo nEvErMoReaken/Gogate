@@ -4,6 +4,10 @@ protoFile: proto-train2sam-v0.0.1.yml
 # 检查CRC校验码：true启用，false禁用
 check_crc: true
 
+script:
+  dir: ./script
+  methods:
+    - Decode8BToInt
 
 log:
   log_path: ./logs

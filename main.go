@@ -5,6 +5,7 @@ import (
 	"go.uber.org/zap"
 	"gw22-train-sam/config"
 	"gw22-train-sam/logger"
+	"gw22-train-sam/plugin"
 )
 
 func main() {
@@ -30,6 +31,11 @@ func main() {
 	}(logger.Log)
 	logger.Log.Infof("[main]配置&日志加载成功:当前Common及Proto配置为%v,%v", Common, Proto)
 	// 3. 初始化脚本模块
+	err = plugin.LoadAllScripts(Common.Script.ScriptDir, Common.Script.Methods)
+	if err != nil {
+		logger.Log.Errorf("[main]加载脚本失败: %s", err)
+	}
+	logger.Log.Info(plugin.ScriptFuncCache)
 	// 4. 初始化所有物模型
 	// 5. 初始化所有正则结果
 	// 6. 创建所有管道

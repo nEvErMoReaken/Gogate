@@ -35,4 +35,10 @@ type Common struct {
 	Log       LogConfig       `mapstructure:"log"`
 	TCPServer TCPServerConfig `mapstructure:"tcpServer"`
 	Finally   FinallyConfig   `mapstructure:"finally"`
+	Script    ScriptConfig    `mapstructure:"script"`
+}
+
+type ScriptConfig struct {
+	ScriptDir string   `mapstructure:"dir"`
+	Methods   []string `mapstructure:"methods"`
 }

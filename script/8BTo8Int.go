@@ -1,7 +1,7 @@
 package script
 
 // Decode8BToInt DecodeFrame takes a byte slice as input and returns the decoded value
-func Decode8BToInt(data []byte) []int {
+func Decode8BToInt(data []byte) interface{} {
 	// 结果数组，长度是输入字节数组长度的 8 倍
 	result := make([]int, 0, len(data)*8)
 
@@ -13,6 +13,5 @@ func Decode8BToInt(data []byte) []int {
 			result = append(result, int(bit))
 		}
 	}
-
 	return result
 }
