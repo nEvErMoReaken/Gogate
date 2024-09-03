@@ -1,8 +1,10 @@
 package model
 
-// DeviceModel 代表一个设备的物模型
-type DeviceModel struct {
-	id           string                 // 设备 ID
+import "github.com/google/uuid"
+
+// DeviceSnapshot 代表一个设备的物模型
+type DeviceSnapshot struct {
+	id           uuid.UUID              // 设备 ID
 	DeviceName   string                 // 设备名称，例如 "vobc0001.abc"
 	DeviceType   string                 // 设备类型，例如 "vobc.info"
 	Fields       map[string]interface{} // 动态字段存储，key 为字段名称，value 为字段值
@@ -11,10 +13,16 @@ type DeviceModel struct {
 	ts           int64                  // 时间戳
 }
 
-// NewDeviceModel 创建一个新的设备物模型
-func NewDeviceModel(name, deviceType string) *DeviceModel {
-
-	return &DeviceModel{
+// NewSnapshot 创建一个新的设备物模型
+func NewSnapshot(name, deviceType string) *DeviceSnapshot {
+	// 生成一个新的 UUID
+	newID, err := uuid.NewUUID()
+	if err != nil {
+		// 如果生成 UUID 失败，可以选择返回错误或处理错误，这里简单处理为返回 nil
+		return nil
+	}
+	return &DeviceSnapshot{
+		id:           newID,
 		DeviceName:   name,
 		DeviceType:   deviceType,
 		Fields:       make(map[string]interface{}),
@@ -24,7 +32,7 @@ func NewDeviceModel(name, deviceType string) *DeviceModel {
 }
 
 // SetField 设置或更新字段值
-func (dm *DeviceModel) SetField(fieldName string, value interface{}, fieldType string) {
+func (dm *DeviceSnapshot) SetField(fieldName string, value interface{}, fieldType string) {
 	if fieldType == "cached" {
 		dm.CachedFields[fieldName] = value
 	} else if fieldType == "stable" {
@@ -35,7 +43,7 @@ func (dm *DeviceModel) SetField(fieldName string, value interface{}, fieldType s
 }
 
 // GetField 获取字段值
-func (dm *DeviceModel) GetField(fieldName string) (interface{}, bool) {
+func (dm *DeviceSnapshot) GetField(fieldName string) (interface{}, bool) {
 	if value, exists := dm.Fields[fieldName]; exists {
 		return value, true
 	}
@@ -48,9 +56,9 @@ func (dm *DeviceModel) GetField(fieldName string) (interface{}, bool) {
 	return nil, false
 }
 
-// Equal 方法用于比较两个 DeviceModel 是否是相同设备
-// 两个 DeviceModel 相等的条件是 DeviceName 和 DeviceType 都相同
-func (dm *DeviceModel) Equal(other *DeviceModel) bool {
+// Equal 方法用于比较两个 DeviceSnapshot 是否是相同设备
+// 两个 DeviceSnapshot 相等的条件是 DeviceName 和 DeviceType 都相同
+func (dm *DeviceSnapshot) Equal(other *DeviceSnapshot) bool {
 	if dm == nil || other == nil {
 		return false
 	}

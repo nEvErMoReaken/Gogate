@@ -7,10 +7,10 @@ import (
 
 // InfluxDbBucket 实现将数据发布到 InfluxDB 的逻辑
 type InfluxDbBucket struct {
-	batch model.DeviceBatch
+	batch model.SnapshotBatch
 }
 
-func (b *InfluxDbBucket) AddDevice(device model.DeviceModel) {
+func (b *InfluxDbBucket) AddDevice(device model.DeviceSnapshot) {
 	b.batch.Put(device)
 }
 
