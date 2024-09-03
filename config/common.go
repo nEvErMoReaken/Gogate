@@ -1,5 +1,7 @@
 package config
 
+import "time"
+
 type LogConfig struct {
 	LogPath    string `mapstructure:"log_path"`
 	MaxSize    int    `mapstructure:"max_size"`
@@ -15,17 +17,23 @@ type TCPServerConfig struct {
 }
 
 type InfluxDBConfig struct {
-	URL      string   `mapstructure:"url"`
-	Password string   `mapstructure:"password"`
-	Filter   []string `mapstructure:"filter"`
+	URL      string       `mapstructure:"url"`
+	Password string       `mapstructure:"password"`
+	Bucket   BucketConfig `mapstructure:"bucket"`
 }
-
+type BucketConfig struct {
+	Interval time.Duration `mapstructure:"interval"`
+	Filter   []string      `mapstructure:"filter"`
+}
 type MqttConfig struct {
 	// 在此添加需要的配置字段
+	Broker string       `mapstructure:"broker"`
+	Topic  string       `mapstructure:"topic"`
+	Bucket BucketConfig `mapstructure:"bucket"`
 }
 
 type FinallyConfig struct {
-	InfluxDB InfluxDBConfig `mapstructure:"InfluxDB"`
+	InfluxDB InfluxDBConfig `mapstructure:"influxDB"`
 	Mqtt     MqttConfig     `mapstructure:"mqtt"`
 }
 

@@ -55,10 +55,12 @@ tcpServer:
 
 
 finally:
-  InfluxDB:
+  influxDB:
     url:
     password:
-    filter:
-      - "vobc.*"
-      - "btm.abc*"
+    bucket:
+      interval: 2s # interval  为 0 时表示不开启聚合
+      filter:
+        - "vobc.*"
+        - "btm.abc*"
   mqtt:
