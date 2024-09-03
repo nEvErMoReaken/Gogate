@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	"gw22-train-sam/logger"
 	"os"
 	"path/filepath"
 )
@@ -54,7 +55,8 @@ func loadAllScripts(scriptDir string, methods []string) error {
 	for _, funcName := range methods {
 		v, err := i.Eval("script.Decode" + funcName)
 		if err != nil {
-			fmt.Printf("[Warning]: 未找到 %s 方法在已读取脚本中 %v\n", funcName, err)
+			//fmt.Printf("[Warning]: 未找到 %s 方法在已读取脚本中 %v\n", funcName, err)
+			logger.Log.Errorf("[Warning]: 在已读取脚本中未找到 %s 方法 %v\n", funcName, err)
 			continue
 		}
 		scriptFuncCache[funcName] = v.Interface().(func([]byte) interface{})
