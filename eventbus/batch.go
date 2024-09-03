@@ -1,23 +1,23 @@
 package eventbus
 
 import (
-	"fmt"
+	"gw22-train-sam/logger"
 	"gw22-train-sam/model"
 	"sync"
 	"time"
 )
 
-// DevicePool 是一个设备队列的集合，每个设备对应一个队列
-type DevicePool struct {
+// DeviceBatch 是一个设备队列的集合，每个设备对应一个队列
+type DeviceBatch struct {
 	pool map[string][]*model.DeviceModel
 	mu   sync.Mutex // 用于保护对 pool 的访问
 }
 
 // 初始化单例设备池
-var devicePool DevicePool
+var devicePool DeviceBatch
 
 // Put 方法将 deviceModel 添加到对应设备的队列中
-func (dp *DevicePool) Put(deviceModel model.DeviceModel) {
+func (dp *DeviceBatch) Put(deviceModel model.DeviceModel) {
 	dp.mu.Lock() // 加锁以保护 pool
 	defer dp.mu.Unlock()
 
@@ -34,7 +34,7 @@ func (dp *DevicePool) Put(deviceModel model.DeviceModel) {
 }
 
 // GetAll 方法返回设备池的副本，并清空设备池
-func (dp *DevicePool) GetAll() map[string][]*model.DeviceModel {
+func (dp *DeviceBatch) GetAll() map[string][]*model.DeviceModel {
 	dp.mu.Lock() // 加锁以保护 pool
 	defer dp.mu.Unlock()
 
@@ -52,7 +52,7 @@ func (dp *DevicePool) GetAll() map[string][]*model.DeviceModel {
 
 func Init() {
 	// 初始化 devicePool 或其他初始化逻辑
-	devicePool = DevicePool{
+	devicePool = DeviceBatch{
 		pool: make(map[string][]*model.DeviceModel),
 	}
 	InitBus()
@@ -71,8 +71,8 @@ func PublishToEventBus() {
 		for deviceKey, devices := range allDevices {
 			bus.Publish(deviceKey, devices) // 发布事件到 EventBus 中，设备的 key 作为事件名
 		}
-
-		// 你也可以在此处进行日志记录，或者其他操作
-		fmt.Println("Published to EventBus")
+		// 打印具体地发布信息
+		logger.Log.Infof("Published %d devices to EventBus", len(allDevices))
+		logger.Log.Infof("Published devices: %v", allDevices)
 	}
 }

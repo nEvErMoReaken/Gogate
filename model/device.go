@@ -8,24 +8,6 @@ type DeviceModel struct {
 	ts         int64                  // 时间戳
 }
 
-// 根据配置文件初始化设备物模型
-var deviceModels = make(map[string]*DeviceModel)
-
-// InitDeviceModels 从vipers配置文件初始化设备物模型
-func InitDeviceModels() {
-	// TODO 从配置文件中读取设备物模型，需要确定配置文件读取形式。
-}
-
-// GetDeviceModel 根据名称返回相应的物模型
-func GetDeviceModel(deviceName string) *DeviceModel {
-	// 错误处理：如果设备不存在，则返回 nil
-	model, exists := deviceModels[deviceName]
-	if !exists {
-		return nil
-	}
-	return model
-}
-
 // NewDeviceModel 创建一个新的设备物模型
 func NewDeviceModel(name, deviceType string) *DeviceModel {
 	return &DeviceModel{
