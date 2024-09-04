@@ -54,16 +54,17 @@ tcpServer:
     "172.25.29.109": ER2_14_5_1
 
 
-finally:
-  influxDB:
+strategy:
+  - type: influxDB
     url: http://10.17.191.107:8086
     token: mK_0NkLVPW8THIYkn52eqr7enL6IinGp8d5xbXizO1mVxAEk_EuOFxZ9OKWYcwVgi2XmogD6iPcO9KQ8ToVvtQ==
     org: "byd"
     bucket: "sam"
     batch_size: 2000
-    tips:
-      interval: 2s # interval  为 0 时表示不开启聚合
-      filter:
-        - "vobc.*"
-        - "btm.abc*"
-  mqtt:
+    interval: 2s # interval  为 0 时表示不开启聚合
+    filter:
+      - "vobc.*"
+      - "btm.abc*"
+  - type: mqtt
+    url: tcp://
+    topic: "sam"

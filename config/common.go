@@ -1,7 +1,5 @@
 package config
 
-import "time"
-
 type LogConfig struct {
 	LogPath    string `mapstructure:"log_path"`
 	MaxSize    int    `mapstructure:"max_size"`
@@ -16,37 +14,19 @@ type TCPServerConfig struct {
 	IPAlias   map[string]string `mapstructure:"ipAlias"`
 }
 
-type InfluxDBConfig struct {
-	URL       string `mapstructure:"url"`
-	ORG       string `mapstructure:"org"`
-	Bucket    string `mapstructure:"bucket"`
-	Token     string `mapstructure:"token"`
-	Tips      Tips   `mapstructure:"tips"`
-	BatchSize int    `mapstructure:"batch_size"`
-}
-type Tips struct {
-	Interval time.Duration `mapstructure:"interval"`
-	Filter   []string      `mapstructure:"filter"`
-}
-type MqttConfig struct {
-	// 在此添加需要的配置字段
-	Broker string `mapstructure:"broker"`
-	Topic  string `mapstructure:"topic"`
-	Bucket Tips   `mapstructure:"bucket"`
-}
-
-type FinallyConfig struct {
-	InfluxDB InfluxDBConfig `mapstructure:"influxDB"`
-	Mqtt     MqttConfig     `mapstructure:"mqtt"`
+type StrategyConfig struct {
+	Type   string                 `mapstructure:"type"`    // 通用字段
+	Filter []string               `mapstructure:"filter"`  // 通用字段
+	Config map[string]interface{} `mapstructure:",remain"` // 自定义配置项
 }
 
 type Common struct {
-	ProtoFile string          `mapstructure:"protoFile"`
-	CheckCRC  bool            `mapstructure:"check_crc"`
-	Log       LogConfig       `mapstructure:"log"`
-	TCPServer TCPServerConfig `mapstructure:"tcpServer"`
-	Finally   FinallyConfig   `mapstructure:"finally"`
-	Script    ScriptConfig    `mapstructure:"script"`
+	ProtoFile string           `mapstructure:"protoFile"`
+	CheckCRC  bool             `mapstructure:"check_crc"`
+	Log       LogConfig        `mapstructure:"log"`
+	TCPServer TCPServerConfig  `mapstructure:"tcpServer"`
+	Strategy  []StrategyConfig `mapstructure:"strategy"`
+	Script    ScriptConfig     `mapstructure:"script"`
 }
 
 type ScriptConfig struct {
