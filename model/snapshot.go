@@ -5,15 +5,14 @@ import (
 	"time"
 )
 
-// DeviceSnapshot 代表一个设备的物模型
+// DeviceSnapshot 代表一个设备的物模型在某时刻的快照
 type DeviceSnapshot struct {
-	id           uuid.UUID              // 设备 ID
-	DeviceName   string                 // 设备名称，例如 "vobc0001.abc"
-	DeviceType   string                 // 设备类型，例如 "vobc.info"
-	Fields       map[string]interface{} // 动态字段存储，key 为字段名称，value 为字段值
-	CachedFields map[string]interface{} // 需要缓存的字段存储，key 为字段名称，value 为字段值
-	StableFields map[string]interface{} // 稳定字段存储，key 为字段名称，value 为字段值
-	Ts           time.Time              // 时间戳
+	id         uuid.UUID                 // 设备 ID
+	DeviceName string                    // 设备名称，例如 "vobc0001.abc"
+	DeviceType string                    // 设备类型，例如 "vobc.info"
+	Fields     map[string]interface{}    // 字段存储，key 为字段名称，value 为字段值
+	Strategies map[string][]SendStrategy // 发送策略
+	Ts         time.Time                 // 时间戳
 }
 
 // NewSnapshot 创建一个新的设备快照，尽量避免直接使用 DeviceSnapshot{} 创建

@@ -1,6 +1,9 @@
 package model
 
-import "sync"
+import (
+	"sync"
+	"time"
+)
 
 /*
 	对象池实现: 用于减轻 GC 压力
@@ -32,7 +35,7 @@ func ReleaseSnapshot(dm *DeviceSnapshot) {
 	dm.Fields = make(map[string]interface{})
 	dm.CachedFields = make(map[string]interface{})
 	dm.StableFields = make(map[string]interface{})
-	dm.Ts = dm.Ts.Truncate(0)
+	dm.Ts = time.Time{}
 
 	// 将实例放回池中
 	snapshotPool.Put(dm)
