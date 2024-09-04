@@ -17,19 +17,22 @@ type TCPServerConfig struct {
 }
 
 type InfluxDBConfig struct {
-	URL      string       `mapstructure:"url"`
-	Password string       `mapstructure:"password"`
-	Bucket   BucketConfig `mapstructure:"bucket"`
+	URL       string `mapstructure:"url"`
+	ORG       string `mapstructure:"org"`
+	Bucket    string `mapstructure:"bucket"`
+	Token     string `mapstructure:"token"`
+	Tips      Tips   `mapstructure:"tips"`
+	BatchSize int    `mapstructure:"batch_size"`
 }
-type BucketConfig struct {
+type Tips struct {
 	Interval time.Duration `mapstructure:"interval"`
 	Filter   []string      `mapstructure:"filter"`
 }
 type MqttConfig struct {
 	// 在此添加需要的配置字段
-	Broker string       `mapstructure:"broker"`
-	Topic  string       `mapstructure:"topic"`
-	Bucket BucketConfig `mapstructure:"bucket"`
+	Broker string `mapstructure:"broker"`
+	Topic  string `mapstructure:"topic"`
+	Bucket Tips   `mapstructure:"bucket"`
 }
 
 type FinallyConfig struct {

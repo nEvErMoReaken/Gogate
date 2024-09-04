@@ -29,14 +29,17 @@ func main() {
 			logger.Errorf("[main]同步日志失败: %s", err)
 		}
 	}(logger.Log)
-	logger.Log.Infof("[main]配置&日志加载成功:当前Common及Proto配置为%v,%v", Common, Proto)
+	logger.Log.Infof("[main]配置&日志加载成功:当前Common配置为%+v", Common)
+	logger.Log.Infof("[main]配置&日志加载成功:当前Proto配置为%+v", Proto)
+
 	// 3. 初始化脚本模块
 	err = plugin.LoadAllScripts(Common.Script.ScriptDir, Common.Script.Methods)
 	if err != nil {
 		logger.Log.Errorf("[main]加载脚本失败: %s", err)
 	}
-	logger.Log.Info(plugin.ScriptFuncCache)
-	// 4. 初始化所有物模型
+	logger.Log.Infof("已加载脚本:%v", plugin.ScriptFuncCache)
+	// 4. 初始化所有物模型相关
+
 	// 5. 初始化所有正则结果
 	// 6. 创建所有管道
 	// 7. 启动tcp fetch协程

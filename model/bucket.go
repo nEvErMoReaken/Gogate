@@ -4,6 +4,5 @@ package model
 
 type Bucket interface {
 	AddDevice(device *DeviceSnapshot)
-	Publish()
-	Regs()
+	Start()
 }

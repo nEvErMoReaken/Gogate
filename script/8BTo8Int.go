@@ -6,10 +6,11 @@ func Decode8BToInt(data []byte) interface{} {
 	result := make([]int, 0, len(data)*8)
 
 	for _, b := range data {
-		// 遍历每一个字节，从低位到高位依次提取每一位
-		for i := 0; i < 8; i++ {
-			// 使用位运算提取第 i 位，并将其转换为 int（0 或 1）
-			bit := (b >> i) & 1
+		// 遍历每一个字节，从高位到低位依次提取每一位
+		for i := 7; i >= 0; i-- {
+			// 提取第 i 位
+			bit := (b >> i) & 0x01
+			// 将提取到的位放入结果数组
 			result = append(result, int(bit))
 		}
 	}

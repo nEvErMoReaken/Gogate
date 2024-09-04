@@ -32,7 +32,7 @@ func ReleaseSnapshot(dm *DeviceSnapshot) {
 	dm.Fields = make(map[string]interface{})
 	dm.CachedFields = make(map[string]interface{})
 	dm.StableFields = make(map[string]interface{})
-	dm.ts = 0
+	dm.Ts = dm.Ts.Truncate(0)
 
 	// 将实例放回池中
 	snapshotPool.Put(dm)

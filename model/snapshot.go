@@ -1,6 +1,9 @@
 package model
 
-import "github.com/google/uuid"
+import (
+	"github.com/google/uuid"
+	"time"
+)
 
 // DeviceSnapshot 代表一个设备的物模型
 type DeviceSnapshot struct {
@@ -10,11 +13,11 @@ type DeviceSnapshot struct {
 	Fields       map[string]interface{} // 动态字段存储，key 为字段名称，value 为字段值
 	CachedFields map[string]interface{} // 需要缓存的字段存储，key 为字段名称，value 为字段值
 	StableFields map[string]interface{} // 稳定字段存储，key 为字段名称，value 为字段值
-	ts           int64                  // 时间戳
+	Ts           time.Time              // 时间戳
 }
 
-// NewSnapshot 创建一个新的设备物模型
-func NewSnapshot(name, deviceType string) *DeviceSnapshot {
+// NewSnapshot 创建一个新的设备快照，尽量避免直接使用 DeviceSnapshot{} 创建
+func NewSnapshot(name, deviceType string, ts time.Time) *DeviceSnapshot {
 	// 生成一个新的 UUID
 	newID, err := uuid.NewUUID()
 	if err != nil {
@@ -28,6 +31,7 @@ func NewSnapshot(name, deviceType string) *DeviceSnapshot {
 		Fields:       make(map[string]interface{}),
 		CachedFields: make(map[string]interface{}),
 		StableFields: make(map[string]interface{}),
+		Ts:           ts,
 	}
 }
 
