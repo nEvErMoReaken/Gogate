@@ -8,8 +8,8 @@ import (
 // SendStrategy 定义了所有发送策略的通用接口
 
 type SendStrategy interface {
-	AddDevice(device DeviceSnapshot) // 这里不传指针，担心后续还没发送前面的设备就被修改了
 	Start()
+	GetChan() chan string // 提供访问 chan 的方法
 }
 
 // MapSendStrategy 代表一个发送策略的映射

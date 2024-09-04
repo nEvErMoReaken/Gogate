@@ -118,3 +118,13 @@ func (dm *DeviceSnapshot) Equal(other *DeviceSnapshot) bool {
 	}
 	return dm.DeviceName == other.DeviceName && dm.DeviceType == other.DeviceType
 }
+
+// launch 发射一个 DeviceSnapshot
+func (dm *DeviceSnapshot) launch() {
+	// 遍历所有发送策略
+	for _, strategies := range dm.Strategies {
+		for _, strategy := range strategies {
+			strategy.AddDevice(*dm)
+		}
+	}
+}
