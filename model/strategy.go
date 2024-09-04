@@ -9,7 +9,7 @@ import (
 
 type SendStrategy interface {
 	Start()
-	GetChan() chan string // 提供访问 chan 的方法
+	GetChan() chan Point // 提供访问 chan 的方法
 }
 
 // MapSendStrategy 代表一个发送策略的映射

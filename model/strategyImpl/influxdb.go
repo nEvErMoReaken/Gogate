@@ -13,7 +13,7 @@ import (
 // InfluxDbStrategy 实现将数据发布到 InfluxDB 的逻辑
 type InfluxDbStrategy struct {
 	client    influxdb2.Client
-	pointChan chan *model.Point
+	pointChan chan model.Point
 	stopChan  chan struct{}
 	writeAPI  api.WriteAPI
 }
@@ -28,7 +28,7 @@ type infoType struct {
 }
 
 // GetChan 获取通道
-func (b *InfluxDbStrategy) GetChan() chan *model.Point {
+func (b *InfluxDbStrategy) GetChan() chan model.Point {
 	return b.pointChan
 }
 
@@ -51,7 +51,7 @@ func NewInfluxDbStrategy(dbConfig config.StrategyConfig, stopChan chan struct{})
 		}
 	}()
 	return &InfluxDbStrategy{
-		pointChan: make(chan *model.Point, 200), // 容量为200的通道
+		pointChan: make(chan model.Point, 200), // 容量为200的通道
 		stopChan:  stopChan,
 		client:    client,
 		writeAPI:  writeAPI,
@@ -68,7 +68,7 @@ func (b *InfluxDbStrategy) Start() {
 				b.writeAPI.Flush() // 在停止时强制刷新所有数据
 				return
 			case point := <-b.pointChan:
-				b.Publish(point)
+				b.Publish(&point)
 			}
 		}
 	}()

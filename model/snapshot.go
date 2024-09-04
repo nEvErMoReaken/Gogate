@@ -12,12 +12,12 @@ import (
 
 // DeviceSnapshot 代表一个设备的物模型在某时刻的快照
 type DeviceSnapshot struct {
-	id         uuid.UUID                 // 设备 ID
-	DeviceName string                    // 设备名称，例如 "vobc0001.abc"
-	DeviceType string                    // 设备类型，例如 "vobc.info"
-	Fields     map[string]interface{}    // 字段存储，key 为字段名称，value 为字段值
-	Strategies map[string][]SendStrategy // 发送策略
-	Ts         time.Time                 // 时间戳
+	id         uuid.UUID                // 设备 ID
+	DeviceName string                   // 设备名称，例如 "vobc0001.abc"
+	DeviceType string                   // 设备类型，例如 "vobc.info"
+	Fields     map[string]interface{}   // 字段存储，key 为字段名称，value 为字段值
+	PointMap   map[string]*PointPackage // 数据点映射，key 为策略名称，value 为数据点，仅为了方便查找
+	Ts         time.Time                // 时间戳
 }
 
 // cachedDeviceSnapshot 用于缓存设备快照，key 为设备名称和设备类型的组合，value 为设备快照
@@ -48,7 +48,7 @@ func NewSnapshot(deviceName, deviceType string, common *config.Common) *DeviceSn
 		DeviceName: deviceName,
 		DeviceType: deviceType,
 		Fields:     make(map[string]interface{}),
-		Strategies: make(map[string][]SendStrategy),
+		PointMap:   make(map[string]*PointPackage),
 		Ts:         time.Now(),
 	}
 
@@ -56,10 +56,24 @@ func NewSnapshot(deviceName, deviceType string, common *config.Common) *DeviceSn
 	for _, strategy := range common.Strategy {
 		for _, filter := range strategy.Filter {
 			// 遍历field，判断是否符合策略过滤条件
-			for field, _ := range newSnapshot.Fields {
-				if checkFilter(deviceType, deviceName, field, filter) {
-					// 如果设备名称符合策略过滤条件，则将策略添加到设备快照中
-					newSnapshot.Strategies[field] = append(newSnapshot.Strategies[field], GetStrategy(strategy.Type))
+			for fieldKey, fieldValue := range newSnapshot.Fields {
+				if checkFilter(deviceType, deviceName, fieldKey, filter) {
+					st := GetStrategy(strategy.Type)
+					// 不存在，则创建一个新的PointPackage，否则更新PointPackage
+					// 初始化PointMap
+					if _, exists := newSnapshot.PointMap[strategy.Type]; !exists {
+						newSnapshot.PointMap[strategy.Type] = &PointPackage{
+							Point: Point{
+								DeviceName: deviceName,
+								DeviceType: deviceType,
+								Field:      map[string]interface{}{fieldKey: fieldValue},
+								Ts:         time.Now(),
+							},
+							Strategy: st,
+						}
+					} else {
+						newSnapshot.PointMap[strategy.Type].merge(fieldKey, fieldValue)
+					}
 				}
 			}
 
@@ -119,12 +133,9 @@ func (dm *DeviceSnapshot) Equal(other *DeviceSnapshot) bool {
 	return dm.DeviceName == other.DeviceName && dm.DeviceType == other.DeviceType
 }
 
-// launch 发射一个 DeviceSnapshot
+// lanuch 发射所有数据点
 func (dm *DeviceSnapshot) launch() {
-	// 遍历所有发送策略
-	for _, strategies := range dm.Strategies {
-		for _, strategy := range strategies {
-			strategy.AddDevice(*dm)
-		}
+	for _, pp := range dm.PointMap {
+		pp.launch()
 	}
 }
