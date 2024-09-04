@@ -61,10 +61,9 @@ strategy:
     org: "byd"
     bucket: "sam"
     batch_size: 2000
-    interval: 2s # interval  为 0 时表示不开启聚合
-    filter:
-      - "vobc.*"
-      - "btm.abc*"
+#    interval: 2s # interval  为 0 时表示不开启聚合 已经废弃
+    filter: # 格式<设备类型>:<设备名称>:<遥测名称>
+      - ".*:.*:.*"
   - type: mqtt
     url: tcp://
     topic: "sam"

@@ -3,27 +3,42 @@ package strategyImpl
 import (
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/influxdata/influxdb-client-go/v2/api"
+	"github.com/mitchellh/mapstructure"
 	"gw22-train-sam/config"
 	"gw22-train-sam/logger"
 	"gw22-train-sam/model"
+	"log"
 	"time"
 )
 
 // InfluxDbStrategy 实现将数据发布到 InfluxDB 的逻辑
 type InfluxDbStrategy struct {
-	client          influxdb2.Client
-	batch           *model.SnapshotBatch
-	publishInterval time.Duration
-	stopChan        chan struct{}
-	writeAPI        api.WriteAPI
-	eventChan       chan struct{} // 用于通知立即发送的事件通道
+	client    influxdb2.Client
+	batch     *model.SnapshotBatch
+	stopChan  chan struct{}
+	writeAPI  api.WriteAPI
+	eventChan chan struct{} // 用于通知立即发送的事件通道
+}
+
+// infoType InfluxDB的专属配置
+type infoType struct {
+	url       string `mapstructure:"url"`
+	org       string `mapstructure:"org"`
+	token     string `mapstructure:"token"`
+	bucket    string `mapstructure:"bucket"`
+	batchSize uint   `mapstructure:"batch_size"`
 }
 
 // NewInfluxDbStrategy 构造函数
-func NewInfluxDbStrategy(dbConfig config.InfluxDBConfig, stopChan chan struct{}) *InfluxDbStrategy {
-	client := influxdb2.NewClientWithOptions(dbConfig.URL, dbConfig.Token, influxdb2.DefaultOptions().SetBatchSize(uint(dbConfig.BatchSize)))
+func NewInfluxDbStrategy(dbConfig config.StrategyConfig, stopChan chan struct{}) *InfluxDbStrategy {
+	var info infoType
+	// 将 map 转换为结构体
+	if err := mapstructure.Decode(dbConfig.Config, &info); err != nil {
+		log.Fatalf("Error decoding map to struct: %v", err)
+	}
+	client := influxdb2.NewClientWithOptions(info.url, info.token, influxdb2.DefaultOptions().SetBatchSize(info.batchSize))
 	// 获取写入 API
-	writeAPI := client.WriteAPI(dbConfig.ORG, dbConfig.Bucket)
+	writeAPI := client.WriteAPI(info.org, info.bucket)
 	// Get errors channel
 	errorsCh := writeAPI.Errors()
 	// Create go proc for reading and logging errors
@@ -33,12 +48,11 @@ func NewInfluxDbStrategy(dbConfig config.InfluxDBConfig, stopChan chan struct{})
 		}
 	}()
 	return &InfluxDbStrategy{
-		batch:           model.NewSnapshotBatch(),
-		publishInterval: dbConfig.Tips.Interval,
-		stopChan:        stopChan,
-		client:          client,
-		writeAPI:        writeAPI,
-		eventChan:       make(chan struct{}, 1), // 非阻塞通道，缓冲区大小为1
+		batch:     model.NewSnapshotBatch(),
+		stopChan:  stopChan,
+		client:    client,
+		writeAPI:  writeAPI,
+		eventChan: make(chan struct{}, 1), // 非阻塞通道，缓冲区大小为1
 	}
 }
 

@@ -15,7 +15,7 @@ import (
 
 // SnapshotBatch 是一个设备快照队列的集合，每个设备快照对应一个队列
 type SnapshotBatch struct {
-	batch map[uuid.UUID][]*DeviceSnapshot
+	batch chan DeviceSnapshot
 	mu    sync.Mutex // 用于保护对 batch 的访问
 }
 
