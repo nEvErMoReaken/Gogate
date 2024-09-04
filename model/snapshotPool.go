@@ -14,9 +14,8 @@ var snapshotPool = sync.Pool{
 	New: func() interface{} {
 		// 当池中没有对象时，创建一个新的 DeviceSnapshot 实例
 		return &DeviceSnapshot{
-			Fields:       make(map[string]interface{}),
-			CachedFields: make(map[string]interface{}),
-			StableFields: make(map[string]interface{}),
+			Fields:     make(map[string]interface{}),
+			Strategies: make(map[string][]SendStrategy),
 		}
 	},
 }
@@ -33,8 +32,7 @@ func ReleaseSnapshot(dm *DeviceSnapshot) {
 	dm.DeviceName = ""
 	dm.DeviceType = ""
 	dm.Fields = make(map[string]interface{})
-	dm.CachedFields = make(map[string]interface{})
-	dm.StableFields = make(map[string]interface{})
+	dm.Strategies = make(map[string][]SendStrategy)
 	dm.Ts = time.Time{}
 
 	// 将实例放回池中

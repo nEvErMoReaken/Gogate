@@ -24,25 +24,17 @@ func NewSnapshot(name, deviceType string, ts time.Time) *DeviceSnapshot {
 		return nil
 	}
 	return &DeviceSnapshot{
-		id:           newID,
-		DeviceName:   name,
-		DeviceType:   deviceType,
-		Fields:       make(map[string]interface{}),
-		CachedFields: make(map[string]interface{}),
-		StableFields: make(map[string]interface{}),
-		Ts:           ts,
+		id:         newID,
+		DeviceName: name,
+		DeviceType: deviceType,
+		Fields:     make(map[string]interface{}),
+		Ts:         ts,
 	}
 }
 
 // SetField 设置或更新字段值
-func (dm *DeviceSnapshot) SetField(fieldName string, value interface{}, fieldType string) {
-	if fieldType == "cached" {
-		dm.CachedFields[fieldName] = value
-	} else if fieldType == "stable" {
-		dm.StableFields[fieldName] = value
-	} else {
-		dm.Fields[fieldName] = value
-	}
+func (dm *DeviceSnapshot) SetField(fieldName string, value interface{}) {
+	dm.Fields[fieldName] = value
 }
 
 // GetField 获取字段值
@@ -50,12 +42,7 @@ func (dm *DeviceSnapshot) GetField(fieldName string) (interface{}, bool) {
 	if value, exists := dm.Fields[fieldName]; exists {
 		return value, true
 	}
-	if value, exists := dm.CachedFields[fieldName]; exists {
-		return value, true
-	}
-	if value, exists := dm.StableFields[fieldName]; exists {
-		return value, true
-	}
+
 	return nil, false
 }
 
