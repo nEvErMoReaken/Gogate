@@ -48,6 +48,6 @@ func GetStrategy(strategyType string) SendStrategy {
 // StartALL 启动所有发送策略
 func (m MapSendStrategy) StartALL() {
 	for _, strategy := range m {
-		strategy.Start()
+		go strategy.Start()
 	}
 }

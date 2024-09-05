@@ -25,17 +25,15 @@ func (b *InfluxDbStrategy) GetChan() chan model.Point {
 // Start Step.3
 func (b *InfluxDbStrategy) Start() {
 	defer b.client.Close()
-	go func() {
-		for {
-			select {
-			case <-b.stopChan:
-				b.writeAPI.Flush() // 在停止时强制刷新所有数据
-				return
-			case point := <-b.pointChan:
-				b.Publish(&point)
-			}
+	for {
+		select {
+		case <-b.stopChan:
+			b.writeAPI.Flush() // 在停止时强制刷新所有数据
+			return
+		case point := <-b.pointChan:
+			b.Publish(&point)
 		}
-	}()
+	}
 }
 
 // InfluxDbStrategy 实现将数据发布到 InfluxDB 的逻辑
