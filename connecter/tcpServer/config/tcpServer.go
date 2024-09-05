@@ -1,9 +1,12 @@
 package config
 
+import "time"
+
 type TCPServerConfig struct {
 	WhiteList bool              `mapstructure:"whiteList"`
 	IPAlias   map[string]string `mapstructure:"ipAlias"`
 	Port      string            `mapstructure:"port"`
+	Timeout   time.Duration     `mapstructure:"timeout"`
 }
 
 type StrategyConfig struct {
@@ -18,4 +21,10 @@ type TcpServer struct {
 	CheckCRC  bool             `mapstructure:"check_crc"`
 	TCPServer TCPServerConfig  `mapstructure:"tcpServer"`
 	Strategy  []StrategyConfig `mapstructure:"strategy"`
+}
+
+type Setting struct {
+	Type   string `mapstructure:"type"`
+	Length int    `mapstructure:"length"`
+	End    []byte `mapstructure:"end"`
 }

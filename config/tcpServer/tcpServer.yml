@@ -8,6 +8,7 @@ check_crc: true
 
 
 tcpServer:
+  timeout: 5m
   port: 8080
   whiteList: false
   ipAlias: # 给收到的ip起一个别名

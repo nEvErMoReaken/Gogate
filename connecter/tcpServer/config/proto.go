@@ -1,7 +1,5 @@
 package config
 
-// 通用配置部分
-
 type FromConfig struct {
 	Byte int `mapstructure:"byte" yaml:"byte"`
 }
@@ -18,7 +16,7 @@ type ToConfig struct {
 	Fields []string `mapstructure:"fields,omitempty" yaml:"fields,omitempty"`
 }
 
-type ParsingStep struct {
+type Section struct {
 	From     FromConfig     `mapstructure:"from" yaml:"from"`
 	Decoding DecodingConfig `mapstructure:"decoding,omitempty" yaml:"decoding,omitempty"`
 	For      interface{}    `mapstructure:"for,omitempty" yaml:"for,omitempty"`
@@ -26,9 +24,18 @@ type ParsingStep struct {
 	Desc     string         `mapstructure:"desc,omitempty" yaml:"desc,omitempty"`
 }
 
+type ParsingConfig struct {
+	Section []Section `mapstructure:"section"`
+	Len     int       `mapstructure:"len,omitempty" yaml:"len,omitempty"`
+}
+
+type PreParsingConfig struct {
+	Section []Section `mapstructure:"section"`
+}
+
 // 预解析和正式解析
 
 type Proto struct {
-	PreParsing []ParsingStep `mapstructure:"pre-parsing" yaml:"pre-parsing"`
-	Parsing    []ParsingStep `mapstructure:"parsing" yaml:"parsing"`
+	PreParsing PreParsingConfig `mapstructure:"preParsing"`
+	Parsing    ParsingConfig    `mapstructure:"parsing" yaml:"parsing"`
 }

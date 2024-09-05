@@ -2,12 +2,28 @@ package tcpServer
 
 import (
 	"bufio"
-	"encoding/hex"
-	"errors"
 	"gw22-train-sam/logger"
 	"net"
 	"time"
 )
+
+// FrameContext 每一帧独立的上下文
+type FrameContext struct {
+	Parameters map[string]string // 单帧中共享的参数
+}
+
+// GetParameter 获取参数
+func (f *FrameContext) GetParameter(key string) string {
+	if value, exists := f.Parameters[key]; exists {
+		return value
+	}
+	return ""
+}
+
+// SetParameter 设置参数
+func (f *FrameContext) SetParameter(key, value string) {
+	f.Parameters[key] = value
+}
 
 // handleConnection 处理连接, 一个连接对应一个协程
 func handleConnection(tcpServer *TcpServer, conn net.Conn) {
@@ -24,9 +40,7 @@ func handleConnection(tcpServer *TcpServer, conn net.Conn) {
 		logger.Log.Errorf("%s 地址不在配置清单中", remoteAddr)
 		return
 	}
-
-	// 设置读写超时
-	err := conn.SetReadDeadline(time.Now().Add(5 * time.Minute))
+	err := conn.SetReadDeadline(time.Now().Add(tcpServer.TcpServerConfig.TCPServer.Timeout))
 	if err != nil {
 		logger.Log.Infof(conn.RemoteAddr().String() + "超时时间设置失败, 连接关闭")
 		return
@@ -34,19 +48,19 @@ func handleConnection(tcpServer *TcpServer, conn net.Conn) {
 	// 初始化reader开始读数据
 	reader := bufio.NewReader(conn)
 	for {
-		reader.
-			frame, err := reader.ReadByte()
+		// 读取一帧数据
+		err := parseFrame(reader, &FrameContext{
+			Parameters: make(map[string]string),
+		})
 		if err != nil {
-			var netErr net.Error
-			if errors.As(err, &netErr) && netErr.Timeout() {
-				logger.Log.Error("Read timeout:", err)
-				return
-			}
-			logger.Log.Error("Error reading:", err)
+			logger.Log.Errorf("解析帧失败: %s", err)
 			return
 		}
-
-		logger.Log.Infof("len:%d, efefefef%sfefefefe", len(frame), hex.EncodeToString(frame))
-
 	}
+}
+
+// parseFrame 解析帧, 包含了预解析和解析两个阶段
+func parseFrame(reader *bufio.Reader, frameContext *FrameContext) error {
+	// 预解析
+	// 解析
 }
