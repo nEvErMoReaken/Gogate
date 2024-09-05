@@ -5,6 +5,7 @@ import (
 	"github.com/google/uuid"
 	"gw22-train-sam/config"
 	"gw22-train-sam/logger"
+	strategy2 "gw22-train-sam/strategy"
 	"regexp"
 	"strings"
 	"time"
@@ -20,69 +21,95 @@ type DeviceSnapshot struct {
 	Ts         time.Time                // 时间戳
 }
 
-// cachedDeviceSnapshot 用于缓存设备快照，key 为设备名称和设备类型的组合，value 为设备快照
-var cachedDeviceSnapshot = make(map[string]*DeviceSnapshot)
+// SnapshotCollection 代表设备快照的集合
+type SnapshotCollection map[string]*DeviceSnapshot
+
+// snapshotCollection 用于缓存设备快照，key 为设备名称和设备类型的组合，value 为设备快照
+var snapshotCollection SnapshotCollection
+
+// InitSnapshotCollection 初始化设备快照的数据点映射
+func InitSnapshotCollection(proto *config.Proto, comm *config.Common) {
+	snapshotCollection = make(map[string]*DeviceSnapshot)
+	// 遍历所有的 PreParsing 和 Parsing 步骤，初始化设备快照
+	for _, step := range proto.PreParsing {
+		deviceSnapshot := GetDeviceSnapshot(step.To.Device, step.To.Type)
+		for _, field := range step.To.Fields {
+			deviceSnapshot.SetField(field, nil)
+		}
+	}
+	for _, step := range proto.Parsing {
+		deviceSnapshot := GetDeviceSnapshot(step.To.Device, step.To.Type)
+		for _, field := range step.To.Fields {
+			deviceSnapshot.SetField(field, nil)
+		}
+	}
+	// 初始化发送策略
+	for _, deviceSnapshot := range snapshotCollection {
+		deviceSnapshot.initPointPackage(comm)
+	}
+}
 
 // GetDeviceSnapshot 获取设备快照，如果设备快照已经存在，则直接返回，否则创建一个新的设备快照
-func GetDeviceSnapshot(deviceName string, deviceType string, common *config.Common) *DeviceSnapshot {
+func GetDeviceSnapshot(deviceName string, deviceType string) *DeviceSnapshot {
+
 	// 如果设备快照已经存在，则直接返回
-	if snapshot, exists := cachedDeviceSnapshot[deviceName+":"+deviceType]; exists {
+	if snapshot, exists := snapshotCollection[deviceName+":"+deviceType]; exists {
 		return snapshot
 	}
 	// 如果设备快照不存在，则创建一个新的设备快照并返回
-	newSnapshot := NewSnapshot(deviceName, deviceType, common)
-	cachedDeviceSnapshot[deviceName+":"+deviceType] = newSnapshot
+	newSnapshot := NewSnapshot(deviceName, deviceType)
+	snapshotCollection[deviceName+":"+deviceType] = newSnapshot
 	return newSnapshot
 }
 
 // NewSnapshot 创建一个新的设备快照，不允许使用 DeviceSnapshot{} 创建
-func NewSnapshot(deviceName, deviceType string, common *config.Common) *DeviceSnapshot {
+func NewSnapshot(deviceName, deviceType string) *DeviceSnapshot {
 	// 生成一个新的 UUID
 	newID, err := uuid.NewUUID()
 	if err != nil {
 		logger.Log.Errorf("failed to generate UUID: %s", err.Error())
 		return nil
 	}
-	newSnapshot := DeviceSnapshot{
+	return &DeviceSnapshot{
 		id:         newID,
 		DeviceName: deviceName,
 		DeviceType: deviceType,
 		Fields:     make(map[string]interface{}),
 		PointMap:   make(map[string]*PointPackage),
-		Ts:         time.Now(),
 	}
+}
 
-	// 推断 Strategies 的逻辑
+// initPointPackage 初始化设备快照的数据点映射
+func (dm *DeviceSnapshot) initPointPackage(common *config.Common) {
 	for _, strategy := range common.Strategy {
 		for _, filter := range strategy.Filter {
 			// 遍历field，判断是否符合策略过滤条件
-			for fieldKey, fieldValue := range newSnapshot.Fields {
-				if checkFilter(deviceType, deviceName, fieldKey, filter) {
-					st := GetStrategy(strategy.Type)
+			for fieldKey, fieldValue := range dm.Fields {
+				if checkFilter(dm.DeviceType, dm.DeviceName, fieldKey, filter) {
+					st := strategy2.GetStrategy(strategy.Type)
 					// 不存在，则创建一个新的PointPackage，否则更新PointPackage
 					// 初始化PointMap
-					if _, exists := newSnapshot.PointMap[strategy.Type]; !exists {
-						newSnapshot.PointMap[strategy.Type] = &PointPackage{
+					if _, exists := dm.PointMap[strategy.Type]; !exists {
+						dm.PointMap[strategy.Type] = &PointPackage{
 							Point: Point{
-								DeviceName: deviceName,
-								DeviceType: deviceType,
+								DeviceName: dm.DeviceName,
+								DeviceType: dm.DeviceType,
 								Field:      map[string]interface{}{fieldKey: fieldValue},
 								Ts:         time.Now(),
 							},
 							Strategy: st,
 						}
 					} else {
-						newSnapshot.PointMap[strategy.Type].merge(fieldKey, fieldValue)
+						dm.PointMap[strategy.Type].merge(fieldKey, fieldValue)
 					}
 				}
 			}
 
 		}
 	}
-	return &newSnapshot
 }
 
-// checkFilter 根据filter初始化Strategies
+// checkFilter 根据filter推断Strategies
 // 定义设备类型、设备名称、遥测名称的匹配
 func checkFilter(deviceType, deviceName, telemetryName, filter string) bool {
 	// 解析过滤语法，语法为：<设备类型>:<设备名称>:<遥测名称>
@@ -133,9 +160,16 @@ func (dm *DeviceSnapshot) Equal(other *DeviceSnapshot) bool {
 	return dm.DeviceName == other.DeviceName && dm.DeviceType == other.DeviceType
 }
 
-// lanuch 发射所有数据点
+// launch 发射所有数据点
 func (dm *DeviceSnapshot) launch() {
 	for _, pp := range dm.PointMap {
 		pp.launch()
+	}
+}
+
+// launchALL 发射所有数据点
+func (sc SnapshotCollection) launchALL() {
+	for _, dm := range sc {
+		dm.launch()
 	}
 }

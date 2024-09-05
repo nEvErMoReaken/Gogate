@@ -1,4 +1,4 @@
-package strategyImpl
+package strategy
 
 import (
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
@@ -9,6 +9,34 @@ import (
 	"gw22-train-sam/model"
 	"log"
 )
+
+// 拓展数据源步骤
+// init Step.1
+func init() {
+	// 注册发送策略
+	Register("influxdb", NewInfluxDbStrategy)
+}
+
+// GetChan Step.2
+func (b *InfluxDbStrategy) GetChan() chan model.Point {
+	return b.pointChan
+}
+
+// Start Step.3
+func (b *InfluxDbStrategy) Start() {
+	defer b.client.Close()
+	go func() {
+		for {
+			select {
+			case <-b.stopChan:
+				b.writeAPI.Flush() // 在停止时强制刷新所有数据
+				return
+			case point := <-b.pointChan:
+				b.Publish(&point)
+			}
+		}
+	}()
+}
 
 // InfluxDbStrategy 实现将数据发布到 InfluxDB 的逻辑
 type InfluxDbStrategy struct {
@@ -27,13 +55,8 @@ type infoType struct {
 	BatchSize uint   `mapstructure:"batch_size"`
 }
 
-// GetChan 获取通道
-func (b *InfluxDbStrategy) GetChan() chan model.Point {
-	return b.pointChan
-}
-
 // NewInfluxDbStrategy 构造函数
-func NewInfluxDbStrategy(dbConfig config.StrategyConfig, stopChan chan struct{}) *InfluxDbStrategy {
+func NewInfluxDbStrategy(dbConfig config.StrategyConfig, stopChan chan struct{}) SendStrategy {
 	var info infoType
 	// 将 map 转换为结构体
 	if err := mapstructure.Decode(dbConfig.Config, &info); err != nil {
@@ -56,22 +79,6 @@ func NewInfluxDbStrategy(dbConfig config.StrategyConfig, stopChan chan struct{})
 		client:    client,
 		writeAPI:  writeAPI,
 	}
-}
-
-// Start 启动 InfluxDBStrategy
-func (b *InfluxDbStrategy) Start() {
-	defer b.client.Close()
-	go func() {
-		for {
-			select {
-			case <-b.stopChan:
-				b.writeAPI.Flush() // 在停止时强制刷新所有数据
-				return
-			case point := <-b.pointChan:
-				b.Publish(&point)
-			}
-		}
-	}()
 }
 
 // Publish 存入数据库的逻辑

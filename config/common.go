@@ -15,8 +15,9 @@ type TCPServerConfig struct {
 }
 
 type StrategyConfig struct {
-	Type   string                 `mapstructure:"type"`    // 通用字段
-	Filter []string               `mapstructure:"filter"`  // 通用字段
+	Type   string                 `mapstructure:"type"`    // 策略类型
+	Enable bool                   `mapstructure:"enable"`  // 是否启用
+	Filter []string               `mapstructure:"filter"`  // 策略过滤条件
 	Config map[string]interface{} `mapstructure:",remain"` // 自定义配置项
 }
 

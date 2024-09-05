@@ -1,6 +1,9 @@
 package model
 
-import "time"
+import (
+	"gw22-train-sam/strategy"
+	"time"
+)
 
 // Point 代表发送到数据源的一个数据点 数据源所有的数据点都是 Point 类型
 // Point 和数据源是一对一的，即一个数据源对应一个 Point 类型
@@ -15,7 +18,7 @@ type Point struct {
 // PointPackage 数据点的高级封装，包含多个数据点和发送策略列表
 type PointPackage struct {
 	Point    Point
-	Strategy SendStrategy // 发送策略列表
+	Strategy strategy.SendStrategy // 发送策略列表
 }
 
 // merge 合并两个数据点
