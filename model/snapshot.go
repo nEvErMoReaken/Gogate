@@ -79,32 +79,37 @@ func NewSnapshot(deviceName, deviceType string) *DeviceSnapshot {
 	}
 }
 
-// initPointPackage 初始化设备快照的数据点映射
+// initPointPackage 初始化设备快照的数据点映射结构
 func (dm *DeviceSnapshot) initPointPackage(common *config2.TcpServer) {
 	for _, strategy := range common.Strategy {
 		for _, filter := range strategy.Filter {
-			// 遍历field，判断是否符合策略过滤条件
+			// 遍历字段，判断是否符合策略过滤条件
 			for fieldKey, fieldValue := range dm.Fields {
 				if checkFilter(dm.DeviceType, dm.DeviceName, fieldKey, filter) {
 					st := strategy2.GetStrategy(strategy.Type)
-					// 不存在，则创建一个新的PointPackage，否则更新PointPackage
-					// 初始化PointMap
+					// 检查 PointMap 是否已经存在该策略对应的 PointPackage
 					if _, exists := dm.PointMap[strategy.Type]; !exists {
+						// 创建新的 PointPackage，并使用指针引用字段
 						dm.PointMap[strategy.Type] = &PointPackage{
 							Point: Point{
-								DeviceName: dm.DeviceName,
-								DeviceType: dm.DeviceType,
-								Field:      map[string]interface{}{fieldKey: fieldValue},
-								Ts:         time.Now(),
+								DeviceName: &dm.DeviceName,
+								DeviceType: &dm.DeviceType,
+								Field:      map[string]*interface{}{fieldKey: &fieldValue}, // 引用字段
+								Ts:         &dm.Ts,                                         // 使用快照的时间戳引用
 							},
 							Strategy: st,
 						}
 					} else {
-						dm.PointMap[strategy.Type].merge(fieldKey, fieldValue)
+						// 如果 PointPackage 已存在，更新其字段引用
+						pointPackage := dm.PointMap[strategy.Type]
+						if pointPackage.Point.Field == nil {
+							pointPackage.Point.Field = make(map[string]*interface{})
+						}
+						// 更新 PointPackage 中的字段引用
+						pointPackage.Point.Field[fieldKey] = &fieldValue
 					}
 				}
 			}
-
 		}
 	}
 }

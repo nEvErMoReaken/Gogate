@@ -3,6 +3,7 @@ package tcpServer
 import (
 	"bufio"
 	"gw22-train-sam/logger"
+	"io"
 	"net"
 	"time"
 )
@@ -48,19 +49,34 @@ func handleConnection(tcpServer *TcpServer, conn net.Conn) {
 	// 初始化reader开始读数据
 	reader := bufio.NewReader(conn)
 	for {
-		// 读取一帧数据
-		err := parseFrame(reader, &FrameContext{
+		// 每一次循环都是一帧数据
+		// Step 1. 获取帧头长度
+		frameHeadLen := tcpServer.Proto.PreParsing.Length
+		// Step 2. 创建帧上下文
+		frameContext := &FrameContext{
 			Parameters: make(map[string]string),
-		})
-		if err != nil {
-			logger.Log.Errorf("解析帧失败: %s", err)
-			return
 		}
+		// Step 3. 预解析
+		data := make([]byte, frameHeadLen)
+		// Read n 个字节
+		_, err := io.ReadFull(reader, data)
+		if err != nil {
+			logger.Log.Errorf("[handleConnection]读取帧头失败: %s\n", err)
+		}
+		PreParse(data, frameContext)
 	}
 }
 
-// parseFrame 解析帧, 包含了预解析和解析两个阶段
-func parseFrame(reader *bufio.Reader, frameContext *FrameContext) error {
+// PreParse 预解析
+func PreParse(frameSlice []byte, frameContext *FrameContext) {
+
+}
+
+// SecParse 解析帧, 包含了预解析和解析两个阶段
+func SecParse(tcpServer *TcpServer, frameSlice []byte, frameContext *FrameContext) error {
 	// 预解析
+	for _, section := range tcpServer.Proto.PreParsing.Sections {
+		section.Parse(reader, frameContext)
+	}
 	// 解析
 }

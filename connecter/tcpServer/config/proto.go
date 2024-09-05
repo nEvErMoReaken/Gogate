@@ -26,11 +26,14 @@ type Section struct {
 
 type ParsingConfig struct {
 	Section []Section `mapstructure:"section"`
-	Len     int       `mapstructure:"len,omitempty" yaml:"len,omitempty"`
+	Length  int       `mapstructure:"length"`
+	End     []byte    `mapstructure:"end"`
+	Type    string    `mapstructure:"type"`
 }
 
 type PreParsingConfig struct {
-	Section []Section `mapstructure:"section"`
+	Sections []Section `mapstructure:"section"`
+	Length   int       `mapstructure:"length"`
 }
 
 // 预解析和正式解析
