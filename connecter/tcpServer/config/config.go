@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 )
 
-func NewConfig(configDir string) (*Common, *Proto, error) {
-	v := viper.NewWithOptions(viper.KeyDelimiter("::"))
+func NewConfig(configDir string) (*TcpServer, *Proto, error) {
+	v := viper.NewWithOptions(viper.KeyDelimiter("::")) // 设置 key 分隔符为 ::，因为默认的 . 会和 IP 地址冲突
 	v.AddConfigPath(configDir)
 	v.AutomaticEnv()
 	// 获取配置目录下的所有文件
@@ -40,7 +40,7 @@ func NewConfig(configDir string) (*Common, *Proto, error) {
 	}
 
 	// 反序列化到结构体
-	var config Common
+	var config TcpServer
 	if err := v.Unmarshal(&config); err != nil {
 		return nil, nil, fmt.Errorf("反序列化配置失败: %w", err)
 	}

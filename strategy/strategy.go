@@ -1,7 +1,7 @@
 package strategy
 
 import (
-	"gw22-train-sam/config"
+	"gw22-train-sam/connecter/tcpServer/config"
 	"gw22-train-sam/model"
 )
 
@@ -28,7 +28,7 @@ type MapSendStrategy map[string]SendStrategy
 var mapSendStrategy MapSendStrategy
 
 // InitMapSendStrategy 初始化一个发送策略集
-func InitMapSendStrategy(common *config.Common, stopChan chan struct{}) {
+func InitMapSendStrategy(common *config.TcpServer, stopChan chan struct{}) {
 	mapSendStrategy = make(MapSendStrategy)
 	for _, strategyConfig := range common.Strategy {
 		if strategyConfig.Enable {

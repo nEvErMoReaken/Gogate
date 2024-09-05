@@ -1,4 +1,4 @@
-package plugin
+package util
 
 import (
 	"gw22-train-sam/logger"

@@ -3,7 +3,7 @@ package model
 import (
 	"fmt"
 	"github.com/google/uuid"
-	"gw22-train-sam/config"
+	config2 "gw22-train-sam/connecter/tcpServer/config"
 	"gw22-train-sam/logger"
 	strategy2 "gw22-train-sam/strategy"
 	"regexp"
@@ -28,7 +28,7 @@ type SnapshotCollection map[string]*DeviceSnapshot
 var snapshotCollection SnapshotCollection
 
 // InitSnapshotCollection 初始化设备快照的数据点映射
-func InitSnapshotCollection(proto *config.Proto, comm *config.Common) {
+func InitSnapshotCollection(proto *config2.Proto, comm *config2.TcpServer) {
 	snapshotCollection = make(map[string]*DeviceSnapshot)
 	// 遍历所有的 PreParsing 和 Parsing 步骤，初始化设备快照
 	for _, step := range proto.PreParsing {
@@ -80,7 +80,7 @@ func NewSnapshot(deviceName, deviceType string) *DeviceSnapshot {
 }
 
 // initPointPackage 初始化设备快照的数据点映射
-func (dm *DeviceSnapshot) initPointPackage(common *config.Common) {
+func (dm *DeviceSnapshot) initPointPackage(common *config2.TcpServer) {
 	for _, strategy := range common.Strategy {
 		for _, filter := range strategy.Filter {
 			// 遍历field，判断是否符合策略过滤条件

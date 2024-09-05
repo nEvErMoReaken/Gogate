@@ -1,7 +1,7 @@
 package strategy
 
 import (
-	"gw22-train-sam/config"
+	"gw22-train-sam/connecter/tcpServer/config"
 	"sync"
 )
 
@@ -9,7 +9,7 @@ import (
 var once sync.Once
 
 // Init 因为需要等待配置文件加载完毕，所以选择手动初始化
-func Init(common *config.Common, stopChan chan struct{}) {
+func Init(common *config.TcpServer, stopChan chan struct{}) {
 	once.Do(func() {
 		// 1. 创建数据源集：执行了这一步后，所有配置中启用了的数据源都已经初始化完成并放入了 mapSendStrategy 中
 		InitMapSendStrategy(common, stopChan)

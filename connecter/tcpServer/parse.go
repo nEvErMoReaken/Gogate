@@ -1,16 +1,16 @@
-package dataflow
+package tcpServer
 
 import (
 	"bufio"
 	"encoding/hex"
 	"errors"
-	"github.com/spf13/viper"
 	"gw22-train-sam/logger"
 	"net"
 	"time"
 )
 
-func handleConnection(conn net.Conn) {
+// handleConnection 处理连接, 一个连接对应一个协程
+func handleConnection(tcpServer *TcpServer, conn net.Conn) {
 	defer func(conn net.Conn) {
 		err := conn.Close()
 		if err != nil {
@@ -19,9 +19,7 @@ func handleConnection(conn net.Conn) {
 	}(conn)
 	// 首先识别远端ip是哪个设备
 	remoteAddr := conn.RemoteAddr().String()
-	nameMap := viper.GetStringMap("nameMap")
-
-	deviceId, exists := nameMap[remoteAddr]
+	deviceId, exists := tcpServer.TcpServerConfig.TCPServer.IPAlias[remoteAddr]
 	if !exists {
 		logger.Log.Errorf("%s 地址不在配置清单中", remoteAddr)
 		return
@@ -36,8 +34,8 @@ func handleConnection(conn net.Conn) {
 	// 初始化reader开始读数据
 	reader := bufio.NewReader(conn)
 	for {
-		reader.Peek()
-		frame, err := reader.ReadByte()
+		reader.
+			frame, err := reader.ReadByte()
 		if err != nil {
 			var netErr net.Error
 			if errors.As(err, &netErr) && netErr.Timeout() {
