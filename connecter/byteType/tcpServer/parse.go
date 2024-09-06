@@ -9,22 +9,7 @@ import (
 )
 
 // FrameContext 每一帧独立的上下文
-type FrameContext struct {
-	Parameters map[string]string // 单帧中共享的参数
-}
-
-// GetParameter 获取参数
-func (f *FrameContext) GetParameter(key string) string {
-	if value, exists := f.Parameters[key]; exists {
-		return value
-	}
-	return ""
-}
-
-// SetParameter 设置参数
-func (f *FrameContext) SetParameter(key, value string) {
-	f.Parameters[key] = value
-}
+type FrameContext map[string]interface{} // 单帧中共享的参数
 
 // handleConnection 处理连接, 一个连接对应一个协程
 func handleConnection(tcpServer *TcpServer, conn net.Conn) {
@@ -34,9 +19,12 @@ func handleConnection(tcpServer *TcpServer, conn net.Conn) {
 			logger.Log.Infof("与" + conn.RemoteAddr().String() + "的连接已关闭")
 		}
 	}(conn)
+	frameContext := make(FrameContext)
 	// 首先识别远端ip是哪个设备
 	remoteAddr := conn.RemoteAddr().String()
 	deviceId, exists := tcpServer.TcpServerConfig.TCPServer.IPAlias[remoteAddr]
+	// 作为变量
+	frameContext["deviceId"] = deviceId
 	if !exists {
 		logger.Log.Errorf("%s 地址不在配置清单中", remoteAddr)
 		return
@@ -51,31 +39,27 @@ func handleConnection(tcpServer *TcpServer, conn net.Conn) {
 	for {
 		// 每一次循环都是一帧数据
 		// Step 1. 获取帧头长度
-		frameHeadLen := tcpServer.Proto.PreParsing.Length
-		// Step 2. 创建帧上下文
-		frameContext := &FrameContext{
-			Parameters: make(map[string]string),
-		}
-		// Step 3. 预解析
+		frameHeadLen := tcpServer.Proto.Header.Length
+		// Step 2. 预解析
 		data := make([]byte, frameHeadLen)
 		// Read n 个字节
 		_, err := io.ReadFull(reader, data)
 		if err != nil {
 			logger.Log.Errorf("[handleConnection]读取帧头失败: %s\n", err)
 		}
-		PreParse(data, frameContext)
+		HeaderParse(data, &frameContext)
 	}
 }
 
-// PreParse 预解析
-func PreParse(frameSlice []byte, frameContext *FrameContext) {
+// HeaderParse 预解析
+func HeaderParse(frameSlice []byte, frameContext *FrameContext) {
 
 }
 
-// SecParse 解析帧, 包含了预解析和解析两个阶段
-func SecParse(tcpServer *TcpServer, frameSlice []byte, frameContext *FrameContext) error {
+// BodyParse 解析帧, 包含了预解析和解析两个阶段
+func BodyParse(tcpServer *TcpServer, frameSlice []byte, frameContext *FrameContext) error {
 	// 预解析
-	for _, section := range tcpServer.Proto.PreParsing.Sections {
+	for _, section := range tcpServer.Proto.Header.Sections {
 		section.Parse(reader, frameContext)
 	}
 	// 解析

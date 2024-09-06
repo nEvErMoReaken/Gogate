@@ -1,82 +1,71 @@
-# 用于表示帧开头的配置
-# 流程  ： 接收tcp-> 字节流通过method decode出数据 -> 将解码后数据赋值给对应设备物模型 -> 发送至 kafka-数据库
-# 整体流程： 预解析 -> 正式解析
 
+Proto:
+  chunks:
+    - type: FixedLengthChunk
+      length: 72 # 预解析的长度，必填项
+      sections:
+        - from: # 没有解码方式的即为不用处理，jump即可
+            byte: 72
+        - from:
+            byte: 2  # 字节长度
+          decoding:
+            method:
+          for: "len" # 预解析时才可以赋值变量 (变量的生命周期随着该帧数据解析完毕而消亡)
+          desc: "帧长度 长度由字节69开始计算" #字段说明
+        - from:
+            byte: 2  # 字节长度
+          decoding:
+            method:
+          for:
+            - "checksum"
+          desc: "checksum校验" #字段说明
+        - from:
+            byte: 16
+        - from:
+            byte: 2  # 字节长度
+          decoding:
+            method:
+          to:
+            cached: true # 该字段开启缓存，变化才发送，对应tb attribute思想
+            stable: true # 该字段是z稳定信息，例如版本参数，设备物理参数等不常变化的信息且唯一。
+          desc: "协议版本"
+        - from:
+            byte: 2  # 字节长度
+          decoding:
+            method:
+          for:
+            - "inner_len"
+          desc: "内部帧长度，从 TYPE 字节到最后一个字节" #字段说明
+        - from:
+            byte: 2
+        - from:
+            byte: 2
+          decoding:
+            method:
+          for: "crc"
+          desc: "crc校验计算" #字段说明
+        - from:
+            byte: 3
+    - type: FixedLengthChunk
+      length: ${len}
+      sections:
+        - from:
+            repeat: 8 # 重复次数
+            byte: 1 # 字节偏移量基础上的位偏移量
+          decoding:
+            method: # 解码脚本
+          to:
+            device: "vobc"
+            type: "vobc.info"
+            fields:
+              - RIOM_sta_${atom.index} # 使用占位符表示当前索引
+        - from:
+            byte: 6
+          decoding:
+            method:
+          to: # 转换相关配置
 
-pre-parsing: # 预解析：优先解析帧头数据，用于后续解析, 如crc、帧长度、车id等。初始化为一些帧变量
-  length: 72 # 预解析的长度，必填项
-  section:
-    - from: # 没有解码方式的即为不用处理，jump即可
-        byte: 72
-    - from:
-        byte: 2  # 字节长度
-      decoding:
-        method:
-      for: "len" # 预解析时才可以赋值变量 (变量的生命周期随着该帧数据解析完毕而消亡)
-      desc: "帧长度 长度由字节69开始计算" #字段说明
-    - from:
-        byte: 2  # 字节长度
-      decoding:
-        method:
-      for:
-        - "checksum"
-      desc: "checksum校验" #字段说明
-    - from:
-        byte: 16
-    - from:
-        byte: 2  # 字节长度
-      decoding:
-        method:
-      to:
-        cached: true # 该字段开启缓存，变化才发送，对应tb attribute思想
-        stable: true # 该字段是z稳定信息，例如版本参数，设备物理参数等不常变化的信息且唯一。
-      desc: "协议版本"
-    - from:
-        byte: 2  # 字节长度
-      decoding:
-        method:
-      for:
-        - "inner_len"
-      desc: "内部帧长度，从 TYPE 字节到最后一个字节" #字段说明
-    - from:
-        byte: 2
-    - from:
-        byte: 2
-      decoding:
-        method:
-      for: "crc"
-      desc: "crc校验计算" #字段说明
-    - from:
-        byte: 3
-
-parsing: # frame 由多个section组成，列表形式，顺序不能乱。
-  type: "length" # 有两种类型，基于长度的和基于结束符的
-  end: [0x0d, 0x0a] # 结束标识，是字节数组
-  length: 72 # 正式解析的长度，非必填项，某些协议需要从预解析中获取长度
-  section:
-    - from:
-        byte: 1 # 字节偏移量基础上的位偏移量
-      decoding:
-        method: # 解码脚本
-      to:
-        device: "vobc"
-        type: "vobc.info"
-        fields:
-          - RIOM_sta_1
-          - RIOM_sta_2
-          - RIOM_sta_3
-          - RIOM_sta_4
-          - RIOM_sta_5
-          - RIOM_sta_6
-          - RIOM_sta_7
-          - RIOM_sta_8
-    - from:
-        byte: 6
-      decoding:
-        method:
-      to: # 转换相关配置
-
-      desc: "协议中的时间戳" #字段说明
+          desc: "协议中的时间戳" #字段说明
 
 
 

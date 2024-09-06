@@ -2,7 +2,7 @@ package tcpServer
 
 import (
 	"fmt"
-	"gw22-train-sam/connecter/tcpServer/config"
+	config2 "gw22-train-sam/connecter/byteType/tcpServer/config"
 	"gw22-train-sam/logger"
 	"gw22-train-sam/model"
 	"log"
@@ -10,9 +10,9 @@ import (
 )
 
 type TcpServer struct {
-	listener        net.Listener      // 监听器
-	TcpServerConfig *config.TcpServer // 配置
-	Proto           *config.Proto     // 协议
+	listener        net.Listener   // 监听器
+	TcpServerConfig *TcpServer     // 配置
+	Proto           *config2.Proto // 协议
 }
 
 func init() {
@@ -24,7 +24,7 @@ func NewTcpServer() model.Connector {
 	tcpServer := &TcpServer{}
 
 	// 1. 读取配置文件
-	TcpServerConfig, Proto, err := config.NewConfig("config")
+	TcpServerConfig, Proto, err := NewConfig("config")
 	if TcpServerConfig == nil || Proto == nil || err != nil {
 		log.Fatalf("[tcpServer]加载配置失败: %s\n", err)
 	}

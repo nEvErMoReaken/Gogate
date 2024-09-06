@@ -1,7 +1,8 @@
 package model
 
 import (
-	config2 "gw22-train-sam/connecter/tcpServer/config"
+	"gw22-train-sam/connecter/byteType/tcpServer"
+	"gw22-train-sam/connecter/byteType/tcpServer/config"
 	"sync"
 )
 
@@ -9,7 +10,7 @@ import (
 var once sync.Once
 
 // Init 因为需要等待配置文件加载完毕，所以选择手动初始化
-func Init(common *config2.TcpServer, proto *config2.Proto) {
+func Init(common *tcpServer.TcpServer, proto *config.Proto) {
 	once.Do(func() {
 		// 1. 创建设备快照集
 		InitSnapshotCollection(proto, common)

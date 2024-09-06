@@ -4,7 +4,7 @@ import (
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/influxdata/influxdb-client-go/v2/api"
 	"github.com/mitchellh/mapstructure"
-	"gw22-train-sam/connecter/tcpServer/config"
+	"gw22-train-sam/connecter/byteType/tcpServer"
 	"gw22-train-sam/logger"
 	"gw22-train-sam/model"
 	"log"
@@ -54,7 +54,7 @@ type infoType struct {
 }
 
 // NewInfluxDbStrategy 构造函数
-func NewInfluxDbStrategy(dbConfig config.StrategyConfig, stopChan chan struct{}) SendStrategy {
+func NewInfluxDbStrategy(dbConfig tcpServer.StrategyConfig, stopChan chan struct{}) SendStrategy {
 	var info infoType
 	// 将 map 转换为结构体
 	if err := mapstructure.Decode(dbConfig.Config, &info); err != nil {

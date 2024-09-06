@@ -1,7 +1,7 @@
 package strategy
 
 import (
-	"gw22-train-sam/connecter/tcpServer/config"
+	"gw22-train-sam/connecter/byteType/tcpServer"
 	"gw22-train-sam/model"
 )
 
@@ -12,7 +12,7 @@ type SendStrategy interface {
 }
 
 // StFactoryFunc 代表一个发送策略的工厂函数
-type StFactoryFunc func(config.StrategyConfig, chan struct{}) SendStrategy
+type StFactoryFunc func(tcpServer.StrategyConfig, chan struct{}) SendStrategy
 
 // 全局工厂映射，用于注册不同策略类型的构造函数
 var strategyFactories = make(map[string]StFactoryFunc)
@@ -28,7 +28,7 @@ type MapSendStrategy map[string]SendStrategy
 var mapSendStrategy MapSendStrategy
 
 // InitMapSendStrategy 初始化一个发送策略集
-func InitMapSendStrategy(common *config.TcpServer, stopChan chan struct{}) {
+func InitMapSendStrategy(common *tcpServer.TcpServer, stopChan chan struct{}) {
 	mapSendStrategy = make(MapSendStrategy)
 	for _, strategyConfig := range common.Strategy {
 		if strategyConfig.Enable {
