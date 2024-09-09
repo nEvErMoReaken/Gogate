@@ -51,14 +51,48 @@ type FixedLengthChunk struct {
 	VarPointer *FrameContext
 }
 
+// 为 FixedLengthChunk 实现 String 方法，打印指针指向的值
+func (f *FixedLengthChunk) String() string {
+	// 打印 Length 指针的值（解引用）
+	lengthVal := "nil"
+	if f.Length != nil {
+		lengthVal = fmt.Sprintf("%d", *f.Length)
+	}
+
+	// 打印 Sections 指针中的值
+	sectionsStr := ""
+	for i, sec := range f.Sections {
+		repeatVal := "nil"
+		if sec.Repeat != nil {
+			repeatVal = fmt.Sprintf("%d", *sec.Repeat)
+		}
+
+		// 打印 PointTarget 列表
+		pointTargetStr := "["
+		for j, pt := range sec.PointTarget {
+			if pt == nil || *pt == nil {
+				pointTargetStr += "nil"
+			} else {
+				pointTargetStr += fmt.Sprintf("%v", *pt) // 打印指向的值
+			}
+			if j < len(sec.PointTarget)-1 {
+				pointTargetStr += ", "
+			}
+		}
+		pointTargetStr += "]"
+
+		sectionsStr += fmt.Sprintf("  Section %d: Repeat=%s, Length=%d, DeviceName=%s, DeviceType=%s, PointTarget=%s\n",
+			i+1, repeatVal, sec.Length, sec.ToDeviceName, sec.ToDeviceType, pointTargetStr)
+	}
+
+	// 打印整个结构体信息
+	return fmt.Sprintf("FixedLengthChunk:\n  Length=%s\n  Sections:\n%s", lengthVal, sectionsStr)
+}
+
 func (f *FixedLengthChunk) Process(reader io.Reader, context map[string]*interface{}) error {
 	fmt.Println("Processing FixedLengthChunk")
 	// 读取固定长度数据的逻辑...
 	return nil
-}
-
-func (f *FixedLengthChunk) String() string {
-	return fmt.Sprintf("FixedLengthChunk (Length: %d, Sections: %d)", f.Length, len(f.Sections))
 }
 
 // ConditionalChunk 实现
@@ -85,4 +119,5 @@ type Section struct {
 	Decoding     util.ScriptFunc
 	ToDeviceName string
 	ToDeviceType string
+	PointTarget  []*interface{} // 解码后变量的最终去向
 }

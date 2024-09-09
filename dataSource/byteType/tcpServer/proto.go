@@ -45,9 +45,9 @@ type ToConfig struct {
 }
 
 // InitChunks 从配置文件初始化 Chunk
-func InitChunks(v *viper.Viper) (*ChunkSequence, error) {
+func InitChunks(v *viper.Viper) (ChunkSequence, error) {
 
-	var chunkSequence = &ChunkSequence{
+	var chunkSequence = ChunkSequence{
 		make([]Chunk, 0),
 		make(FrameContext),
 	}
@@ -56,7 +56,7 @@ func InitChunks(v *viper.Viper) (*ChunkSequence, error) {
 		// 动态处理不同的 chunkType，生成chunklist
 		tmpChunk, err := createChunk(chunk.(map[string]interface{}), &chunkSequence.VarPointer)
 		if err != nil {
-			return nil, err
+			return chunkSequence, err
 		}
 
 		chunkSequence.Chunks = append(chunkSequence.Chunks, tmpChunk)
@@ -109,19 +109,22 @@ func createChunk(chunkMap map[string]interface{}, context *FrameContext) (Chunk,
 				Decoding:     tmpDecode,
 				ToDeviceName: section.To.DeviceName,
 				ToDeviceType: section.To.DeviceType,
+				PointTarget:  make([]*interface{}, 0),
 			}
-			// 赋值For指针变量
+			// 初始化For指针变量
 			for _, varName := range section.For.VarName {
 				switch section.For.Type {
 				case "string":
 					varFor := new(string)
 					// 将 *string 转为 interface{}
 					varForInterface := interface{}(varFor)
+					tmpSec.PointTarget = append(tmpSec.PointTarget, &varForInterface)
 					(*context)[varName] = &varForInterface
 				case "int":
 					varFor := new(int)
 					// 将 *int 转为 interface{}
 					varForInterface := interface{}(varFor)
+					tmpSec.PointTarget = append(tmpSec.PointTarget, &varForInterface)
 					(*context)[varName] = &varForInterface
 				}
 

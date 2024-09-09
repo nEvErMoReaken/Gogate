@@ -42,7 +42,7 @@ func NewTcpServer(v *viper.Viper) model.Connector {
 	if err != nil {
 		log.Fatalf("[tcpServer]初始化解析序列失败: %s\n", err)
 	}
-	tcpServer.ChunkSequence = chunks
+	tcpServer.ChunkSequence = &chunks
 	return tcpServer
 }
 
