@@ -1,15 +1,8 @@
 package strategy
 
 import (
-	"gw22-train-sam/connecter/byteType/tcpServer"
-	"gw22-train-sam/model"
+	"gw22-train-sam/dataSource/byteType/tcpServer"
 )
-
-// SendStrategy 定义了所有发送策略的通用接口
-type SendStrategy interface {
-	Start()
-	GetChan() chan model.Point // 提供访问 chan 的方法
-}
 
 // StFactoryFunc 代表一个发送策略的工厂函数
 type StFactoryFunc func(tcpServer.StrategyConfig, chan struct{}) SendStrategy

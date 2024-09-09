@@ -1,7 +1,7 @@
 package strategy
 
 import (
-	"gw22-train-sam/connecter/byteType/tcpServer"
+	"gw22-train-sam/dataSource/byteType/tcpServer"
 	"sync"
 )
 

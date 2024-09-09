@@ -1,5 +1,7 @@
 package model
 
+import "github.com/spf13/viper"
+
 // Connector 是所有数据源的通用接口
 type Connector interface {
 	Listen() error // 建立连接或等待连接
@@ -7,7 +9,7 @@ type Connector interface {
 }
 
 // ConnFactoryFunc 代表一个数据源的工厂函数
-type ConnFactoryFunc func() Connector
+type ConnFactoryFunc func(*viper.Viper) Connector
 
 // ConnFactories 全局工厂映射，用于注册不同数据源类型的构造函数
 var ConnFactories = make(map[string]ConnFactoryFunc)

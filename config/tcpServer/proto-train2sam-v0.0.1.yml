@@ -1,5 +1,5 @@
 
-Proto:
+TcpProto:
   chunks:
     - type: FixedLengthChunk
       length: 72 # 预解析的长度，必填项
@@ -10,14 +10,19 @@ Proto:
             byte: 2  # 字节长度
           decoding:
             method:
-          for: "len" # 预解析时才可以赋值变量 (变量的生命周期随着该帧数据解析完毕而消亡)
+          for:
+            type: int
+            varName:
+              - "len" # 预解析时才可以赋值变量 (变量的生命周期随着该帧数据解析完毕而消亡)
           desc: "帧长度 长度由字节69开始计算" #字段说明
         - from:
             byte: 2  # 字节长度
           decoding:
             method:
           for:
-            - "checksum"
+            type: string
+            varName:
+              - "checksum"
           desc: "checksum校验" #字段说明
         - from:
             byte: 16
@@ -34,7 +39,9 @@ Proto:
           decoding:
             method:
           for:
-            - "inner_len"
+            type: string
+            varName:
+              - "inner_len"
           desc: "内部帧长度，从 TYPE 字节到最后一个字节" #字段说明
         - from:
             byte: 2
@@ -42,7 +49,10 @@ Proto:
             byte: 2
           decoding:
             method:
-          for: "crc"
+          for:
+            type: string
+            varName:
+             - "crc"
           desc: "crc校验计算" #字段说明
         - from:
             byte: 3

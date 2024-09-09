@@ -1,19 +1,18 @@
 package util
 
 import (
+	"fmt"
+	"github.com/traefik/yaegi/interp"
+	"github.com/traefik/yaegi/stdlib"
 	"gw22-train-sam/logger"
 	"os"
 	"path/filepath"
 )
 
-import (
-	"fmt"
-	"github.com/traefik/yaegi/interp"
-	"github.com/traefik/yaegi/stdlib"
-)
+type ScriptFunc func([]byte) []interface{}
 
 // ScriptFuncCache 脚本函数缓存
-var ScriptFuncCache = make(map[string]func([]byte) interface{})
+var ScriptFuncCache = make(map[string]ScriptFunc)
 
 // LoadAllScripts 函数：加载/script目录下的所有脚本并缓存
 func LoadAllScripts(scriptDir string, methods []string) error {
@@ -57,16 +56,18 @@ func LoadAllScripts(scriptDir string, methods []string) error {
 			logger.Log.Errorf("[Warning]: 在已读取脚本中未找到 %s 方法 %v\n", funcName, err)
 			continue
 		}
-		ScriptFuncCache[funcName] = v.Interface().(func([]byte) interface{})
+		ScriptFuncCache[funcName] = v.Interface().(func([]byte) []interface{})
 	}
 
 	return nil
 }
 
-// GetScriptFunc 获取缓存的脚本函数
-func GetScriptFunc(funcName string) (func([]byte) interface{}, error) {
+// GetScriptFunc 获取缓存的脚本函数, 如果不存在则返回一个默认的函数(多用于jump场景)
+func GetScriptFunc(funcName string) ScriptFunc {
 	if decodeFunc, exists := ScriptFuncCache[funcName]; exists {
-		return decodeFunc, nil
+		return decodeFunc
 	}
-	return nil, fmt.Errorf("方法名 %s 未注册", funcName)
+	return func(b []byte) []interface{} {
+		return make([]interface{}, 0)
+	}
 }

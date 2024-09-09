@@ -4,7 +4,7 @@ import (
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/influxdata/influxdb-client-go/v2/api"
 	"github.com/mitchellh/mapstructure"
-	"gw22-train-sam/connecter/byteType/tcpServer"
+	"gw22-train-sam/dataSource/byteType/tcpServer"
 	"gw22-train-sam/logger"
 	"gw22-train-sam/model"
 	"log"

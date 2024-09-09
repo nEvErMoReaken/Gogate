@@ -2,34 +2,33 @@ package tcpServer
 
 import (
 	"fmt"
-	config2 "gw22-train-sam/connecter/byteType/tcpServer/config"
+	"github.com/spf13/viper"
 	"gw22-train-sam/logger"
 	"gw22-train-sam/model"
 	"log"
 	"net"
 )
 
-type TcpServer struct {
+type ServerModel struct {
 	listener        net.Listener   // 监听器
 	TcpServerConfig *TcpServer     // 配置
-	Proto           *config2.Proto // 协议
+	ChunkSequence   *ChunkSequence // 解析序列
 }
 
 func init() {
 	model.Register("tcpServer", NewTcpServer)
 }
 
-func NewTcpServer() model.Connector {
-	// 0. 创建一个新的 TcpServer
-	tcpServer := &TcpServer{}
+func NewTcpServer(v *viper.Viper) model.Connector {
+	// 0. 创建一个新的 ServerModel
+	tcpServer := &ServerModel{}
 
 	// 1. 读取配置文件
-	TcpServerConfig, Proto, err := NewConfig("config")
-	if TcpServerConfig == nil || Proto == nil || err != nil {
+	TcpServerConfig, err := UnmarshalTCPConfig(v)
+	if TcpServerConfig == nil || err != nil {
 		log.Fatalf("[tcpServer]加载配置失败: %s\n", err)
 	}
 	tcpServer.TcpServerConfig = TcpServerConfig
-	tcpServer.Proto = Proto
 
 	// 2. 初始化listener
 	listener, err := net.Listen("tcp", ":"+TcpServerConfig.TCPServer.Port)
@@ -37,10 +36,17 @@ func NewTcpServer() model.Connector {
 		log.Fatalf("[tcpServer]监听程序启动失败: %s\n", err)
 	}
 	tcpServer.listener = listener
+
+	// 3. 初始化解析序列
+	chunks, err := InitChunks(v)
+	if err != nil {
+		log.Fatalf("[tcpServer]初始化解析序列失败: %s\n", err)
+	}
+	tcpServer.ChunkSequence = chunks
 	return tcpServer
 }
 
-func (t *TcpServer) Listen() error {
+func (t *ServerModel) Listen() error {
 	// 1. 监听指定的端口
 	logger.Log.Infof("TCP dataflow listening on port %s", t.TcpServerConfig.TCPServer.Port)
 	for {
@@ -50,11 +56,11 @@ func (t *TcpServer) Listen() error {
 			return fmt.Errorf("[tcpServer]与客户端建立连接时发生错误: %s\n", err)
 		}
 		// 3. 使用 goroutine 处理连接，一个连接对应一个协程
-		go handleConnection(t, conn)
+		go handleConnection(t.TcpServerConfig, conn)
 	}
 }
 
-func (t *TcpServer) Close() error {
+func (t *ServerModel) Close() error {
 	err := t.listener.Close()
 	if err != nil {
 		return fmt.Errorf("[tcpServer]关闭监听程序失败: %s\n", err)

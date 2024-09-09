@@ -1,7 +1,9 @@
 package main
 
 import (
+	"fmt"
 	"go.uber.org/zap"
+	"gw22-train-sam/dataSource/byteType/tcpServer"
 	"gw22-train-sam/logger"
 	"gw22-train-sam/util"
 	"log"
@@ -9,7 +11,7 @@ import (
 
 func main() {
 	// 1. 初始化config
-	err := initCommon("config")
+	v, err := initCommon("config")
 	if err != nil {
 		log.Fatalf("[main] 加载配置失败: %s", err)
 		return
@@ -37,8 +39,9 @@ func main() {
 	}
 	logger.Log.Infof("已加载脚本:%v", util.ScriptFuncCache)
 
-	// 4. 初始化Connector
-
+	// 4. 初始化激活的Connector
+	chunkList, err := tcpServer.InitChunks(v)
+	fmt.Printf("%+v", chunkList)
 	// 5. 初始化所有正则结果
 	// 6. 创建所有管道
 	// 7. 启动tcp fetch协程

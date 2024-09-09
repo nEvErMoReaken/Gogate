@@ -1,13 +1,16 @@
 package model
 
 import (
-	"gw22-train-sam/strategy"
 	"time"
 )
 
-// Point 代表发送到数据源的一个数据点 数据源所有的数据点都是 Point 类型
-// Point 和数据源是一对一的，即一个数据源对应一个 Point 类型
-// 后续Point要放在chan中，所以PointPackage用于封装Point和发送策略列表
+// SendStrategy 定义了所有发送策略的通用接口
+type SendStrategy interface {
+	Start()
+	GetChan() chan Point // 提供访问 chan 的方法
+}
+
+// Point 代表发送到数据源的一个数据点
 type Point struct {
 	DeviceName *string                 // 设备名称
 	DeviceType *string                 // 设备类型
@@ -15,10 +18,10 @@ type Point struct {
 	Ts         *time.Time              // 时间戳
 }
 
-// PointPackage 数据点的高级封装，包含多个数据点和发送策略列表
+// PointPackage 数据点的封装，包含一个数据点和发送策略
 type PointPackage struct {
 	Point    Point
-	Strategy strategy.SendStrategy // 发送策略列表
+	Strategy SendStrategy // 使用接口解耦
 }
 
 // launch 发射数据点
