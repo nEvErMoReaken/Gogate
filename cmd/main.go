@@ -1,11 +1,17 @@
 package main
 
 import (
+	"fmt"
 	"go.uber.org/zap"
 	"gw22-train-sam/common"
-	"gw22-train-sam/dataSource/byteType/tcpServer"
+	"gw22-train-sam/model"
+	"gw22-train-sam/strategy"
 	"gw22-train-sam/util"
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 )
 
 func main() {
@@ -37,17 +43,28 @@ func main() {
 		common.Log.Errorf("[main]加载脚本失败: %s", err)
 	}
 	common.Log.Infof("已加载脚本:%v", util.ScriptFuncCache)
-
-	// 4. 初始化激活的Connector
-	chunkList, err := tcpServer.InitChunks(v)
-	for _, chunk := range chunkList.Chunks {
-		common.Log.Infof("已加载chunk:%v", chunk)
+	// 4. 启动所有发送策略
+	chDone := make(chan struct{})
+	strategy.RunStrategy(comConfig, chDone)
+	// 5. 启动所有注册的Connector
+	err1 := model.RunConnector(comConfig, comConfig.Connector.Type, v, chDone)
+	if err1 != nil {
+		common.Log.Errorf("[main]启动Connector失败: %s", err1)
 	}
-	//fmt.Printf("%+v", chunkList)
-	// 5. 初始化所有正则结果
-	// 6. 创建所有管道
-	// 7. 启动tcp fetch协程
-	// 8. 启动解析+发送协程
-	// 9. 启动命令行终止监听协程
-	// TODO
+	// 6. 监听终止信号
+	si := make(chan os.Signal, 1)
+	signal.Notify(si, os.Interrupt)
+	signal.Notify(si, syscall.SIGTERM)
+	go func() {
+		<-si
+		fmt.Printf("%s [main] Caught exit signal, so close channel chDone.\n", time.Now().Format(time.RFC3339Nano))
+		common.Log.Info("[main] Caught exit signal, so close channel chDone.")
+		close(chDone) // 关闭 chDone 通道
+	}()
+	<-chDone // 等待 chDone 通道关闭
+	fmt.Printf("%s [main] Caught exit signal, so close channel chDone.\n", time.Now().Format(time.RFC3339Nano))
+	common.Log.Info("[main] Caught exit signal, so close channel chDone.")
+	close(chDone)
+	fmt.Println("Exiting gateway...")
+	os.Exit(0) // 安全退出程序
 }

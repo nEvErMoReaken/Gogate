@@ -16,15 +16,18 @@ type ServerModel struct {
 	TcpServerConfig    *TcpServer                // 配置
 	ChunkSequence      *ChunkSequence            // 解析序列
 	snapShotCollection *model.SnapshotCollection // 快照集合
+	chDone             chan struct{}             // 停止通道
 }
 
 func init() {
 	model.Register("tcpServer", NewTcpServer)
 }
 
-func NewTcpServer(common *common.CommonConfig, v *viper.Viper) model.Connector {
+func NewTcpServer(common *common.CommonConfig, v *viper.Viper, chDone chan struct{}) model.Connector {
 	// 0. 创建一个新的 ServerModel
-	tcpServer := &ServerModel{}
+	tcpServer := &ServerModel{
+		chDone: chDone,
+	}
 
 	// 1. 读取配置文件
 	TcpServerConfig, err := UnmarshalTCPConfig(v)
@@ -128,15 +131,19 @@ func (t *ServerModel) handleConnection(conn net.Conn) {
 	// 4. 初始化reader开始读数据
 	reader := bufio.NewReader(conn)
 	for {
-		// **** 读取与解析数据流程 ****
-		// 4.1 处理所有的 Chunk
-		for index, chunk := range t.ChunkSequence.Chunks {
-			err := chunk.Process(reader)
-			if err != nil {
-				common.Log.Errorf("[handleConnection]解析第 %d 个 Chunk 失败: %s\n", index, err)
+		select {
+		case <-t.chDone:
+			return
+		default:
+			// 4.1 处理所有的 Chunk
+			for index, chunk := range t.ChunkSequence.Chunks {
+				err := chunk.Process(reader)
+				if err != nil {
+					common.Log.Errorf("[handleConnection]解析第 %d 个 Chunk 失败: %s\n", index, err)
+				}
 			}
+			// 4.2 发射所有的快照
+			t.snapShotCollection.LaunchALL()
 		}
-		// 4.2 发射所有的快照
-		t.snapShotCollection.LaunchALL()
 	}
 }
