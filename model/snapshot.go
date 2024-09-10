@@ -61,7 +61,7 @@ func NewSnapshot(tempName, deviceType string) *DeviceSnapshot {
 
 // InitPointPackage 初始化设备快照的数据点映射结构
 // 前提：DeviceSnapshot的TemplateDeviceName, DeviceType, Fields字段已经初始化
-func (dm *DeviceSnapshot) InitPointPackage(common *common.CommonConfig) {
+func (dm *DeviceSnapshot) InitPointPackage(common *common.Config) {
 	for _, strategy := range common.Strategy {
 		for _, filter := range strategy.Filter {
 			// 遍历字段，判断是否符合策略过滤条件

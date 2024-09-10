@@ -23,7 +23,7 @@ func init() {
 	model.RegisterConn("tcpServer", NewTcpServer)
 }
 
-func NewTcpServer(common *common.CommonConfig, v *viper.Viper, chDone chan struct{}) model.Connector {
+func NewTcpServer(common *common.Config, v *viper.Viper, chDone chan struct{}) model.Connector {
 	// 0. 创建一个新的 ServerModel
 	tcpServer := &ServerModel{
 		ChDone: chDone,
@@ -76,7 +76,7 @@ func (t *ServerModel) Close() error {
 }
 
 // initSnapshotCollection 初始化设备快照的数据点映射
-func initSnapshotCollection(common *common.CommonConfig, v *viper.Viper, protoFile string) *model.SnapshotCollection {
+func initSnapshotCollection(common *common.Config, v *viper.Viper, protoFile string) *model.SnapshotCollection {
 	snapshotCollection := make(model.SnapshotCollection)
 	// 遍历所有的 PreParsing 和 Parsing 步骤，初始化设备快照
 	chunks := v.Sub(protoFile).Get("chunks").([]interface{})
@@ -108,13 +108,15 @@ func (t *ServerModel) HandleConnection(conn net.Conn) {
 	}(conn)
 	frameContext := make(model.FrameContext)
 	// 1. 首先识别远端ip是哪个设备
-	remoteAddr := conn.RemoteAddr().String()
+	remoteAddrWithPort := conn.RemoteAddr().String()
 	// 2. 连接花名作为变量（如果有）
 	if t.TcpServerConfig.TCPServer.IPAlias == nil {
 		// 2.1 如果IPAlias为空，则不需要进行识别
 		common.Log.Infof("IPAlias为空")
 	} else {
 		// 2.2 如果IPAlias不为空，放入变量中
+		// remoteAddr 是 ip:port 的形式，需要去掉端口
+		remoteAddr, _, _ := net.SplitHostPort(remoteAddrWithPort)
 		deviceId, exists := t.TcpServerConfig.TCPServer.IPAlias[remoteAddr]
 		if !exists {
 			common.Log.Errorf("%s 地址不在配置清单中", remoteAddr)

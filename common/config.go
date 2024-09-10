@@ -28,7 +28,7 @@ type ScriptConfig struct {
 	Methods   []string `mapstructure:"methods"`
 }
 
-type CommonConfig struct {
+type Config struct {
 	Log       LogConfig        `mapstructure:"log"`
 	Script    ScriptConfig     `mapstructure:"script"`
 	Connector ConnectorConfig  `mapstructure:"connector"`
@@ -40,7 +40,7 @@ type ConnectorConfig struct {
 }
 
 // InitCommon 用于初始化全局配置
-func InitCommon(configDir string) (*CommonConfig, *viper.Viper, error) {
+func InitCommon(configDir string) (*Config, *viper.Viper, error) {
 	v := viper.NewWithOptions(viper.KeyDelimiter("::")) // 设置 key 分隔符为 ::，因为默认的 . 会和 IP 地址冲突
 	v.AddConfigPath(configDir)
 	v.AutomaticEnv() // 读取环境变量
@@ -76,7 +76,7 @@ func InitCommon(configDir string) (*CommonConfig, *viper.Viper, error) {
 
 		return nil
 	})
-	var common CommonConfig
+	var common Config
 	// 反序列化到结构体
 	if err := v.Unmarshal(&common); err != nil {
 		return nil, nil, fmt.Errorf("反序列化配置失败: %w", err)

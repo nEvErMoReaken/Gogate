@@ -21,7 +21,7 @@ type MapSendStrategy map[string]SendStrategy
 var SendStrategyMap MapSendStrategy
 
 // InitMapSendStrategy 初始化一个发送策略集
-func InitMapSendStrategy(common *common.CommonConfig, stopChan chan struct{}) {
+func InitMapSendStrategy(common *common.Config, stopChan chan struct{}) {
 	SendStrategyMap = make(MapSendStrategy)
 	for _, strategyConfig := range common.Strategy {
 		if strategyConfig.Enable {
