@@ -1,5 +1,4 @@
-
-TcpProto:
+proto-train2sam-v0.0.1:
   chunks:
     - type: FixedLengthChunk
       length: 72 # 预解析的长度，必填项

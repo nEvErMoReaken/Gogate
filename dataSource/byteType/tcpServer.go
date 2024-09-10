@@ -16,7 +16,7 @@ type ServerModel struct {
 	TcpServerConfig    *TcpServer                // 配置
 	ChunkSequence      *ChunkSequence            // 解析序列
 	snapShotCollection *model.SnapshotCollection // 快照集合
-	chDone             chan struct{}             // 停止通道
+	ChDone             chan struct{}             // 停止通道
 }
 
 func init() {
@@ -26,7 +26,7 @@ func init() {
 func NewTcpServer(common *common.CommonConfig, v *viper.Viper, chDone chan struct{}) model.Connector {
 	// 0. 创建一个新的 ServerModel
 	tcpServer := &ServerModel{
-		chDone: chDone,
+		ChDone: chDone,
 	}
 
 	// 1. 读取配置文件
@@ -43,13 +43,13 @@ func NewTcpServer(common *common.CommonConfig, v *viper.Viper, chDone chan struc
 	tcpServer.listener = listener
 
 	// 3. 初始化解析序列
-	chunks, err := InitChunks(v)
+	chunks, err := InitChunks(v, TcpServerConfig.ProtoFile)
 	if err != nil {
 		log.Fatalf("[tcpServer]初始化解析序列失败: %s\n", err)
 	}
 	tcpServer.ChunkSequence = &chunks
 	// 4. 初始化所有快照集合
-	tcpServer.snapShotCollection = initSnapshotCollection(common, v)
+	tcpServer.snapShotCollection = initSnapshotCollection(common, v, TcpServerConfig.ProtoFile)
 	return tcpServer
 }
 
@@ -63,7 +63,7 @@ func (t *ServerModel) Listen() error {
 			return fmt.Errorf("[tcpServer]与客户端建立连接时发生错误: %s\n", err)
 		}
 		// 3. 使用 goroutine 处理连接，一个连接对应一个协程
-		go t.handleConnection(conn)
+		go t.HandleConnection(conn)
 	}
 }
 
@@ -76,10 +76,10 @@ func (t *ServerModel) Close() error {
 }
 
 // initSnapshotCollection 初始化设备快照的数据点映射
-func initSnapshotCollection(common *common.CommonConfig, v *viper.Viper) *model.SnapshotCollection {
+func initSnapshotCollection(common *common.CommonConfig, v *viper.Viper, protoFile string) *model.SnapshotCollection {
 	snapshotCollection := make(model.SnapshotCollection)
 	// 遍历所有的 PreParsing 和 Parsing 步骤，初始化设备快照
-	chunks := v.Sub("TcpProto").Get("chunks").([]interface{})
+	chunks := v.Sub(protoFile).Get("chunks").([]interface{})
 	for _, chunk := range chunks {
 		chunkMap := chunk.(map[string]interface{})
 		// 如果没有设备或者类型或者字段，直接跳过
@@ -98,8 +98,8 @@ func initSnapshotCollection(common *common.CommonConfig, v *viper.Viper) *model.
 	return &snapshotCollection
 }
 
-// handleConnection 处理连接, 一个连接对应一个协程
-func (t *ServerModel) handleConnection(conn net.Conn) {
+// HandleConnection 处理连接, 一个连接对应一个协程
+func (t *ServerModel) HandleConnection(conn net.Conn) {
 	defer func(conn net.Conn) {
 		err := conn.Close()
 		if err != nil {
@@ -135,7 +135,7 @@ func (t *ServerModel) handleConnection(conn net.Conn) {
 	reader := bufio.NewReader(conn)
 	for {
 		select {
-		case <-t.chDone:
+		case <-t.ChDone:
 			return
 		default:
 			// 4.0 Frame 数组，用于存储一帧原始报文
@@ -144,7 +144,7 @@ func (t *ServerModel) handleConnection(conn net.Conn) {
 			for index, chunk := range t.ChunkSequence.Chunks {
 				err := chunk.Process(reader, &frame)
 				if err != nil {
-					common.Log.Errorf("[handleConnection]解析第 %d 个 Chunk 失败: %s\n", index, err)
+					common.Log.Errorf("[HandleConnection]解析第 %d 个 Chunk 失败: %s\n", index, err)
 				}
 			}
 			// 4.2 发射所有的快照

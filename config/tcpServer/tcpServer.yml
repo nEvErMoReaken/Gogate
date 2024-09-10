@@ -1,5 +1,5 @@
 # 协议配置文件
-protoFile: proto-train2sam-v0.0.1.yml
+protoFile: proto-train2sam-v0.0.1
 
 # 检查CRC校验码：true启用，false禁用
 check_crc: true

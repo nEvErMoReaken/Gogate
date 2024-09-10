@@ -166,13 +166,13 @@ type Section struct {
 }
 
 // InitChunks 从配置文件初始化 Chunk
-func InitChunks(v *viper.Viper) (ChunkSequence, error) {
-
+func InitChunks(v *viper.Viper, protoFile string) (ChunkSequence, error) {
 	var chunkSequence = ChunkSequence{
 		make([]Chunk, 0),
 		make(model.FrameContext),
 	}
-	chunks := v.Sub("TcpProto").Get("chunks").([]interface{})
+	fmt.Println(protoFile)
+	chunks := v.Sub(protoFile).Get("chunks").([]interface{})
 	for _, chunk := range chunks {
 		// 动态处理不同的 chunkType，生成chunkSequence
 		tmpChunk, err := createChunk(chunk.(map[string]interface{}), &chunkSequence.VarPointer)
@@ -182,6 +182,7 @@ func InitChunks(v *viper.Viper) (ChunkSequence, error) {
 
 		chunkSequence.Chunks = append(chunkSequence.Chunks, tmpChunk)
 	}
+	common.Log.Infof("ChunkSequence 初始化成功 %+v", chunkSequence)
 	return chunkSequence, nil
 }
 
