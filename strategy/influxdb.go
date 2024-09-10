@@ -13,7 +13,7 @@ import (
 // init Step.1
 func init() {
 	// 注册发送策略
-	Register("influxdb", NewInfluxDbStrategy)
+	model.RegisterStrategy("influxdb", NewInfluxDbStrategy)
 }
 
 // GetChan Step.2

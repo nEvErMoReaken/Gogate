@@ -1,42 +1,41 @@
-package strategy
+package model
 
 import (
 	"gw22-train-sam/common"
-	"gw22-train-sam/model"
 )
 
 // StFactoryFunc 代表一个发送策略的工厂函数
-type StFactoryFunc func(*common.StrategyConfig, chan struct{}) model.SendStrategy
+type StFactoryFunc func(*common.StrategyConfig, chan struct{}) SendStrategy
 
 // 全局工厂映射，用于注册不同策略类型的构造函数
 var strategyFactories = make(map[string]StFactoryFunc)
 
-// Register 注册一个发送策略
-func Register(strategyType string, factory StFactoryFunc) {
+// RegisterStrategy 注册一个发送策略
+func RegisterStrategy(strategyType string, factory StFactoryFunc) {
 	strategyFactories[strategyType] = factory
 }
 
 // MapSendStrategy 代表发送策略集
-type MapSendStrategy map[string]model.SendStrategy
+type MapSendStrategy map[string]SendStrategy
 
-var mapSendStrategy MapSendStrategy
+var SendStrategyMap MapSendStrategy
 
 // InitMapSendStrategy 初始化一个发送策略集
 func InitMapSendStrategy(common *common.CommonConfig, stopChan chan struct{}) {
-	mapSendStrategy = make(MapSendStrategy)
+	SendStrategyMap = make(MapSendStrategy)
 	for _, strategyConfig := range common.Strategy {
 		if strategyConfig.Enable {
 			if factory, exists := strategyFactories[strategyConfig.Type]; exists {
 				strategy := factory(&strategyConfig, stopChan)
-				mapSendStrategy[strategyConfig.Type] = strategy
+				SendStrategyMap[strategyConfig.Type] = strategy
 			}
 		}
 	}
 }
 
 // GetStrategy 获取一个发送策略
-func GetStrategy(strategyType string) model.SendStrategy {
-	return mapSendStrategy[strategyType]
+func GetStrategy(strategyType string) SendStrategy {
+	return SendStrategyMap[strategyType]
 }
 
 // StartALL 启动所有发送策略

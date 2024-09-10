@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/google/uuid"
 	"gw22-train-sam/common"
-	strategy2 "gw22-train-sam/strategy"
 	"regexp"
 	"strings"
 	"time"
@@ -68,7 +67,7 @@ func (dm *DeviceSnapshot) InitPointPackage(common *common.CommonConfig) {
 			// 遍历字段，判断是否符合策略过滤条件
 			for fieldKey, fieldValue := range dm.Fields {
 				if checkFilter(dm.DeviceType, dm.TemplateDeviceName, fieldKey, filter) {
-					st := strategy2.GetStrategy(strategy.Type)
+					st := GetStrategy(strategy.Type)
 					// 检查 PointMap 是否已经存在该策略对应的 PointPackage
 					if _, exists := dm.PointMap[strategy.Type]; !exists {
 						// 创建新的 PointPackage，并使用指针引用字段

@@ -20,7 +20,7 @@ type ServerModel struct {
 }
 
 func init() {
-	model.Register("tcpServer", NewTcpServer)
+	model.RegisterConn("tcpServer", NewTcpServer)
 }
 
 func NewTcpServer(common *common.CommonConfig, v *viper.Viper, chDone chan struct{}) model.Connector {
@@ -82,7 +82,10 @@ func initSnapshotCollection(common *common.CommonConfig, v *viper.Viper) *model.
 	chunks := v.Sub("TcpProto").Get("chunks").([]interface{})
 	for _, chunk := range chunks {
 		chunkMap := chunk.(map[string]interface{})
-		//deviceSnapshot := model.GetDeviceSnapshot(chunk.(map[string]interface{}), step.To.Type)
+		// 如果没有设备或者类型或者字段，直接跳过
+		if chunkMap["device"] == nil || chunkMap["type"] == nil || chunkMap["fields"] == nil {
+			continue
+		}
 		deviceSnapshot := model.GetDeviceSnapshot(chunkMap["device"].(string), chunkMap["type"].(string))
 		for _, field := range chunkMap["fields"].([]string) {
 			deviceSnapshot.SetField(field, nil)

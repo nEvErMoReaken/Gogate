@@ -2,6 +2,7 @@ package strategy
 
 import (
 	"gw22-train-sam/common"
+	"gw22-train-sam/model"
 	"sync"
 )
 
@@ -12,8 +13,8 @@ var once sync.Once
 func RunStrategy(common *common.CommonConfig, stopChan chan struct{}) {
 	once.Do(func() {
 		// 1. 创建数据源集：执行了这一步后，所有配置中启用了的数据源都已经初始化完成并放入了 mapSendStrategy 中
-		InitMapSendStrategy(common, stopChan)
+		model.InitMapSendStrategy(common, stopChan)
 		// 2. 启动所有发送策略
-		mapSendStrategy.StartALL()
+		model.SendStrategyMap.StartALL()
 	})
 }

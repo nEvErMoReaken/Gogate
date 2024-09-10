@@ -18,8 +18,8 @@ type ConnFactoryFunc func(*common.CommonConfig, *viper.Viper, chan struct{}) Con
 // ConnFactories 全局工厂映射，用于注册不同数据源类型的构造函数
 var ConnFactories = make(map[string]ConnFactoryFunc)
 
-// Register 注册一个数据源
-func Register(connType string, factory ConnFactoryFunc) {
+// RegisterConn 注册一个数据源
+func RegisterConn(connType string, factory ConnFactoryFunc) {
 	ConnFactories[connType] = factory
 }
 

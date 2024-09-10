@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"go.uber.org/zap"
 	"gw22-train-sam/common"
+	_ "gw22-train-sam/dataSource/byteType/tcpServer"
 	"gw22-train-sam/model"
 	"gw22-train-sam/strategy"
 	"gw22-train-sam/util"
@@ -49,7 +50,7 @@ func main() {
 	// 5. 启动所有注册的Connector
 	err1 := model.RunConnector(comConfig, comConfig.Connector.Type, v, chDone)
 	if err1 != nil {
-		common.Log.Errorf("[main]启动Connector失败: %s", err1)
+		common.Log.Fatalf("[main]启动Connector失败: %s", err1)
 	}
 	// 6. 监听终止信号
 	si := make(chan os.Signal, 1)
