@@ -109,6 +109,7 @@ func (t *ServerModel) HandleConnection(conn net.Conn) {
 	frameContext := make(model.FrameContext)
 	// 1. 首先识别远端ip是哪个设备
 	remoteAddrWithPort := conn.RemoteAddr().String()
+	var deviceId = remoteAddrWithPort
 	// 2. 连接花名作为变量（如果有）
 	if t.TcpServerConfig.TCPServer.IPAlias == nil {
 		// 2.1 如果IPAlias为空，则不需要进行识别
@@ -117,7 +118,8 @@ func (t *ServerModel) HandleConnection(conn net.Conn) {
 		// 2.2 如果IPAlias不为空，放入变量中
 		// remoteAddr 是 ip:port 的形式，需要去掉端口
 		remoteAddr, _, _ := net.SplitHostPort(remoteAddrWithPort)
-		deviceId, exists := t.TcpServerConfig.TCPServer.IPAlias[remoteAddr]
+		var exists bool
+		deviceId, exists = t.TcpServerConfig.TCPServer.IPAlias[remoteAddr]
 		if !exists {
 			common.Log.Errorf("%s 地址不在配置清单中", remoteAddr)
 			return
@@ -152,7 +154,11 @@ func (t *ServerModel) HandleConnection(conn net.Conn) {
 			// 4.2 发射所有的快照
 			t.snapShotCollection.LaunchALL()
 			// 4.3 打印原始报文
-			common.Log.Infof("[frame]: %s", frame)
+			hexString := ""
+			for _, b := range frame {
+				hexString += fmt.Sprintf("%02X", b)
+			}
+			common.Log.Infof("[%s] %s", deviceId, fmt.Sprintf("%s", hexString))
 		}
 	}
 }

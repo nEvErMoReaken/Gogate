@@ -106,17 +106,17 @@ func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte) error {
 	// 1. 读取固定长度数据
 	data := make([]byte, *f.Length)
 	_, err := io.ReadFull(reader, data)
+	// 定长Chunk可以直接追加到frame中
+	*frame = append(*frame, data...)
 	// 将字节数组以 EFEFEF 形式打印
 	if err != nil {
 		return err
 	}
 	// 2. 解析数据
 	cursor := 0
-	fmt.Println(f)
 	for _, sec := range f.Sections {
 		for i := 0; i < *sec.Repeat; i++ {
 			// 2.1. 根据Sec的length解码
-			fmt.Println(cursor, sec.Length, sec.Decoding)
 
 			if sec.Decoding == nil {
 				// 如果没有解码函数，直接跳过

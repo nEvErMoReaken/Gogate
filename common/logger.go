@@ -39,7 +39,7 @@ func InitLogger(filename string, maxSize, maxBackups, maxAge int, compress bool)
 		EncodeLevel:    zapcore.CapitalLevelEncoder,   // 日志级别的大写编码器
 		EncodeTime:     zapcore.ISO8601TimeEncoder,    // ISO8601时间格式
 		EncodeDuration: zapcore.StringDurationEncoder, // 持续时间字符串编码器
-		EncodeCaller:   zapcore.ShortCallerEncoder,    // 简短的调用者编码器 (文件名和行号)
+		//EncodeCaller:   zapcore.ShortCallerEncoder,    // 简短的调用者编码器 (文件名和行号)
 	}
 
 	// 创建一个控制台编码器，带有自定义的日志格式
