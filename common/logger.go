@@ -1,4 +1,4 @@
-package logger
+package common
 
 import (
 	"go.uber.org/zap"
@@ -9,7 +9,7 @@ import (
 
 var Log *zap.SugaredLogger
 
-// InitLogger initializes the logger
+// InitLogger initializes the common
 func InitLogger(filename string, maxSize, maxBackups, maxAge int, compress bool) {
 	lumberJackLogger := &lumberjack.Logger{
 		Filename:   filename,
@@ -31,7 +31,7 @@ func InitLogger(filename string, maxSize, maxBackups, maxAge int, compress bool)
 	encoderConfig := zapcore.EncoderConfig{
 		TimeKey:        "timestamp",
 		LevelKey:       "level",
-		NameKey:        "logger",
+		NameKey:        "common",
 		CallerKey:      "caller",
 		MessageKey:     "message",
 		StacktraceKey:  "stacktrace",

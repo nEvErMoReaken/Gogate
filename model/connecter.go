@@ -1,6 +1,9 @@
 package model
 
-import "github.com/spf13/viper"
+import (
+	"fmt"
+	"github.com/spf13/viper"
+)
 
 // Connector 是所有数据源的通用接口
 type Connector interface {
@@ -17,4 +20,18 @@ var ConnFactories = make(map[string]ConnFactoryFunc)
 // Register 注册一个数据源
 func Register(connType string, factory ConnFactoryFunc) {
 	ConnFactories[connType] = factory
+}
+
+// RunConnector 运行指定类型的数据源
+func RunConnector(connType string, v *viper.Viper) error {
+	factory, ok := ConnFactories[connType]
+	if !ok {
+		return fmt.Errorf("未找到数据源类型: %s", connType)
+	}
+	// 直接调用工厂函数
+	err := factory(v).Listen()
+	if err != nil {
+		return err
+	}
+	return nil
 }

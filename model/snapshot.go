@@ -3,7 +3,7 @@ package model
 import (
 	"fmt"
 	"github.com/google/uuid"
-	"gw22-train-sam/logger"
+	"gw22-train-sam/common"
 	"regexp"
 	"strings"
 	"time"
@@ -65,7 +65,7 @@ func NewSnapshot(deviceName, deviceType string) *DeviceSnapshot {
 	// 生成一个新的 UUID
 	newID, err := uuid.NewUUID()
 	if err != nil {
-		logger.Log.Errorf("failed to generate UUID: %s", err.Error())
+		common.Log.Errorf("failed to generate UUID: %s", err.Error())
 		return nil
 	}
 	return &DeviceSnapshot{

@@ -4,8 +4,8 @@ import (
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/influxdata/influxdb-client-go/v2/api"
 	"github.com/mitchellh/mapstructure"
+	"gw22-train-sam/common"
 	"gw22-train-sam/dataSource/byteType/tcpServer"
-	"gw22-train-sam/logger"
 	"gw22-train-sam/model"
 	"log"
 )
@@ -68,7 +68,7 @@ func NewInfluxDbStrategy(dbConfig tcpServer.StrategyConfig, stopChan chan struct
 	// Create go proc for reading and logging errors
 	go func() {
 		for err := range errorsCh {
-			logger.Log.Errorf("write error: %s\n", err.Error())
+			common.Log.Errorf("write error: %s\n", err.Error())
 		}
 	}()
 	return &InfluxDbStrategy{

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"github.com/traefik/yaegi/interp"
 	"github.com/traefik/yaegi/stdlib"
-	"gw22-train-sam/logger"
+	"gw22-train-sam/common"
 	"os"
 	"path/filepath"
 )
@@ -53,7 +53,7 @@ func LoadAllScripts(scriptDir string, methods []string) error {
 	for _, funcName := range methods {
 		v, err := i.Eval("script." + funcName)
 		if err != nil {
-			logger.Log.Errorf("[Warning]: 在已读取脚本中未找到 %s 方法 %v\n", funcName, err)
+			common.Log.Errorf("[Warning]: 在已读取脚本中未找到 %s 方法 %v\n", funcName, err)
 			continue
 		}
 		ScriptFuncCache[funcName] = v.Interface().(func([]byte) []interface{})

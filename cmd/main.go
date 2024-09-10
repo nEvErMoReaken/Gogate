@@ -2,46 +2,46 @@ package main
 
 import (
 	"go.uber.org/zap"
+	"gw22-train-sam/common"
 	"gw22-train-sam/dataSource/byteType/tcpServer"
-	"gw22-train-sam/logger"
 	"gw22-train-sam/util"
 	"log"
 )
 
 func main() {
 	// 1. 初始化config
-	v, err := initCommon("config")
+	v, err := common.initCommon("config")
 	if err != nil {
 		log.Fatalf("[main] 加载配置失败: %s", err)
 		return
 	}
 	// 2. 初始化log
-	logger.InitLogger(
-		Common.Log.LogPath,
-		Common.Log.MaxSize,
-		Common.Log.MaxBackups,
-		Common.Log.MaxAge,
-		Common.Log.Compress,
+	common.InitLogger(
+		common.Common.Log.LogPath,
+		common.Common.Log.MaxSize,
+		common.Common.Log.MaxBackups,
+		common.Common.Log.MaxAge,
+		common.Common.Log.Compress,
 	)
 	defer func(logger *zap.SugaredLogger) {
 		err := logger.Sync()
 		if err != nil {
 			logger.Errorf("[main]同步日志失败: %s", err)
 		}
-	}(logger.Log)
-	logger.Log.Infof("[main]配置&日志加载成功:当前Common配置为%+v", Common)
+	}(common.Log)
+	common.Log.Infof("[main]配置&日志加载成功:当前Common配置为%+v", common.Common)
 
 	// 3. 初始化脚本模块
-	err = util.LoadAllScripts(Common.Script.ScriptDir, Common.Script.Methods)
+	err = util.LoadAllScripts(common.Common.Script.ScriptDir, common.Common.Script.Methods)
 	if err != nil {
-		logger.Log.Errorf("[main]加载脚本失败: %s", err)
+		common.Log.Errorf("[main]加载脚本失败: %s", err)
 	}
-	logger.Log.Infof("已加载脚本:%v", util.ScriptFuncCache)
+	common.Log.Infof("已加载脚本:%v", util.ScriptFuncCache)
 
 	// 4. 初始化激活的Connector
 	chunkList, err := tcpServer.InitChunks(v)
 	for _, chunk := range chunkList.Chunks {
-		logger.Log.Infof("已加载chunk:%v", chunk)
+		common.Log.Infof("已加载chunk:%v", chunk)
 	}
 	//fmt.Printf("%+v", chunkList)
 	// 5. 初始化所有正则结果

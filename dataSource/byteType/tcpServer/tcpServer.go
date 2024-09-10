@@ -3,7 +3,7 @@ package tcpServer
 import (
 	"fmt"
 	"github.com/spf13/viper"
-	"gw22-train-sam/logger"
+	"gw22-train-sam/common"
 	"gw22-train-sam/model"
 	"log"
 	"net"
@@ -48,7 +48,7 @@ func NewTcpServer(v *viper.Viper) model.Connector {
 
 func (t *ServerModel) Listen() error {
 	// 1. 监听指定的端口
-	logger.Log.Infof("TCP dataflow listening on port %s", t.TcpServerConfig.TCPServer.Port)
+	common.Log.Infof("TCP dataflow listening on port %s", t.TcpServerConfig.TCPServer.Port)
 	for {
 		// 2. 等待客户端连接
 		conn, err := t.listener.Accept()
@@ -66,8 +66,4 @@ func (t *ServerModel) Close() error {
 		return fmt.Errorf("[tcpServer]关闭监听程序失败: %s\n", err)
 	}
 	return nil
-}
-
-func Listen() {
-
 }

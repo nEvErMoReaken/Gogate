@@ -2,7 +2,7 @@ package tcpServer
 
 import (
 	"bufio"
-	"gw22-train-sam/logger"
+	"gw22-train-sam/common"
 	"io"
 	"net"
 	"time"
@@ -13,7 +13,7 @@ func handleConnection(tcpServer *TcpServer, conn net.Conn) {
 	defer func(conn net.Conn) {
 		err := conn.Close()
 		if err != nil {
-			logger.Log.Infof("与" + conn.RemoteAddr().String() + "的连接已关闭")
+			common.Log.Infof("与" + conn.RemoteAddr().String() + "的连接已关闭")
 		}
 	}(conn)
 	frameContext := make(FrameContext)
@@ -25,12 +25,12 @@ func handleConnection(tcpServer *TcpServer, conn net.Conn) {
 	*result = deviceId
 	frameContext["deviceId"] = result
 	if !exists {
-		logger.Log.Errorf("%s 地址不在配置清单中", remoteAddr)
+		common.Log.Errorf("%s 地址不在配置清单中", remoteAddr)
 		return
 	}
 	err := conn.SetReadDeadline(time.Now().Add(tcpServer.TCPServer.Timeout))
 	if err != nil {
-		logger.Log.Infof(conn.RemoteAddr().String() + "超时时间设置失败, 连接关闭")
+		common.Log.Infof(conn.RemoteAddr().String() + "超时时间设置失败, 连接关闭")
 		return
 	}
 	// 初始化reader开始读数据
@@ -45,7 +45,7 @@ func handleConnection(tcpServer *TcpServer, conn net.Conn) {
 		// Read n 个字节
 		_, err := io.ReadFull(reader, data)
 		if err != nil {
-			logger.Log.Errorf("[handleConnection]读取帧头失败: %s\n", err)
+			common.Log.Errorf("[handleConnection]读取帧头失败: %s\n", err)
 		}
 		HeaderParse(data, &frameContext)
 	}
