@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 )
 
-type ScriptFunc func([]byte) []interface{}
+type ScriptFunc func([]byte) ([]interface{}, error)
 
 // ScriptFuncCache 脚本函数缓存
 var ScriptFuncCache = make(map[string]ScriptFunc)
@@ -56,7 +56,7 @@ func LoadAllScripts(scriptDir string, methods []string) error {
 			common.Log.Errorf("[Warning]: 在已读取脚本中未找到 %s 方法 %v\n", funcName, err)
 			continue
 		}
-		ScriptFuncCache[funcName] = v.Interface().(func([]byte) []interface{})
+		ScriptFuncCache[funcName] = v.Interface().(func([]byte) ([]interface{}, error))
 	}
 
 	return nil
@@ -67,7 +67,7 @@ func GetScriptFunc(funcName string) ScriptFunc {
 	if decodeFunc, exists := ScriptFuncCache[funcName]; exists {
 		return decodeFunc
 	}
-	return func(b []byte) []interface{} {
-		return make([]interface{}, 0)
+	return func(b []byte) ([]interface{}, error) {
+		return make([]interface{}, 0), nil
 	}
 }

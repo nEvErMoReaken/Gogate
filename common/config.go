@@ -7,6 +7,13 @@ import (
 	"path/filepath"
 )
 
+type StrategyConfig struct {
+	Type   string                 `mapstructure:"type"`    // 策略类型
+	Enable bool                   `mapstructure:"enable"`  // 是否启用
+	Filter []string               `mapstructure:"filter"`  // 策略过滤条件
+	Config map[string]interface{} `mapstructure:",remain"` // 自定义配置项
+}
+
 type LogConfig struct {
 	LogPath    string `mapstructure:"log_path"`
 	MaxSize    int    `mapstructure:"max_size"`
@@ -22,20 +29,18 @@ type ScriptConfig struct {
 }
 
 type CommonConfig struct {
-	Log       LogConfig       `mapstructure:"log"`
-	Script    ScriptConfig    `mapstructure:"script"`
-	Connector ConnectorConfig `mapstructure:"connector"`
+	Log       LogConfig        `mapstructure:"log"`
+	Script    ScriptConfig     `mapstructure:"script"`
+	Connector ConnectorConfig  `mapstructure:"connector"`
+	Strategy  []StrategyConfig `mapstructure:"strategy"`
 }
 
 type ConnectorConfig struct {
 	Type string `mapstructure:"type"`
 }
 
-// Common 为全局配置 (common.yaml)
-var Common CommonConfig
-
-// initCommon 用于初始化全局配置
-func initCommon(configDir string) (*viper.Viper, error) {
+// InitCommon 用于初始化全局配置
+func InitCommon(configDir string) (*CommonConfig, *viper.Viper, error) {
 	v := viper.NewWithOptions(viper.KeyDelimiter("::")) // 设置 key 分隔符为 ::，因为默认的 . 会和 IP 地址冲突
 	v.AddConfigPath(configDir)
 	v.AutomaticEnv() // 读取环境变量
@@ -71,9 +76,10 @@ func initCommon(configDir string) (*viper.Viper, error) {
 
 		return nil
 	})
+	var common CommonConfig
 	// 反序列化到结构体
-	if err := v.Unmarshal(&Common); err != nil {
-		return nil, fmt.Errorf("反序列化配置失败: %w", err)
+	if err := v.Unmarshal(&common); err != nil {
+		return nil, nil, fmt.Errorf("反序列化配置失败: %w", err)
 	}
-	return v, nil
+	return &common, v, nil
 }

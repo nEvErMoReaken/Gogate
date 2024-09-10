@@ -10,18 +10,18 @@ import (
 
 func main() {
 	// 1. 初始化config
-	v, err := common.initCommon("config")
+	comConfig, v, err := common.InitCommon("config")
 	if err != nil {
 		log.Fatalf("[main] 加载配置失败: %s", err)
 		return
 	}
 	// 2. 初始化log
 	common.InitLogger(
-		common.Common.Log.LogPath,
-		common.Common.Log.MaxSize,
-		common.Common.Log.MaxBackups,
-		common.Common.Log.MaxAge,
-		common.Common.Log.Compress,
+		comConfig.Log.LogPath,
+		comConfig.Log.MaxSize,
+		comConfig.Log.MaxBackups,
+		comConfig.Log.MaxAge,
+		comConfig.Log.Compress,
 	)
 	defer func(logger *zap.SugaredLogger) {
 		err := logger.Sync()
@@ -29,10 +29,10 @@ func main() {
 			logger.Errorf("[main]同步日志失败: %s", err)
 		}
 	}(common.Log)
-	common.Log.Infof("[main]配置&日志加载成功:当前Common配置为%+v", common.Common)
+	common.Log.Infof("[main]配置&日志加载成功:当前Common配置为%+v", comConfig)
 
 	// 3. 初始化脚本模块
-	err = util.LoadAllScripts(common.Common.Script.ScriptDir, common.Common.Script.Methods)
+	err = util.LoadAllScripts(comConfig.Script.ScriptDir, comConfig.Script.Methods)
 	if err != nil {
 		common.Log.Errorf("[main]加载脚本失败: %s", err)
 	}

@@ -13,18 +13,10 @@ type ServerConfig struct {
 	Timeout   time.Duration     `mapstructure:"timeout"`
 }
 
-type StrategyConfig struct {
-	Type   string                 `mapstructure:"type"`    // 策略类型
-	Enable bool                   `mapstructure:"enable"`  // 是否启用
-	Filter []string               `mapstructure:"filter"`  // 策略过滤条件
-	Config map[string]interface{} `mapstructure:",remain"` // 自定义配置项
-}
-
 type TcpServer struct {
-	ProtoFile string           `mapstructure:"protoFile"`
-	CheckCRC  bool             `mapstructure:"check_crc"`
-	TCPServer ServerConfig     `mapstructure:"tcpServer"`
-	Strategy  []StrategyConfig `mapstructure:"strategy"`
+	ProtoFile string       `mapstructure:"protoFile"`
+	CheckCRC  bool         `mapstructure:"check_crc"`
+	TCPServer ServerConfig `mapstructure:"tcpServer"`
 }
 
 type Setting struct {

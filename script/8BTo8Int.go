@@ -1,7 +1,13 @@
 package script
 
+import "fmt"
+
 // Decode8BToInt DecodeFrame takes a byte slice as input and returns the decoded value
-func Decode8BToInt(data []byte) []interface{} {
+func Decode8BToInt(data []byte) ([]interface{}, error) {
+	// 错误检查
+	if len(data) == 0 {
+		return nil, fmt.Errorf("[Decode8BToInt]输入字节数组为空")
+	}
 	// 结果数组，长度是输入字节数组长度的 8 倍
 	result := make([]interface{}, 0, len(data)*8)
 
@@ -14,5 +20,5 @@ func Decode8BToInt(data []byte) []interface{} {
 			result = append(result, int(bit))
 		}
 	}
-	return result
+	return result, nil
 }

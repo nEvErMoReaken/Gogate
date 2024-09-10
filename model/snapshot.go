@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/google/uuid"
 	"gw22-train-sam/common"
+	strategy2 "gw22-train-sam/strategy"
 	"regexp"
 	"strings"
 	"time"
@@ -24,28 +25,6 @@ type SnapshotCollection map[string]*DeviceSnapshot
 
 // snapshotCollection 用于缓存设备快照，key 为设备名称和设备类型的组合，value 为设备快照
 var snapshotCollection SnapshotCollection
-
-//// InitSnapshotCollection 初始化设备快照的数据点映射
-//func InitSnapshotCollection(proto *config.Proto, comm *tcpServer.TcpServer) {
-//	snapshotCollection = make(map[string]*DeviceSnapshot)
-//	// 遍历所有的 PreParsing 和 Parsing 步骤，初始化设备快照
-//	for _, step := range proto.Header {
-//		deviceSnapshot := GetDeviceSnapshot(step.To.Device, step.To.Type)
-//		for _, field := range step.To.Fields {
-//			deviceSnapshot.SetField(field, nil)
-//		}
-//	}
-//	for _, step := range proto.Body {
-//		deviceSnapshot := GetDeviceSnapshot(step.To.Device, step.To.Type)
-//		for _, field := range step.To.Fields {
-//			deviceSnapshot.SetField(field, nil)
-//		}
-//	}
-//	// 初始化发送策略
-//	for _, deviceSnapshot := range snapshotCollection {
-//		deviceSnapshot.initPointPackage(comm)
-//	}
-//}
 
 // GetDeviceSnapshot 获取设备快照，如果设备快照已经存在，则直接返回，否则创建一个新的设备快照
 func GetDeviceSnapshot(deviceName string, deviceType string) *DeviceSnapshot {
@@ -77,41 +56,41 @@ func NewSnapshot(deviceName, deviceType string) *DeviceSnapshot {
 	}
 }
 
-//
-//// initPointPackage 初始化设备快照的数据点映射结构
-//func (dm *DeviceSnapshot) initPointPackage(common *tcpServer.TcpServer) {
-//	for _, strategy := range common.Strategy {
-//		for _, filter := range strategy.Filter {
-//			// 遍历字段，判断是否符合策略过滤条件
-//			for fieldKey, fieldValue := range dm.Fields {
-//				if checkFilter(dm.DeviceType, dm.DeviceName, fieldKey, filter) {
-//					st := strategy2.GetStrategy(strategy.Type)
-//					// 检查 PointMap 是否已经存在该策略对应的 PointPackage
-//					if _, exists := dm.PointMap[strategy.Type]; !exists {
-//						// 创建新的 PointPackage，并使用指针引用字段
-//						dm.PointMap[strategy.Type] = &PointPackage{
-//							Point: Point{
-//								DeviceName: &dm.DeviceName,
-//								DeviceType: &dm.DeviceType,
-//								Field:      map[string]*interface{}{fieldKey: &fieldValue}, // 引用字段
-//								Ts:         &dm.Ts,                                         // 使用快照的时间戳引用
-//							},
-//							Strategy: st,
-//						}
-//					} else {
-//						// 如果 PointPackage 已存在，更新其字段引用
-//						pointPackage := dm.PointMap[strategy.Type]
-//						if pointPackage.Point.Field == nil {
-//							pointPackage.Point.Field = make(map[string]*interface{})
-//						}
-//						// 更新 PointPackage 中的字段引用
-//						pointPackage.Point.Field[fieldKey] = &fieldValue
-//					}
-//				}
-//			}
-//		}
-//	}
-//}
+// InitPointPackage 初始化设备快照的数据点映射结构
+// 前提：DeviceSnapshot的DeviceName, DeviceType, Fields字段已经初始化
+func (dm *DeviceSnapshot) InitPointPackage(common *common.CommonConfig) {
+	for _, strategy := range common.Strategy {
+		for _, filter := range strategy.Filter {
+			// 遍历字段，判断是否符合策略过滤条件
+			for fieldKey, fieldValue := range dm.Fields {
+				if checkFilter(dm.DeviceType, dm.DeviceName, fieldKey, filter) {
+					st := strategy2.GetStrategy(strategy.Type)
+					// 检查 PointMap 是否已经存在该策略对应的 PointPackage
+					if _, exists := dm.PointMap[strategy.Type]; !exists {
+						// 创建新的 PointPackage，并使用指针引用字段
+						dm.PointMap[strategy.Type] = &PointPackage{
+							Point: Point{
+								DeviceName: &dm.DeviceName,
+								DeviceType: &dm.DeviceType,
+								Field:      map[string]*interface{}{fieldKey: &fieldValue}, // 引用字段
+								Ts:         &dm.Ts,                                         // 使用快照的时间戳引用
+							},
+							Strategy: st,
+						}
+					} else {
+						// 如果 PointPackage 已存在，更新其字段引用
+						pointPackage := dm.PointMap[strategy.Type]
+						if pointPackage.Point.Field == nil {
+							pointPackage.Point.Field = make(map[string]*interface{})
+						}
+						// 更新 PointPackage 中的字段引用
+						pointPackage.Point.Field[fieldKey] = &fieldValue
+					}
+				}
+			}
+		}
+	}
+}
 
 // checkFilter 根据filter推断Strategies
 // 定义设备类型、设备名称、遥测名称的匹配

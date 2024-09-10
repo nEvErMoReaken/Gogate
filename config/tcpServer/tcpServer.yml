@@ -42,17 +42,3 @@ tcpServer:
     "172.25.29.109": ER2_14_5_1
 
 
-strategy:
-  - type: influxDB
-    enable: true
-    url: http://10.17.191.107:8086
-    token: mK_0NkLVPW8THIYkn52eqr7enL6IinGp8d5xbXizO1mVxAEk_EuOFxZ9OKWYcwVgi2XmogD6iPcO9KQ8ToVvtQ==
-    org: "byd"
-    bucket: "sam"
-    batch_size: 2000
-    filter: # 格式<设备类型>:<设备名称>:<遥测名称>
-      - ".*:.*:.*"
-  - type: mqtt
-    enable: false
-    url: tcp://
-    topic: "sam"
