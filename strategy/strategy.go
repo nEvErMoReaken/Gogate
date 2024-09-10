@@ -6,7 +6,7 @@ import (
 )
 
 // StFactoryFunc 代表一个发送策略的工厂函数
-type StFactoryFunc func(common.StrategyConfig, chan struct{}) model.SendStrategy
+type StFactoryFunc func(*common.StrategyConfig, chan struct{}) model.SendStrategy
 
 // 全局工厂映射，用于注册不同策略类型的构造函数
 var strategyFactories = make(map[string]StFactoryFunc)
@@ -27,7 +27,7 @@ func InitMapSendStrategy(common *common.CommonConfig, stopChan chan struct{}) {
 	for _, strategyConfig := range common.Strategy {
 		if strategyConfig.Enable {
 			if factory, exists := strategyFactories[strategyConfig.Type]; exists {
-				strategy := factory(strategyConfig, stopChan)
+				strategy := factory(&strategyConfig, stopChan)
 				mapSendStrategy[strategyConfig.Type] = strategy
 			}
 		}

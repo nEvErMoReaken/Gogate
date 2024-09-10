@@ -5,7 +5,6 @@ import (
 	"github.com/influxdata/influxdb-client-go/v2/api"
 	"github.com/mitchellh/mapstructure"
 	"gw22-train-sam/common"
-	"gw22-train-sam/dataSource/byteType/tcpServer"
 	"gw22-train-sam/model"
 	"log"
 )
@@ -54,7 +53,7 @@ type infoType struct {
 }
 
 // NewInfluxDbStrategy 构造函数
-func NewInfluxDbStrategy(dbConfig tcpServer.StrategyConfig, stopChan chan struct{}) SendStrategy {
+func NewInfluxDbStrategy(dbConfig *common.StrategyConfig, stopChan chan struct{}) model.SendStrategy {
 	var info infoType
 	// 将 map 转换为结构体
 	if err := mapstructure.Decode(dbConfig.Config, &info); err != nil {
@@ -79,19 +78,30 @@ func NewInfluxDbStrategy(dbConfig tcpServer.StrategyConfig, stopChan chan struct
 	}
 }
 
-// Publish 存入数据库的逻辑
 func (b *InfluxDbStrategy) Publish(point *model.Point) {
-	// 将数据发布到 InfluxDB 的逻辑
-	// 遍历批次中的所有设备快照并创建数据点
+	// ～～～将数据发布到 InfluxDB 的逻辑～～～
+
+	// 创建一个新的 map[string]interface{} 来存储解引用的字段
+	decodedFields := make(map[string]interface{})
+
+	// 遍历 Field 中的所有键值对并解引用 *interface{}
+	for key, valuePtr := range point.Field {
+		if valuePtr != nil {
+			decodedFields[key] = *valuePtr // 解引用 *interface{}
+		}
+	}
+
 	// 创建一个数据点
 	p := influxdb2.NewPoint(
-		point.DeviceType,
+		*point.DeviceType, // measurement
 		map[string]string{
-			"train_id": point.DeviceName,
+			"train_id": *point.DeviceName, // tags
 		},
-		point.Field,
-		point.Ts,
+		decodedFields, // fields (converted)
+		*point.Ts,     // timestamp
 	)
+
+	// 写入到 InfluxDB
 	b.writeAPI.WritePoint(p)
 }
 
