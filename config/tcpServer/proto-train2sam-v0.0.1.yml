@@ -1,7 +1,7 @@
 proto-train2sam-v0.0.1:
   chunks:
     - type: FixedLengthChunk
-      length: 10 # 预解析的长度，必填项
+      length: 3 # 预解析的长度，必填项
       sections:
         - from: # 没有解码方式的即为不用处理，jump即可
             byte: 2

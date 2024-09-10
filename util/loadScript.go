@@ -56,18 +56,25 @@ func LoadAllScripts(scriptDir string, methods []string) error {
 			common.Log.Errorf("[Warning]: 在已读取脚本中未找到 %s 方法 %v\n", funcName, err)
 			continue
 		}
-		ScriptFuncCache[funcName] = v.Interface().(func([]byte) ([]interface{}, error))
+		// 不再使用指针类型的断言，直接断言为 ScriptFunc 类型
+		if fn, ok := v.Interface().(func([]byte) ([]interface{}, error)); ok {
+			ScriptFuncCache[funcName] = fn // 缓存函数
+		} else {
+			common.Log.Errorf("[Warning]: %s 方法的签名与预期的 ScriptFunc 类型不匹配\n", funcName)
+		}
 	}
 
 	return nil
 }
 
 // GetScriptFunc 获取缓存的脚本函数, 如果不存在则返回一个默认的函数(多用于jump场景)
-func GetScriptFunc(funcName string) ScriptFunc {
+func GetScriptFunc(funcName string) (ScriptFunc, bool) {
 	if decodeFunc, exists := ScriptFuncCache[funcName]; exists {
-		return decodeFunc
+		return decodeFunc, true
 	}
-	return func(b []byte) ([]interface{}, error) {
-		return make([]interface{}, 0), nil
+	// 返回一个默认的空实现函数
+	defaultFunc := func([]byte) ([]interface{}, error) {
+		return nil, nil
 	}
+	return defaultFunc, false
 }

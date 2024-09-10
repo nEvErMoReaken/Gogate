@@ -52,7 +52,7 @@ type FixedLengthChunk struct {
 	VarPointer *model.FrameContext
 }
 
-// 为 FixedLengthChunk 实现 String 方法，打印指针指向的值
+// 为 FixedLengthChunk 实现 String 方法，打印指针指向的值和指针的地址
 func (f *FixedLengthChunk) String() string {
 	// 打印 Length 指针的值（解引用）
 	lengthVal := "nil"
@@ -63,18 +63,27 @@ func (f *FixedLengthChunk) String() string {
 	// 打印 Sections 指针中的值
 	sectionsStr := ""
 	for i, sec := range f.Sections {
+		// 打印 Repeat 指针的值和地址
 		repeatVal := "nil"
+		repeatAddr := "nil"
 		if sec.Repeat != nil {
 			repeatVal = fmt.Sprintf("%d", *sec.Repeat)
+			repeatAddr = fmt.Sprintf("%p", sec.Repeat) // 打印地址
 		}
 
-		// 打印 PointTarget 列表
+		// 打印 Decoding 指针的地址
+		decodingAddr := "nil"
+		if sec.Decoding != nil {
+			decodingAddr = fmt.Sprintf("%p", sec.Decoding) // 打印地址
+		}
+
+		// 打印 PointTarget 列表和指针地址
 		pointTargetStr := "["
 		for j, pt := range sec.PointTarget {
-			if pt == nil || *pt == nil {
+			if pt == nil {
 				pointTargetStr += "nil"
 			} else {
-				pointTargetStr += fmt.Sprintf("%v", *pt) // 打印指向的值
+				pointTargetStr += fmt.Sprintf("%p", pt) // 打印指针地址
 			}
 			if j < len(sec.PointTarget)-1 {
 				pointTargetStr += ", "
@@ -82,8 +91,9 @@ func (f *FixedLengthChunk) String() string {
 		}
 		pointTargetStr += "]"
 
-		sectionsStr += fmt.Sprintf("  Section %d: Repeat=%s, Length=%d, DeviceName=%s, DeviceType=%s, PointTarget=%s\n",
-			i+1, repeatVal, sec.Length, sec.ToDeviceName, sec.ToDeviceType, pointTargetStr)
+		sectionsStr += fmt.Sprintf(
+			"  Section %d: Repeat=%s (Addr: %s), Length=%d, Decoding Addr=%s, DeviceName=%s, DeviceType=%s, PointTarget=%s\n",
+			i+1, repeatVal, repeatAddr, sec.Length, decodingAddr, sec.ToDeviceName, sec.ToDeviceType, pointTargetStr)
 	}
 
 	// 打印整个结构体信息
@@ -96,24 +106,33 @@ func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte) error {
 	// 1. 读取固定长度数据
 	data := make([]byte, *f.Length)
 	_, err := io.ReadFull(reader, data)
-	*frame = append(*frame, data...)
+	// 将字节数组以 EFEFEF 形式打印
 	if err != nil {
 		return err
 	}
 	// 2. 解析数据
 	cursor := 0
+	fmt.Println(f)
 	for _, sec := range f.Sections {
 		for i := 0; i < *sec.Repeat; i++ {
 			// 2.1. 根据Sec的length解码
+			fmt.Println(cursor, sec.Length, sec.Decoding)
+
+			if sec.Decoding == nil {
+				// 如果没有解码函数，直接跳过
+				cursor += sec.Length
+				continue
+			}
+			if cursor+sec.Length > len(data) {
+				return fmt.Errorf("游标超出数据长度")
+			}
 			decoded, err := sec.Decoding(data[cursor : cursor+sec.Length])
 			if err != nil {
 				return err
 			}
 			// 2.2 移动游标
 			cursor += sec.Length
-			if cursor > len(data) {
-				return fmt.Errorf("游标超出数据长度")
-			}
+
 			// 2.3 保存解码后的数据到对应的 PointTarget下标内
 			// sec.PointTarget[i] = decoded[i]
 			// 假设解码后有三个速度值： v1,v2,v3 分别对应变量名为 vobc_speed1, vobc_speed2, vobc_speed3
@@ -220,19 +239,19 @@ func createChunk(chunkMap map[string]interface{}, context *model.FrameContext) (
 			if err != nil {
 				return nil, fmt.Errorf("[createChunk]failed to parse repeat: %v", err)
 			}
-			var tmpDecode util.ScriptFunc
-			if section.Decoding.Method != "" {
-				tmpDecode = util.GetScriptFunc(section.Decoding.Method)
-			}
 
 			var tmpSec = Section{
 				Repeat:       tmpRepeat,
 				Length:       section.From.Byte,
-				Decoding:     tmpDecode,
+				Decoding:     nil,
 				ToDeviceName: section.To.DeviceName,
 				ToDeviceType: section.To.DeviceType,
 				PointTarget:  make([]*interface{}, 0),
 				FieldTarget:  section.To.Fields,
+			}
+			tmpDecoding, exist := util.GetScriptFunc(section.Decoding.Method)
+			if exist {
+				tmpSec.Decoding = tmpDecoding
 			}
 			// 初始化For指针变量
 			for _, varName := range section.For.VarName {

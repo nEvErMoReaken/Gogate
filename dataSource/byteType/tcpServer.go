@@ -146,7 +146,7 @@ func (t *ServerModel) HandleConnection(conn net.Conn) {
 			for index, chunk := range t.ChunkSequence.Chunks {
 				err := chunk.Process(reader, &frame)
 				if err != nil {
-					common.Log.Errorf("[HandleConnection]解析第 %d 个 Chunk 失败: %s\n", index, err)
+					common.Log.Errorf("[HandleConnection]解析第 %d 个 Chunk 失败: %s\n", index+1, err)
 				}
 			}
 			// 4.2 发射所有的快照
