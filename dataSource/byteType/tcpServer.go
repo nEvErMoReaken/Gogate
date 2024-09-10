@@ -1,4 +1,4 @@
-package tcpServer
+package byteType
 
 import (
 	"bufio"
@@ -55,7 +55,7 @@ func NewTcpServer(common *common.CommonConfig, v *viper.Viper, chDone chan struc
 
 func (t *ServerModel) Listen() error {
 	// 1. 监听指定的端口
-	common.Log.Infof("TCP dataflow listening on port %s", t.TcpServerConfig.TCPServer.Port)
+	common.Log.Infof("TCPServer listening on port %s", t.TcpServerConfig.TCPServer.Port)
 	for {
 		// 2. 等待客户端连接
 		conn, err := t.listener.Accept()

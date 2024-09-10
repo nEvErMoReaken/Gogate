@@ -1,4 +1,4 @@
-package tcpServer
+package byteType
 
 type FixedChunkConfig struct {
 	Type     string          `mapstructure:"type"`

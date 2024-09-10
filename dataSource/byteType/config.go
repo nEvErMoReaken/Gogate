@@ -1,4 +1,4 @@
-package tcpServer
+package byteType
 
 import (
 	"fmt"
