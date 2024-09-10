@@ -1,12 +1,14 @@
 package tcpServer
 
 import (
+	"bufio"
 	"fmt"
 	"github.com/spf13/viper"
 	"gw22-train-sam/common"
 	"gw22-train-sam/model"
 	"log"
 	"net"
+	"time"
 )
 
 type ServerModel struct {
@@ -44,7 +46,7 @@ func NewTcpServer(common *common.CommonConfig, v *viper.Viper) model.Connector {
 	}
 	tcpServer.ChunkSequence = &chunks
 	// 4. 初始化所有快照集合
-	initSnapshotCollection(common, v)
+	tcpServer.snapShotCollection = initSnapshotCollection(common, v)
 	return tcpServer
 }
 
@@ -58,7 +60,7 @@ func (t *ServerModel) Listen() error {
 			return fmt.Errorf("[tcpServer]与客户端建立连接时发生错误: %s\n", err)
 		}
 		// 3. 使用 goroutine 处理连接，一个连接对应一个协程
-		go handleConnection(t.TcpServerConfig, conn, t.ChunkSequence)
+		go t.handleConnection(conn)
 	}
 }
 
@@ -88,4 +90,53 @@ func initSnapshotCollection(common *common.CommonConfig, v *viper.Viper) *model.
 		deviceSnapshot.InitPointPackage(common)
 	}
 	return &snapshotCollection
+}
+
+// handleConnection 处理连接, 一个连接对应一个协程
+func (t *ServerModel) handleConnection(conn net.Conn) {
+	defer func(conn net.Conn) {
+		err := conn.Close()
+		if err != nil {
+			common.Log.Infof("与" + conn.RemoteAddr().String() + "的连接已关闭")
+		}
+	}(conn)
+	frameContext := make(model.FrameContext)
+	// 1. 首先识别远端ip是哪个设备
+	remoteAddr := conn.RemoteAddr().String()
+	// 2. 连接花名作为变量（如果有）
+	if t.TcpServerConfig.TCPServer.IPAlias == nil {
+		// 2.1 如果IPAlias为空，则不需要进行识别
+		common.Log.Infof("IPAlias为空")
+	} else {
+		// 2.2 如果IPAlias不为空，放入变量中
+		deviceId, exists := t.TcpServerConfig.TCPServer.IPAlias[remoteAddr]
+		if !exists {
+			common.Log.Errorf("%s 地址不在配置清单中", remoteAddr)
+			return
+		} else {
+			result := new(interface{})
+			*result = deviceId
+			frameContext["deviceId"] = result
+		}
+	}
+	// 3. 设置超时时间
+	err := conn.SetReadDeadline(time.Now().Add(t.TcpServerConfig.TCPServer.Timeout))
+	if err != nil {
+		common.Log.Infof(conn.RemoteAddr().String() + "超时时间设置失败, 连接关闭")
+		return
+	}
+	// 4. 初始化reader开始读数据
+	reader := bufio.NewReader(conn)
+	for {
+		// **** 读取与解析数据流程 ****
+		// 4.1 处理所有的 Chunk
+		for index, chunk := range t.ChunkSequence.Chunks {
+			err := chunk.Process(reader)
+			if err != nil {
+				common.Log.Errorf("[handleConnection]解析第 %d 个 Chunk 失败: %s\n", index, err)
+			}
+		}
+		// 4.2 发射所有的快照
+		t.snapShotCollection.LaunchALL()
+	}
 }

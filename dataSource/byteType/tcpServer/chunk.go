@@ -11,9 +11,6 @@ import (
 	"strings"
 )
 
-// FrameContext 每一帧中, 也就是多Chunks共享的上下文
-type FrameContext map[string]*interface{}
-
 // Chunk 处理器接口
 type Chunk interface {
 	Process(reader io.Reader) error
@@ -22,7 +19,7 @@ type Chunk interface {
 
 type ChunkSequence struct {
 	Chunks     []Chunk `mapstructure:"chunks"`
-	VarPointer FrameContext
+	VarPointer model.FrameContext
 }
 
 // Process 方法：处理整个 ChunkSequence
@@ -52,7 +49,7 @@ func (c *ChunkSequence) String() string {
 type FixedLengthChunk struct {
 	Length     *int
 	Sections   []Section
-	VarPointer *FrameContext
+	VarPointer *model.FrameContext
 }
 
 // 为 FixedLengthChunk 实现 String 方法，打印指针指向的值
@@ -128,7 +125,11 @@ func (f *FixedLengthChunk) Process(reader io.Reader) error {
 			}
 			// 2.4 设备快照更新逻辑
 			// 注，这里的ToDeviceName是包含${}的，需要解析
-			model.GetDeviceSnapshot(sec.ToDeviceName, sec.ToDeviceType).UpdateDeviceSnapshot(decoded)
+			tarSnapshot := model.GetDeviceSnapshot(sec.ToDeviceName, sec.ToDeviceType)
+			tarSnapshot.SetDeviceName(f.VarPointer)
+			for index, field := range sec.FieldTarget {
+				tarSnapshot.SetField(field, decoded[index])
+			}
 		}
 	}
 
@@ -139,7 +140,7 @@ func (f *FixedLengthChunk) Process(reader io.Reader) error {
 type ConditionalChunk struct {
 	ConditionField string           `mapstructure:"condition_field"`
 	Choices        map[string]Chunk `mapstructure:"choices"`
-	VarPointer     *FrameContext
+	VarPointer     *model.FrameContext
 	Sections       []Section
 }
 
@@ -160,6 +161,7 @@ type Section struct {
 	ToDeviceName string
 	ToDeviceType string
 	PointTarget  []*interface{} // 解码后变量的最终去向
+	FieldTarget  []string
 }
 
 // InitChunks 从配置文件初始化 Chunk
@@ -167,7 +169,7 @@ func InitChunks(v *viper.Viper) (ChunkSequence, error) {
 
 	var chunkSequence = ChunkSequence{
 		make([]Chunk, 0),
-		make(FrameContext),
+		make(model.FrameContext),
 	}
 	chunks := v.Sub("TcpProto").Get("chunks").([]interface{})
 	for _, chunk := range chunks {
@@ -183,7 +185,7 @@ func InitChunks(v *viper.Viper) (ChunkSequence, error) {
 }
 
 // createChunk 根据 chunkType 动态创建对应的 Chunk
-func createChunk(chunkMap map[string]interface{}, context *FrameContext) (Chunk, error) {
+func createChunk(chunkMap map[string]interface{}, context *model.FrameContext) (Chunk, error) {
 	switch chunkType := chunkMap["type"].(string); chunkType {
 	case "FixedLengthChunk":
 		var fixedChunkConfig FixedChunkConfig
@@ -228,6 +230,7 @@ func createChunk(chunkMap map[string]interface{}, context *FrameContext) (Chunk,
 				ToDeviceName: section.To.DeviceName,
 				ToDeviceType: section.To.DeviceType,
 				PointTarget:  make([]*interface{}, 0),
+				FieldTarget:  section.To.Fields,
 			}
 			// 初始化For指针变量
 			for _, varName := range section.For.VarName {
@@ -252,7 +255,7 @@ func createChunk(chunkMap map[string]interface{}, context *FrameContext) (Chunk,
 			fixedChunk.Sections = append(fixedChunk.Sections, tmpSec)
 		}
 
-		// 将 FrameContext 指针赋值给 FixedLengthChunk
+		// 将 model.FrameContext 指针赋值给 FixedLengthChunk
 		fixedChunk.VarPointer = context
 		return &fixedChunk, nil
 
@@ -267,7 +270,7 @@ func createChunk(chunkMap map[string]interface{}, context *FrameContext) (Chunk,
 }
 
 // parseIntVariable 从字符串中提取变量名, 若无变量则返回原始值
-func parseIntVariable(context *FrameContext, value interface{}) (*int, error) {
+func parseIntVariable(context *model.FrameContext, value interface{}) (*int, error) {
 	// 假设占位符格式为 ${var_name}，我们去掉 "${" 和 "}" 并返回中间的部分
 	switch value.(type) {
 	case int:
