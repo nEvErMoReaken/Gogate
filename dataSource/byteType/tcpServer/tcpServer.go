@@ -135,15 +135,19 @@ func (t *ServerModel) handleConnection(conn net.Conn) {
 		case <-t.chDone:
 			return
 		default:
+			// 4.0 Frame 数组，用于存储一帧原始报文
+			frame := make([]byte, 0)
 			// 4.1 处理所有的 Chunk
 			for index, chunk := range t.ChunkSequence.Chunks {
-				err := chunk.Process(reader)
+				err := chunk.Process(reader, &frame)
 				if err != nil {
 					common.Log.Errorf("[handleConnection]解析第 %d 个 Chunk 失败: %s\n", index, err)
 				}
 			}
 			// 4.2 发射所有的快照
 			t.snapShotCollection.LaunchALL()
+			// 4.3 打印原始报文
+			common.Log.Infof("[frame]: %s", frame)
 		}
 	}
 }

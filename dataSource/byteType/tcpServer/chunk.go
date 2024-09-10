@@ -13,7 +13,7 @@ import (
 
 // Chunk 处理器接口
 type Chunk interface {
-	Process(reader io.Reader) error
+	Process(reader io.Reader, frame *[]byte) error
 	String() string // 添加 String 方法
 }
 
@@ -23,11 +23,11 @@ type ChunkSequence struct {
 }
 
 // Process 方法：处理整个 ChunkSequence
-func (c *ChunkSequence) Process(reader io.Reader) error {
+func (c *ChunkSequence) Process(reader io.Reader, frame *[]byte) error {
 
 	// 处理每一个 Chunk
 	for _, chunk := range c.Chunks {
-		err := chunk.Process(reader) // 传递共享的上下文
+		err := chunk.Process(reader, frame) // 传递共享的上下文
 		if err != nil {
 			return err
 		}
@@ -90,12 +90,13 @@ func (f *FixedLengthChunk) String() string {
 	return fmt.Sprintf("FixedLengthChunk:\n  Length=%s\n  Sections:\n%s", lengthVal, sectionsStr)
 }
 
-func (f *FixedLengthChunk) Process(reader io.Reader) error {
+func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte) error {
 	common.Log.Debugf("Processing FixedLengthChunk")
 	// ～～～ 定长块的处理逻辑 ～～～
 	// 1. 读取固定长度数据
 	data := make([]byte, *f.Length)
 	_, err := io.ReadFull(reader, data)
+	*frame = append(*frame, data...)
 	if err != nil {
 		return err
 	}
@@ -144,7 +145,7 @@ type ConditionalChunk struct {
 	Sections       []Section
 }
 
-func (c *ConditionalChunk) Process(reader io.Reader) error {
+func (c *ConditionalChunk) Process(reader io.Reader, frame *[]byte) error {
 	fmt.Println("Processing ConditionalChunk")
 	// 动态选择下一个 Chunk 解析逻辑
 	return nil
