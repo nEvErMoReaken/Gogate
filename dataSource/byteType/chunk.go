@@ -90,9 +90,20 @@ func (f *FixedLengthChunk) String() string {
 		}
 		pointTargetStr += "]"
 
+		// 打印 FieldTarget 列表
+		fieldTargetStr := "["
+		for j, field := range sec.FieldTarget {
+			fieldTargetStr += field
+			if j < len(sec.FieldTarget)-1 {
+				fieldTargetStr += ", "
+			}
+		}
+		fieldTargetStr += "]"
+
+		// 拼接 Section 的详细信息
 		sectionsStr += fmt.Sprintf(
-			"  Section %d: Repeat=%s (Addr: %s), Length=%d, Decoding Addr=%s, DeviceName=%s, DeviceType=%s, PointTarget=%s\n",
-			i+1, repeatVal, repeatAddr, sec.Length, decodingAddr, sec.ToDeviceName, sec.ToDeviceType, pointTargetStr)
+			"  Section %d: Repeat=%s (Addr: %s), Length=%d, Decoding Addr=%s, DeviceName=%s, DeviceType=%s, PointTarget=%s, FieldTarget=%s\n",
+			i+1, repeatVal, repeatAddr, sec.Length, decodingAddr, sec.ToDeviceName, sec.ToDeviceType, pointTargetStr, fieldTargetStr)
 	}
 
 	// 打印整个结构体信息
@@ -151,7 +162,7 @@ func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte) error {
 				*pt = decoded[i]
 			}
 			// 2.4 设备快照更新逻辑
-			// 注，这里的ToDeviceName是包含${}的，需要解析
+			// 注，这里的ToDeviceName是可能包含${}的，需要解析
 			tarSnapshot := model.GetDeviceSnapshot(sec.ToDeviceName, sec.ToDeviceType)
 			tarSnapshot.SetDeviceName(f.VarPointer)
 			for index, field := range sec.FieldTarget {
