@@ -14,6 +14,8 @@ script:
   dir: ./script
   methods:
     - Decode8BToInt
+    - Decode8BitTo1Int
+
 
 connector:
   type: tcpServer

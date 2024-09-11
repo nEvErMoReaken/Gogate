@@ -60,7 +60,7 @@ func (c *ChunkSequence) String() string {
 
 // FixedLengthChunk 实现
 type FixedLengthChunk struct {
-	Length     *int
+	Length     *interface{}
 	Sections   []Section
 	VarPointer *model.FrameContext
 }
@@ -127,7 +127,7 @@ func (f *FixedLengthChunk) String() string {
 func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte, collection *model.SnapshotCollection) error {
 	// ～～～ 定长块的处理逻辑 ～～～
 	// 1. 读取固定长度数据
-	data := make([]byte, *f.Length)
+	data := make([]byte, (*f.Length).(int))
 	n, err := io.ReadFull(reader, data)
 	if err != nil {
 		// 处理 EOF 错误
@@ -137,7 +137,7 @@ func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte, collection *
 		return fmt.Errorf("读取错误: %v", err)
 	}
 	// 处理部分读取
-	if n < *f.Length {
+	if n < (*f.Length).(int) {
 		common.Log.Warnf("只读取了 %d 字节，而不是期望的 %d 字节", n, *f.Length)
 	}
 	// 定长Chunk可以直接追加到frame中
@@ -146,7 +146,7 @@ func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte, collection *
 	common.Log.Debugf("Processing FixedLengthChunk")
 	cursor := 0
 	for index, sec := range f.Sections {
-		for i := 0; i < *sec.Repeat; i++ {
+		for i := 0; i < (*sec.Repeat).(int); i++ {
 			// 2.1. 根据Sec的length解码
 			if sec.Decoding == nil {
 				common.Log.Debugf("Step.%+v: Loop.%+v: Jump For %+v Byte", index+1, i+1, sec.Length)
@@ -172,7 +172,11 @@ func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte, collection *
 			// v2 -> vobc_speed2,
 			// v3 -> vobc_speed3
 			// 变量后续用于For(如果有的话）, 供后续Section使用
+			if len(sec.PointTarget) != 0 && len(sec.PointTarget) != len(decoded) {
+				return fmt.Errorf("解码后的数据长度与PointTarget长度不匹配, %d != %d", len(decoded), len(sec.PointTarget))
+			}
 			for i, pt := range sec.PointTarget {
+
 				*pt = decoded[i]
 			}
 			// 2.4 设备快照更新逻辑
@@ -182,13 +186,18 @@ func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte, collection *
 			}
 			tarSnapshot := collection.GetDeviceSnapshot(sec.ToDeviceName, sec.ToDeviceType)
 			tarSnapshot.SetDeviceName(f.VarPointer)
+			if len(decoded) != len(sec.FieldTarget) {
+				return fmt.Errorf("解码后的数据长度与FieldTarget长度不匹配, %d != %d", len(decoded), len(sec.FieldTarget))
+			}
 			for index, field := range sec.FieldTarget {
 				tarSnapshot.SetField(field, decoded[index])
 			}
 			tarSnapshot.Ts = (*(*f.VarPointer)["ts"]).(time.Time)
 		}
 	}
-
+	if cursor != len(data) {
+		common.Log.Warnf("游标未到达数据末尾，有漏数据的风险。游标位置：%d，数据长度：%d", cursor, len(data))
+	}
 	return nil
 }
 
@@ -211,7 +220,7 @@ func (c *ConditionalChunk) String() string {
 }
 
 type Section struct {
-	Repeat       *int
+	Repeat       *interface{}
 	Length       int
 	Decoding     util.ScriptFunc
 	ToDeviceName string
@@ -260,7 +269,7 @@ func createChunk(chunkMap map[string]interface{}, context *model.FrameContext) (
 			}
 		}
 
-		var length, err1 = parseIntVariable(context, fixedChunkConfig.Length)
+		var length, err1 = parseVariable(context, fixedChunkConfig.Length)
 		if err1 != nil {
 			return nil, fmt.Errorf("[createChunk]failed to parse length: %v", err1)
 		}
@@ -272,7 +281,7 @@ func createChunk(chunkMap map[string]interface{}, context *model.FrameContext) (
 		}
 		// 初始化Section
 		for _, section := range fixedChunkConfig.Sections {
-			var tmpRepeat, err = parseIntVariable(context, section.From.Repeat)
+			var tmpRepeat, err = parseVariable(context, section.From.Repeat)
 			if err != nil {
 				return nil, fmt.Errorf("[createChunk]failed to parse repeat: %v", err)
 			}
@@ -292,23 +301,11 @@ func createChunk(chunkMap map[string]interface{}, context *model.FrameContext) (
 			}
 			// 初始化For指针变量
 			for _, varName := range section.For.VarName {
-				switch section.For.Type {
-				case "string":
-					varFor := new(string)
-					// 将 *string 转为 interface{}
-					varForInterface := interface{}(varFor)
-					// 双向绑定逻辑：将变量指针存入Section中
-					tmpSec.PointTarget = append(tmpSec.PointTarget, &varForInterface)
-					// 将变量指针存入context中
-					(*context)[varName] = &varForInterface
-				case "int":
-					varFor := new(int)
-					// 将 *int 转为 interface{}
-					varForInterface := interface{}(varFor)
-					tmpSec.PointTarget = append(tmpSec.PointTarget, &varForInterface)
-					(*context)[varName] = &varForInterface
-				}
-
+				varFor := new(interface{})
+				// 双向绑定逻辑：将变量指针存入Section中
+				tmpSec.PointTarget = append(tmpSec.PointTarget, varFor)
+				// 将变量指针存入context中
+				(*context)[varName] = varFor
 			}
 			fixedChunk.Sections = append(fixedChunk.Sections, tmpSec)
 		}
@@ -327,30 +324,23 @@ func createChunk(chunkMap map[string]interface{}, context *model.FrameContext) (
 	}
 }
 
-// parseIntVariable 从字符串中提取变量名, 若无变量则返回原始值
-func parseIntVariable(context *model.FrameContext, value interface{}) (*int, error) {
+// parseVariable 从字符串中提取变量名, 若无变量则返回原始值
+func parseVariable(context *model.FrameContext, value interface{}) (*interface{}, error) {
 	// 假设占位符格式为 ${var_name}，我们去掉 "${" 和 "}" 并返回中间的部分
 	switch value.(type) {
 	case int:
-		result := new(int)
-		*result = value.(int)
+		result := new(interface{})
+		*result = value
 		return result, nil
 	case string:
 		var sValue = value.(string)
 		if strings.HasPrefix(sValue, "${") && strings.HasSuffix(sValue, "}") {
 			var varName = sValue[2 : len(sValue)-1]
+			//fmt.Println(varName)
 			// 从 context 中查找对应的变量
 			if contextVar, ok := (*context)[varName]; ok {
 				// 检查 contextVar 是否非空并且是 *int
-				if contextVar != nil {
-					if lengthPtr, ok := (*contextVar).(*int); ok {
-						return lengthPtr, nil
-					} else {
-						return nil, fmt.Errorf("context variable '%s' is not of type *int", varName)
-					}
-				} else {
-					return nil, fmt.Errorf("context variable '%s' is nil", varName)
-				}
+				return contextVar, nil
 			} else {
 				return nil, fmt.Errorf("variable '%s' not found in context", varName)
 			}

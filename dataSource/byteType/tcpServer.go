@@ -96,7 +96,7 @@ func initSnapshotCollection(comm *common.Config, v *viper.Viper, protoFile strin
 				continue
 			}
 			deviceSnapshot := snapshotCollection.GetDeviceSnapshot(toMap["device"].(string), toMap["type"].(string))
-			common.Log.Debugf("1111: %+v", snapshotCollection)
+			common.Log.Debugf("snapshotCollection: %+v", snapshotCollection)
 			for _, field := range toMap["fields"].([]interface{}) {
 				deviceSnapshot.SetField(field.(string), nil)
 			}

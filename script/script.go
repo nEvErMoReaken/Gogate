@@ -22,3 +22,15 @@ func Decode8BToInt(data []byte) ([]interface{}, error) {
 	}
 	return result, nil
 }
+
+// Decode8BitTo1Int 将 8 位的数据转换为 1 位的数据, 例如 0x02 -> 2 结果放入一个长度为1的数组
+func Decode8BitTo1Int(data []byte) ([]interface{}, error) {
+	if len(data) == 0 {
+		return nil, fmt.Errorf("input data is empty")
+	}
+	// 只处理第一个字节的数据，转换为 int
+	result := int(data[0])
+
+	// 将结果放入一个长度为 1 的 interface{} 数组
+	return []interface{}{result}, nil
+}
