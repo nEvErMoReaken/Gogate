@@ -13,26 +13,31 @@ import (
 
 // Chunk 处理器接口
 type Chunk interface {
-	Process(reader io.Reader, frame *[]byte) error
+	Process(reader io.Reader, frame *[]byte, collection *model.SnapshotCollection) error
 	String() string // 添加 String 方法
 }
 
 type ChunkSequence struct {
-	Chunks     []Chunk `mapstructure:"chunks"`
-	VarPointer model.FrameContext
+	Chunks             []Chunk `mapstructure:"chunks"`
+	VarPointer         model.FrameContext
+	snapShotCollection *model.SnapshotCollection // 快照集合
 }
 
 // Process 方法：处理整个 ChunkSequence
-func (c *ChunkSequence) Process(reader io.Reader, frame *[]byte) error {
-
+func (c *ChunkSequence) Process(deviceId string, reader io.Reader, frame *[]byte) {
 	// 处理每一个 Chunk
-	for _, chunk := range c.Chunks {
-		err := chunk.Process(reader, frame) // 传递共享的上下文
+	for index, chunk := range c.Chunks {
+		err := chunk.Process(reader, frame, c.snapShotCollection)
 		if err != nil {
-			return err
+			if err == io.EOF {
+				common.Log.Infof("[%s] 客户端断开连接: %s", deviceId, err)
+				return // 客户端断开连接，优雅地结束
+			}
+			common.Log.Errorf("[HandleConnection] 解析第 %d 个 Chunk 失败: %s", index+1, err)
+			return // 其他错误，终止连接
 		}
 	}
-	return nil
+	// 到此位置时 所有快照更新完毕
 }
 
 // ChunkSequence 的 String 方法
@@ -110,7 +115,7 @@ func (f *FixedLengthChunk) String() string {
 	return fmt.Sprintf("FixedLengthChunk:\n  Length=%s\n  Sections:\n%s", lengthVal, sectionsStr)
 }
 
-func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte) error {
+func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte, collection *model.SnapshotCollection) error {
 	// ～～～ 定长块的处理逻辑 ～～～
 	// 1. 读取固定长度数据
 	data := make([]byte, *f.Length)
@@ -163,7 +168,10 @@ func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte) error {
 			}
 			// 2.4 设备快照更新逻辑
 			// 注，这里的ToDeviceName是可能包含${}的，需要解析
-			tarSnapshot := model.GetDeviceSnapshot(sec.ToDeviceName, sec.ToDeviceType)
+			if sec.ToDeviceType == "" || sec.ToDeviceName == "" {
+				continue
+			}
+			tarSnapshot := collection.GetDeviceSnapshot(sec.ToDeviceName, sec.ToDeviceType)
 			tarSnapshot.SetDeviceName(f.VarPointer)
 			for index, field := range sec.FieldTarget {
 				tarSnapshot.SetField(field, decoded[index])
@@ -182,7 +190,7 @@ type ConditionalChunk struct {
 	Sections       []Section
 }
 
-func (c *ConditionalChunk) Process(reader io.Reader, frame *[]byte) error {
+func (c *ConditionalChunk) Process(reader io.Reader, frame *[]byte, collection *model.SnapshotCollection) error {
 	fmt.Println("Processing ConditionalChunk")
 	// 动态选择下一个 Chunk 解析逻辑
 	return nil
@@ -207,6 +215,7 @@ func InitChunks(v *viper.Viper, protoFile string) (ChunkSequence, error) {
 	var chunkSequence = ChunkSequence{
 		make([]Chunk, 0),
 		make(model.FrameContext),
+		nil,
 	}
 	fmt.Println(protoFile)
 	chunks := v.Sub(protoFile).Get("chunks").([]interface{})

@@ -27,19 +27,16 @@ type FrameContext map[string]*interface{}
 // SnapshotCollection 代表设备快照的集合
 type SnapshotCollection map[string]*DeviceSnapshot
 
-// snapshotCollection 用于缓存设备快照，key 为设备名称和设备类型的组合，value 为设备快照
-var snapshotCollection = make(SnapshotCollection)
-
 // GetDeviceSnapshot 获取设备快照，如果设备快照已经存在，则直接返回，否则创建一个新的设备快照
-func GetDeviceSnapshot(templateDeviceName string, deviceType string) *DeviceSnapshot {
+func (sc *SnapshotCollection) GetDeviceSnapshot(templateDeviceName string, deviceType string) *DeviceSnapshot {
 
 	// 如果设备快照已经存在，则直接返回
-	if snapshot, exists := snapshotCollection[templateDeviceName+":"+deviceType]; exists {
+	if snapshot, exists := (*sc)[templateDeviceName+":"+deviceType]; exists {
 		return snapshot
 	}
 	// 如果设备快照不存在，则创建一个新的设备快照并返回
 	newSnapshot := NewSnapshot(templateDeviceName, deviceType)
-	snapshotCollection[templateDeviceName+":"+deviceType] = newSnapshot
+	(*sc)[templateDeviceName+":"+deviceType] = newSnapshot
 	return newSnapshot
 }
 
