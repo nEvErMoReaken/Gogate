@@ -10,13 +10,13 @@ import (
 var Log *zap.SugaredLogger
 
 // InitLogger initializes the common
-func InitLogger(filename string, maxSize, maxBackups, maxAge int, compress bool) {
+func InitLogger(logConfig *LogConfig) {
 	lumberJackLogger := &lumberjack.Logger{
-		Filename:   filename,
-		MaxSize:    maxSize,    // megabytes
-		MaxBackups: maxBackups, // number of backups
-		MaxAge:     maxAge,     // days
-		Compress:   compress,   // compress old logs
+		Filename:   logConfig.LogPath,    // 日志文件路径
+		MaxSize:    logConfig.MaxSize,    // megabytes
+		MaxBackups: logConfig.MaxBackups, // number of backups
+		MaxAge:     logConfig.MaxAge,     // days
+		Compress:   logConfig.Compress,   // compress old logs
 		LocalTime:  true,
 	}
 
@@ -45,8 +45,14 @@ func InitLogger(filename string, maxSize, maxBackups, maxAge int, compress bool)
 	// 创建一个控制台编码器，带有自定义的日志格式
 	encoder := zapcore.NewConsoleEncoder(encoderConfig)
 
+	// 通过level参数创建zapcore
+	// 解析日志级别
+	var level zapcore.Level
+	if err := level.UnmarshalText([]byte(logConfig.Level)); err != nil {
+		level = zap.InfoLevel // 默认日志级别为 InfoLevel
+	}
 	// 创建一个核心，它将所有日志写入 combinedSyncer
-	core := zapcore.NewCore(encoder, combinedSyncer, zap.InfoLevel)
+	core := zapcore.NewCore(encoder, combinedSyncer, level)
 
 	// 创建 Logger 并添加调用者信息和堆栈跟踪
 	logger := zap.New(core, zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel))

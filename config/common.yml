@@ -8,7 +8,7 @@ log:
   max_age: 30
   # Compress：是否压缩/归档旧文件
   compress: true
-  level: info
+  level: debug
 
 script:
   dir: ./script

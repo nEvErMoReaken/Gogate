@@ -100,7 +100,6 @@ func (f *FixedLengthChunk) String() string {
 }
 
 func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte) error {
-	common.Log.Debugf("Processing FixedLengthChunk")
 	// ～～～ 定长块的处理逻辑 ～～～
 	// 1. 读取固定长度数据
 	data := make([]byte, *f.Length)
@@ -119,12 +118,13 @@ func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte) error {
 	// 定长Chunk可以直接追加到frame中
 	*frame = append(*frame, data...)
 	// 2. 解析数据
+	common.Log.Debugf("Processing FixedLengthChunk")
 	cursor := 0
-	for _, sec := range f.Sections {
+	for index, sec := range f.Sections {
 		for i := 0; i < *sec.Repeat; i++ {
 			// 2.1. 根据Sec的length解码
-
 			if sec.Decoding == nil {
+				common.Log.Debugf("Step.%+v: Loop.%+v: Jump For %+v Byte", index+1, i+1, sec.Length)
 				// 如果没有解码函数，直接跳过
 				cursor += sec.Length
 				continue
@@ -133,6 +133,7 @@ func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte) error {
 				return fmt.Errorf("游标超出数据长度")
 			}
 			decoded, err := sec.Decoding(data[cursor : cursor+sec.Length])
+			common.Log.Debugf("Step.%+v: Loop.%+v: Decoded: %v Byte to %+v", index+1, i+1, sec.Length, decoded)
 			if err != nil {
 				return err
 			}
