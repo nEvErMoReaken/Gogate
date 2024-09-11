@@ -32,7 +32,6 @@ func (c *ChunkSequence) Process(reader io.Reader, frame *[]byte) error {
 			return err
 		}
 	}
-
 	return nil
 }
 
@@ -105,13 +104,20 @@ func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte) error {
 	// ～～～ 定长块的处理逻辑 ～～～
 	// 1. 读取固定长度数据
 	data := make([]byte, *f.Length)
-	_, err := io.ReadFull(reader, data)
+	n, err := io.ReadFull(reader, data)
+	if err != nil {
+		// 处理 EOF 错误
+		if err == io.EOF {
+			return err
+		}
+		return fmt.Errorf("读取错误: %v", err)
+	}
+	// 处理部分读取
+	if n < *f.Length {
+		common.Log.Warnf("只读取了 %d 字节，而不是期望的 %d 字节", n, *f.Length)
+	}
 	// 定长Chunk可以直接追加到frame中
 	*frame = append(*frame, data...)
-	// 将字节数组以 EFEFEF 形式打印
-	if err != nil {
-		return err
-	}
 	// 2. 解析数据
 	cursor := 0
 	for _, sec := range f.Sections {

@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/viper"
 	"gw22-train-sam/common"
 	"gw22-train-sam/model"
+	"io"
 	"log"
 	"net"
 	"time"
@@ -103,7 +104,7 @@ func (t *ServerModel) HandleConnection(conn net.Conn) {
 	defer func(conn net.Conn) {
 		err := conn.Close()
 		if err != nil {
-			common.Log.Infof("与" + conn.RemoteAddr().String() + "的连接已关闭")
+			common.Log.Infof("与 %s 的连接已关闭", conn.RemoteAddr().String())
 		}
 	}(conn)
 	frameContext := make(model.FrameContext)
@@ -121,7 +122,7 @@ func (t *ServerModel) HandleConnection(conn net.Conn) {
 		var exists bool
 		deviceId, exists = t.TcpServerConfig.TCPServer.IPAlias[remoteAddr]
 		if !exists {
-			common.Log.Errorf("%s 地址不在配置清单中", remoteAddr)
+			common.Log.Errorf("未在配置清单中找到地址: %s", remoteAddr)
 			return
 		} else {
 			result := new(interface{})
@@ -132,7 +133,7 @@ func (t *ServerModel) HandleConnection(conn net.Conn) {
 	// 3. 设置超时时间
 	err := conn.SetReadDeadline(time.Now().Add(t.TcpServerConfig.TCPServer.Timeout))
 	if err != nil {
-		common.Log.Infof(conn.RemoteAddr().String() + "超时时间设置失败, 连接关闭")
+		common.Log.Infof("超时时间设置失败，关闭连接: %s", conn.RemoteAddr().String())
 		return
 	}
 	// 4. 初始化reader开始读数据
@@ -148,7 +149,12 @@ func (t *ServerModel) HandleConnection(conn net.Conn) {
 			for index, chunk := range t.ChunkSequence.Chunks {
 				err := chunk.Process(reader, &frame)
 				if err != nil {
-					common.Log.Errorf("[HandleConnection]解析第 %d 个 Chunk 失败: %s\n", index+1, err)
+					if err == io.EOF {
+						common.Log.Infof("[%s] 客户端断开连接: %s", deviceId, err)
+						return // 客户端断开连接，优雅地结束
+					}
+					common.Log.Errorf("[HandleConnection] 解析第 %d 个 Chunk 失败: %s", index+1, err)
+					return // 其他错误，终止连接
 				}
 			}
 			// 4.2 发射所有的快照
