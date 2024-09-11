@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/google/uuid"
 	"gw22-train-sam/common"
@@ -57,6 +58,49 @@ func NewSnapshot(tempName, deviceType string) *DeviceSnapshot {
 		Fields:             make(map[string]interface{}),
 		PointMap:           make(map[string]*PointPackage),
 	}
+}
+
+// toJSON 将 DeviceSnapshot 转换为 JSON 格式的字符串
+func (dm *DeviceSnapshot) toJSON() string {
+	// 创建一个临时结构体，用来序列化成 JSON
+	type jsonSnapshot struct {
+		ID                 uuid.UUID              `json:"id"`
+		TemplateDeviceName string                 `json:"template_device_name"`
+		DeviceName         string                 `json:"device_name"`
+		DeviceType         string                 `json:"device_type"`
+		Fields             map[string]interface{} `json:"fields"`
+		PointMap           map[string][]string    `json:"point_map"` // 用来存储数据点和策略映射
+		Timestamp          string                 `json:"timestamp"`
+	}
+
+	// 将 PointMap 转换为简单的形式
+	pointMap := make(map[string][]string)
+	for pointName, pp := range dm.PointMap {
+		pointMap[pointName] = []string{
+			*pp.Point.DeviceName,
+			*pp.Point.DeviceType,
+			pp.Point.Ts.Format(time.RFC3339),
+		}
+	}
+
+	// 创建序列化时使用的快照结构体
+	jsonStruct := jsonSnapshot{
+		ID:                 dm.id,
+		TemplateDeviceName: dm.TemplateDeviceName,
+		DeviceName:         dm.DeviceName,
+		DeviceType:         dm.DeviceType,
+		Fields:             dm.Fields,
+		PointMap:           pointMap,
+		Timestamp:          dm.Ts.Format(time.RFC3339),
+	}
+
+	// 序列化为 JSON 字符串
+	jsonBytes, err := json.MarshalIndent(jsonStruct, "", "  ")
+	if err != nil {
+		return fmt.Sprintf("error serializing DeviceSnapshot to JSON: %v", err)
+	}
+
+	return string(jsonBytes)
 }
 
 // InitPointPackage 初始化设备快照的数据点映射结构
@@ -165,6 +209,7 @@ func (dm *DeviceSnapshot) Equal(other *DeviceSnapshot) bool {
 
 // launch 发射所有数据点
 func (dm *DeviceSnapshot) launch() {
+	common.Log.Info(dm.toJSON())
 	for _, pp := range dm.PointMap {
 		pp.launch()
 	}
