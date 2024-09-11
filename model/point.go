@@ -7,7 +7,7 @@ import (
 // SendStrategy 定义了所有发送策略的通用接口
 type SendStrategy interface {
 	Start()
-	GetChan() chan Point // 提供访问 chan 的方法
+	GetChan() chan *Point // 提供访问 chan 的方法
 }
 
 // Point 代表发送到数据源的一个数据点
@@ -26,5 +26,35 @@ type PointPackage struct {
 
 // launch 发射数据点
 func (pp *PointPackage) launch() {
-	pp.Strategy.GetChan() <- pp.Point
+	// 发送深拷贝的 Point
+	pointCopy := DeepCopyPoint(pp.Point)
+	pp.Strategy.GetChan() <- &pointCopy
+}
+
+// DeepCopyPoint 深拷贝 Point 对象
+func DeepCopyPoint(original Point) Point {
+	// 复制 DeviceName
+	deviceNameCopy := *original.DeviceName
+
+	// 复制 DeviceType
+	deviceTypeCopy := *original.DeviceType
+
+	// 复制 Field，创建一个新的 map 并复制每个 *interface{}
+	fieldCopy := make(map[string]*interface{})
+	for key, valuePtr := range original.Field {
+		if valuePtr != nil {
+			valueCopy := *valuePtr
+			fieldCopy[key] = &valueCopy
+		}
+	}
+
+	// 复制时间戳
+	tsCopy := *original.Ts
+
+	return Point{
+		DeviceName: &deviceNameCopy,
+		DeviceType: &deviceTypeCopy,
+		Field:      fieldCopy,
+		Ts:         &tsCopy,
+	}
 }

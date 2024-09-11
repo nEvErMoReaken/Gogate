@@ -16,7 +16,7 @@ func init() {
 }
 
 // GetChan Step.2
-func (b *InfluxDbStrategy) GetChan() chan model.Point {
+func (b *InfluxDbStrategy) GetChan() chan *model.Point {
 	return b.pointChan
 }
 
@@ -30,7 +30,7 @@ func (b *InfluxDbStrategy) Start() {
 			b.writeAPI.Flush() // 在停止时强制刷新所有数据
 			return
 		case point := <-b.pointChan:
-			b.Publish(&point)
+			b.Publish(point)
 		}
 	}
 }
@@ -38,7 +38,7 @@ func (b *InfluxDbStrategy) Start() {
 // InfluxDbStrategy 实现将数据发布到 InfluxDB 的逻辑
 type InfluxDbStrategy struct {
 	client    influxdb2.Client
-	pointChan chan model.Point
+	pointChan chan *model.Point
 	stopChan  chan struct{}
 	writeAPI  api.WriteAPI
 }
@@ -71,7 +71,7 @@ func NewInfluxDbStrategy(dbConfig *common.StrategyConfig, stopChan chan struct{}
 		}
 	}()
 	return &InfluxDbStrategy{
-		pointChan: make(chan model.Point, 200), // 容量为200的通道
+		pointChan: make(chan *model.Point, 200), // 容量为200的通道
 		stopChan:  stopChan,
 		client:    client,
 		writeAPI:  writeAPI,
@@ -80,7 +80,7 @@ func NewInfluxDbStrategy(dbConfig *common.StrategyConfig, stopChan chan struct{}
 
 func (b *InfluxDbStrategy) Publish(point *model.Point) {
 	// ～～～将数据发布到 InfluxDB 的逻辑～～～
-	common.Log.Debugf("正在发送 %+v", *point)
+	common.Log.Debugf("正在发送 %+v", point)
 
 	// 创建一个新的 map[string]interface{} 来存储解引用的字段
 	decodedFields := make(map[string]interface{})
@@ -88,10 +88,18 @@ func (b *InfluxDbStrategy) Publish(point *model.Point) {
 	// 遍历 Field 中的所有键值对并解引用 *interface{}
 	for key, valuePtr := range point.Field {
 		if valuePtr != nil {
-			decodedFields[key] = *valuePtr // 解引用 *interface{}
+			value := *valuePtr
+			switch v := value.(type) {
+			case int, int64, float64, string, bool:
+				decodedFields[key] = v
+			default:
+				common.Log.Warnf("Unsupported field type for key %s: %T", key, value)
+				decodedFields[key] = nil // 或者跳过该字段
+			}
 		}
 	}
-	common.Log.Debugf("正在发送 %+v", decodedFields)
+
+	//common.Log.Debugf("正在发送 %+v", decodedFields)
 	// 创建一个数据点
 	p := influxdb2.NewPoint(
 		*point.DeviceType, // measurement
@@ -101,9 +109,10 @@ func (b *InfluxDbStrategy) Publish(point *model.Point) {
 		decodedFields, // fields (converted)
 		*point.Ts,     // timestamp
 	)
-
+	common.Log.Debugf("正在发送 ,%+v,%+v,%+v,%+v", *point.DeviceType, *point.DeviceName, decodedFields, *point.Ts)
 	// 写入到 InfluxDB
 	b.writeAPI.WritePoint(p)
+
 }
 
 // Stop 停止 InfluxDBStrategy

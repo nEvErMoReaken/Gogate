@@ -16,7 +16,7 @@ type DeviceSnapshot struct {
 	TemplateDeviceName string                   // 模板设备名称，例如 "vobc${id}.abc"
 	DeviceName         string                   // 设备名称，例如 "vobc0001.abc"
 	DeviceType         string                   // 设备类型，例如 "vobc.info"
-	Fields             map[string]interface{}   // 字段存储，key 为字段名称，value 为字段值
+	Fields             map[string]*interface{}  // 字段存储，key 为字段名称，value 为字段值
 	PointMap           map[string]*PointPackage // 数据点映射，key 为策略名称，value 为数据点，仅为了方便查找
 	Ts                 time.Time                // 时间戳
 }
@@ -52,7 +52,7 @@ func NewSnapshot(tempName, deviceType string) *DeviceSnapshot {
 		id:                 newID,
 		TemplateDeviceName: tempName,
 		DeviceType:         deviceType,
-		Fields:             make(map[string]interface{}),
+		Fields:             make(map[string]*interface{}),
 		PointMap:           make(map[string]*PointPackage),
 	}
 }
@@ -61,13 +61,13 @@ func NewSnapshot(tempName, deviceType string) *DeviceSnapshot {
 func (dm *DeviceSnapshot) toJSON() string {
 	// 创建一个临时结构体，用来序列化成 JSON
 	type jsonSnapshot struct {
-		ID                 uuid.UUID              `json:"id"`
-		TemplateDeviceName string                 `json:"template_device_name"`
-		DeviceName         string                 `json:"device_name"`
-		DeviceType         string                 `json:"device_type"`
-		Fields             map[string]interface{} `json:"fields"`
-		PointMap           map[string][]string    `json:"point_map"` // 用来存储数据点和策略映射
-		Timestamp          string                 `json:"timestamp"`
+		ID                 uuid.UUID               `json:"id"`
+		TemplateDeviceName string                  `json:"template_device_name"`
+		DeviceName         string                  `json:"device_name"`
+		DeviceType         string                  `json:"device_type"`
+		Fields             map[string]*interface{} `json:"fields"`
+		PointMap           map[string][]string     `json:"point_map"` // 用来存储数据点和策略映射
+		Timestamp          string                  `json:"timestamp"`
 	}
 
 	// 将 PointMap 转换为简单的形式
@@ -116,8 +116,8 @@ func (dm *DeviceSnapshot) InitPointPackage(common *common.Config) {
 							Point: Point{
 								DeviceName: &dm.DeviceName,
 								DeviceType: &dm.DeviceType,
-								Field:      map[string]*interface{}{fieldKey: &fieldValue}, // 引用字段
-								Ts:         &dm.Ts,                                         // 使用快照的时间戳引用
+								Field:      map[string]*interface{}{fieldKey: fieldValue}, // 引用字段
+								Ts:         &dm.Ts,                                        // 使用快照的时间戳引用
 							},
 							Strategy: st,
 						}
@@ -128,7 +128,7 @@ func (dm *DeviceSnapshot) InitPointPackage(common *common.Config) {
 							pointPackage.Point.Field = make(map[string]*interface{})
 						}
 						// 更新 PointPackage 中的字段引用
-						pointPackage.Point.Field[fieldKey] = &fieldValue
+						pointPackage.Point.Field[fieldKey] = fieldValue
 					}
 				}
 			}
@@ -189,9 +189,19 @@ func (dm *DeviceSnapshot) SetDeviceName(context *FrameContext) {
 	common.Log.Debugf("渲染后：SetDeviceName: %v", dm.DeviceName)
 }
 
-// SetField 设置或更新字段值
+// SetField 设置或更新字段值，支持将值存储为指针
 func (dm *DeviceSnapshot) SetField(fieldName string, value interface{}) {
-	dm.Fields[fieldName] = value
+	// 如果fileds中已经存在该字段，则更新字段值，不创建新的指针
+	if _, exists := dm.Fields[fieldName]; exists {
+		*dm.Fields[fieldName] = value
+		return
+	} else {
+		// 将传入的值转换为指针
+		ptr := new(interface{})
+		*ptr = value
+		// 将指针存入 Fields
+		dm.Fields[fieldName] = ptr
+	}
 }
 
 // GetField 获取字段值

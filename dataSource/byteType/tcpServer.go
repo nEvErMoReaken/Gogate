@@ -103,11 +103,12 @@ func initSnapshotCollection(comm *common.Config, v *viper.Viper, protoFile strin
 			common.Log.Debugf("deviceSnapshot: %+v", deviceSnapshot)
 		}
 	}
-	common.Log.Debugf("初始化设备快照成功: %+v", snapshotCollection)
 	// 初始化发送策略
 	for _, deviceSnapshot := range snapshotCollection {
 		deviceSnapshot.InitPointPackage(comm)
+		//common.Log.Debugf("初始化PointMap成功: %+v", deviceSnapshot.PointMap["influxdb"])
 	}
+	common.Log.Debugf("初始化设备快照成功: %+v", snapshotCollection)
 	return &snapshotCollection
 }
 
