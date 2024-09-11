@@ -29,7 +29,7 @@ type ScriptConfig struct {
 }
 
 type Config struct {
-	Log       LogConfig        `mapstructure:"log"`
+	LogConfig LogConfig        `mapstructure:"log"`
 	Script    ScriptConfig     `mapstructure:"script"`
 	Connector ConnectorConfig  `mapstructure:"connector"`
 	Strategy  []StrategyConfig `mapstructure:"strategy"`

@@ -7,12 +7,12 @@ import (
 // StFactoryFunc 代表一个发送策略的工厂函数
 type StFactoryFunc func(*common.StrategyConfig, chan struct{}) SendStrategy
 
-// 全局工厂映射，用于注册不同策略类型的构造函数
-var strategyFactories = make(map[string]StFactoryFunc)
+// StrategyFactories 全局工厂映射，用于注册不同策略类型的构造函数
+var StrategyFactories = make(map[string]StFactoryFunc)
 
 // RegisterStrategy 注册一个发送策略
 func RegisterStrategy(strategyType string, factory StFactoryFunc) {
-	strategyFactories[strategyType] = factory
+	StrategyFactories[strategyType] = factory
 }
 
 // MapSendStrategy 代表发送策略集
@@ -25,7 +25,7 @@ func InitMapSendStrategy(common *common.Config, stopChan chan struct{}) {
 	SendStrategyMap = make(MapSendStrategy)
 	for _, strategyConfig := range common.Strategy {
 		if strategyConfig.Enable {
-			if factory, exists := strategyFactories[strategyConfig.Type]; exists {
+			if factory, exists := StrategyFactories[strategyConfig.Type]; exists {
 				strategy := factory(&strategyConfig, stopChan)
 				SendStrategyMap[strategyConfig.Type] = strategy
 			}
@@ -40,7 +40,8 @@ func GetStrategy(strategyType string) SendStrategy {
 
 // StartALL 启动所有发送策略
 func (m MapSendStrategy) StartALL() {
-	for _, strategy := range m {
+	for name, strategy := range m {
+		common.Log.Info("-----正在启动策略：", name)
 		go strategy.Start()
 	}
 }

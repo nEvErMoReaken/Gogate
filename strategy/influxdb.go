@@ -6,7 +6,6 @@ import (
 	"github.com/mitchellh/mapstructure"
 	"gw22-train-sam/common"
 	"gw22-train-sam/model"
-	"log"
 )
 
 // 拓展数据源步骤
@@ -24,6 +23,7 @@ func (b *InfluxDbStrategy) GetChan() chan model.Point {
 // Start Step.3
 func (b *InfluxDbStrategy) Start() {
 	defer b.client.Close()
+	common.Log.Info("InfluxDBStrategy started")
 	for {
 		select {
 		case <-b.stopChan:
@@ -57,7 +57,7 @@ func NewInfluxDbStrategy(dbConfig *common.StrategyConfig, stopChan chan struct{}
 	var info infoType
 	// 将 map 转换为结构体
 	if err := mapstructure.Decode(dbConfig.Config, &info); err != nil {
-		log.Fatalf("[NewInfluxDbStrategy] Error decoding map to struct: %v", err)
+		common.Log.Fatalf("[NewInfluxDbStrategy] Error decoding map to struct: %v", err)
 	}
 	client := influxdb2.NewClientWithOptions(info.URL, info.Token, influxdb2.DefaultOptions().SetBatchSize(info.BatchSize))
 	// 获取写入 API

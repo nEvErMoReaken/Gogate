@@ -24,11 +24,11 @@ func main() {
 	}
 	// 2. 初始化log
 	common.InitLogger(
-		comConfig.Log.LogPath,
-		comConfig.Log.MaxSize,
-		comConfig.Log.MaxBackups,
-		comConfig.Log.MaxAge,
-		comConfig.Log.Compress,
+		comConfig.LogConfig.LogPath,
+		comConfig.LogConfig.MaxSize,
+		comConfig.LogConfig.MaxBackups,
+		comConfig.LogConfig.MaxAge,
+		comConfig.LogConfig.Compress,
 	)
 	defer func(logger *zap.SugaredLogger) {
 		err := logger.Sync()

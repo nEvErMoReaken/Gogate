@@ -19,7 +19,7 @@ connector:
   type: tcpServer
 
 strategy:
-  - type: influxDB
+  - type: influxdb
     enable: true
     url: http://10.17.191.107:8086
     token: mK_0NkLVPW8THIYkn52eqr7enL6IinGp8d5xbXizO1mVxAEk_EuOFxZ9OKWYcwVgi2XmogD6iPcO9KQ8ToVvtQ==
