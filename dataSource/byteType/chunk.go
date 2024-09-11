@@ -9,6 +9,7 @@ import (
 	"gw22-train-sam/util"
 	"io"
 	"strings"
+	"time"
 )
 
 // Chunk 处理器接口
@@ -23,21 +24,29 @@ type ChunkSequence struct {
 	snapShotCollection *model.SnapshotCollection // 快照集合
 }
 
-// Process 方法：处理整个 ChunkSequence
-func (c *ChunkSequence) Process(deviceId string, reader io.Reader, frame *[]byte) {
+// ProcessAll 方法：处理整个 ChunkSequence
+func (c *ChunkSequence) ProcessAll(deviceId string, reader io.Reader, frame *[]byte) error {
+	// 初始化一些变量
+	// deviceId
+	result := new(interface{})
+	*result = deviceId
+	c.VarPointer["deviceId"] = result
+	// ts
+	timeNow := new(interface{})
+	*timeNow = time.Now()
+	c.VarPointer["ts"] = timeNow
 	// 处理每一个 Chunk
 	for index, chunk := range c.Chunks {
 		err := chunk.Process(reader, frame, c.snapShotCollection)
 		if err != nil {
 			if err == io.EOF {
-				common.Log.Infof("[%s] 客户端断开连接: %s", deviceId, err)
-				return // 客户端断开连接，优雅地结束
+				return err
 			}
-			common.Log.Errorf("[HandleConnection] 解析第 %d 个 Chunk 失败: %s", index+1, err)
-			return // 其他错误，终止连接
+			return fmt.Errorf("[HandleConnection] 解析第 %d 个 Chunk 失败: %s", index+1, err) // 其他错误，终止连接
 		}
 	}
 	// 到此位置时 所有快照更新完毕
+	return nil
 }
 
 // ChunkSequence 的 String 方法
@@ -176,6 +185,7 @@ func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte, collection *
 			for index, field := range sec.FieldTarget {
 				tarSnapshot.SetField(field, decoded[index])
 			}
+			tarSnapshot.Ts = (*(*f.VarPointer)["ts"]).(time.Time)
 		}
 	}
 

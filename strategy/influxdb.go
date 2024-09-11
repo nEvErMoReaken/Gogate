@@ -80,6 +80,7 @@ func NewInfluxDbStrategy(dbConfig *common.StrategyConfig, stopChan chan struct{}
 
 func (b *InfluxDbStrategy) Publish(point *model.Point) {
 	// ～～～将数据发布到 InfluxDB 的逻辑～～～
+	common.Log.Debugf("正在发送 %+v", *point)
 
 	// 创建一个新的 map[string]interface{} 来存储解引用的字段
 	decodedFields := make(map[string]interface{})
@@ -90,7 +91,7 @@ func (b *InfluxDbStrategy) Publish(point *model.Point) {
 			decodedFields[key] = *valuePtr // 解引用 *interface{}
 		}
 	}
-
+	common.Log.Debugf("正在发送 %+v", decodedFields)
 	// 创建一个数据点
 	p := influxdb2.NewPoint(
 		*point.DeviceType, // measurement

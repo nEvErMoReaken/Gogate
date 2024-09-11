@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/viper"
 	"gw22-train-sam/common"
 	"gw22-train-sam/model"
+	"io"
 	"log"
 	"net"
 	"time"
@@ -118,7 +119,6 @@ func (t *ServerModel) HandleConnection(conn net.Conn) {
 			common.Log.Infof("与 %s 的连接已关闭", conn.RemoteAddr().String())
 		}
 	}(conn)
-	frameContext := make(model.FrameContext)
 	// 1. 首先识别远端ip是哪个设备
 	remoteAddrWithPort := conn.RemoteAddr().String()
 	var deviceId = remoteAddrWithPort
@@ -135,10 +135,6 @@ func (t *ServerModel) HandleConnection(conn net.Conn) {
 		if !exists {
 			common.Log.Errorf("未在配置清单中找到地址: %s", remoteAddr)
 			return
-		} else {
-			result := new(interface{})
-			*result = deviceId
-			frameContext["deviceId"] = result
 		}
 	}
 	// 3. 设置超时时间
@@ -154,14 +150,19 @@ func (t *ServerModel) HandleConnection(conn net.Conn) {
 		case <-t.ChDone:
 			return
 		default:
-			// 4.0 Frame 数组，用于存储一帧原始报文
+			// 4.1 Frame 数组，用于存储一帧原始报文
 			frame := make([]byte, 0)
-			// 4.1 设置默认时间
-			timeNow := new(interface{})
-			*timeNow = time.Now()
-			frameContext["ts"] = timeNow
 			// 4.2 处理所有的 Chunk 并更新快照
-			t.ChunkSequence.Process(deviceId, reader, &frame)
+			err = t.ChunkSequence.ProcessAll(deviceId, reader, &frame)
+			if err != nil {
+				if err == io.EOF {
+					common.Log.Infof("[%s] 客户端断开连接: %s", deviceId, err)
+					return // 客户端断开连接，优雅地结束
+				}
+				common.Log.Error(err)
+				return
+			}
+
 			// 4.3 发射所有的快照
 			t.ChunkSequence.snapShotCollection.LaunchALL()
 			// 4.4 打印原始报文
