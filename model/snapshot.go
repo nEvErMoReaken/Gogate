@@ -169,6 +169,13 @@ func checkFilter(deviceType, templateDeviceName, telemetryName, filter string) b
 
 // SetDeviceName 通过传入字符串替换模板设备名称
 func (dm *DeviceSnapshot) SetDeviceName(context *FrameContext) {
+	// 如果不包含${}，则直接返回
+	if !strings.Contains(dm.TemplateDeviceName, "${") {
+		common.Log.Debugf("模板名称无需渲染: DeviceName: %v", dm.TemplateDeviceName)
+		dm.DeviceName = dm.TemplateDeviceName
+		return
+	}
+	common.Log.Debugf("模板名称渲染: SetDeviceName: %v", dm.TemplateDeviceName)
 	// 例，将 "vobc${id}.abc" 替换为 "vobc context["id"].abc"
 	// 1. 通过正则表达式匹配模板设备名称中的 ${id} 字符串
 	re := regexp.MustCompile(`\${(.*?)}`)
@@ -182,6 +189,7 @@ func (dm *DeviceSnapshot) SetDeviceName(context *FrameContext) {
 		// 5. 替换模板设备名称中的变量
 		dm.DeviceName = strings.Replace(dm.TemplateDeviceName, match, fmt.Sprintf("%v", varValue), -1)
 	}
+	common.Log.Debugf("渲染后：SetDeviceName: %v", dm.DeviceName)
 }
 
 // SetField 设置或更新字段值
