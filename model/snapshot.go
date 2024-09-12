@@ -84,22 +84,18 @@ func NewSnapshot(deviceName string, deviceType string) *DeviceSnapshot {
 func (dm *DeviceSnapshot) toJSON() string {
 	// 创建一个临时结构体，用来序列化成 JSON
 	type jsonSnapshot struct {
-		ID         uuid.UUID               `json:"id"`
-		DeviceName string                  `json:"device_name"`
-		DeviceType string                  `json:"device_type"`
-		Fields     map[string]*interface{} `json:"fields"`
-		PointMap   map[string][]string     `json:"point_map"` // 用来存储数据点和策略映射
-		Timestamp  string                  `json:"timestamp"`
+		ID         uuid.UUID                          `json:"id"`
+		DeviceName string                             `json:"device_name"`
+		DeviceType string                             `json:"device_type"`
+		Fields     map[string]*interface{}            `json:"fields"`
+		PointMap   map[string]map[string]*interface{} `json:"point_map"` // 用来存储数据点和策略映射
+		Timestamp  string                             `json:"timestamp"`
 	}
 
 	// 将 PointMap 转换为简单的形式
-	pointMap := make(map[string][]string)
-	for pointName, pp := range dm.PointMap {
-		pointMap[pointName] = []string{
-			*pp.Point.DeviceName,
-			*pp.Point.DeviceType,
-			pp.Point.Ts.Format(time.RFC3339),
-		}
+	pointMap := make(map[string]map[string]*interface{})
+	for key, value := range dm.PointMap {
+		pointMap[key] = value.Point.Field
 	}
 
 	// 创建序列化时使用的快照结构体
@@ -159,7 +155,7 @@ func (dm *DeviceSnapshot) InitPointPackage(fieldKey string, common *common.Confi
 
 // checkFilter 根据filter推断Strategies
 // 定义设备类型、设备名称、遥测名称的匹配
-func checkFilter(deviceType, templateDeviceName, telemetryName, filter string) bool {
+func checkFilter(deviceType, deviceName, telemetryName, filter string) bool {
 	// 解析过滤语法，语法为：<设备类型>:<设备名称>:<遥测名称>
 	parts := strings.Split(filter, ":")
 	if len(parts) != 3 {
@@ -178,10 +174,12 @@ func checkFilter(deviceType, templateDeviceName, telemetryName, filter string) b
 		fmt.Printf("Error compiling regex: %v, %v, %v\n", err1, err2, err3)
 		return false
 	}
-
+	common.Log.Debugf("deviceType: %s, DeviceName: %s, telemetryName: %s", deviceType, deviceName, telemetryName)
+	// 打印匹配结果
+	common.Log.Debugf("deviceType: %v, deviceName: %v, telemetryName: %v\n", deviceTypeRe.MatchString(deviceType), deviceNameRe.MatchString(deviceName), telemetryRe.MatchString(telemetryName))
 	// 分别匹配设备类型、设备名称和遥测名称
 	return deviceTypeRe.MatchString(deviceType) &&
-		deviceNameRe.MatchString(templateDeviceName) &&
+		deviceNameRe.MatchString(deviceName) &&
 		telemetryRe.MatchString(telemetryName)
 }
 

@@ -198,9 +198,9 @@ func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte, collection *
 			tarSnapshot.Ts = (*(*f.VarPointer)["ts"]).(time.Time)
 		}
 	}
-	if cursor != len(data) {
-		common.Log.Warnf("游标未到达数据末尾，有漏数据的风险。游标位置：%d，数据长度：%d", cursor, len(data))
-	}
+	//if cursor != len(data) {
+	//	common.Log.Warnf("游标未到达数据末尾，有漏数据的风险。游标位置：%d，数据长度：%d", cursor, len(data))
+	//}
 	return nil
 }
 
@@ -282,7 +282,7 @@ func InitChunks(v *viper.Viper, protoFile string) (ChunkSequence, error) {
 
 		chunkSequence.Chunks = append(chunkSequence.Chunks, tmpChunk)
 	}
-	common.Log.Infof("ChunkSequence 初始化成功 %+v", chunkSequence)
+	common.Log.Infof("ChunkSequence 初始化成功:\n %+v", chunkSequence)
 	return chunkSequence, nil
 }
 

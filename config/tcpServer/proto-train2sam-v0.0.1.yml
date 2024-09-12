@@ -1,32 +1,70 @@
 proto-train2sam-v0.0.1:
   chunks:
     - type: FixedLengthChunk
-      length: 76 # 预解析的长度，必填项
+      length: 1
+    - type: FixedLengthChunk
+      length: 1
       sections:
         - from: # 没有解码方式的即为不用处理，jump即可
-            byte: 72
-          decoding:
-            method: "Decode8BitTo1Id"
-          for:
-            varName:
-              - id
-        - from:
-            byte: 2
+            byte: 1
           decoding:
             method: "Decode8BToInt"
           to:
-            device: "vobc000${id}"
+            device: "vobc0001"
             type: "vobc.info"
             fields:
-              - RIOM_sta_1 # 使用占位符表示当前索引
-              - RIOM_sta_2 # 使用占位符表示当前索引
-              - RIOM_sta_3 # 使用占位符表示当前索引
-              - RIOM_sta_4 # 使用占位符表示当前索引
-              - RIOM_sta_5 # 使用占位符表示当前索引
-              - RIOM_sta_6 # 使用占位符表示当前索引
-              - RIOM_sta_7 # 使用占位符表示当前索引
-              - RIOM_sta_8 # 使用占位符表示当前索引
-          desc: "帧长度 长度由字节69开始计算" #字段说明
+              - RIOM_sta_1
+              - RIOM_sta_2
+              - RIOM_sta_3
+              - RIOM_sta_4
+              - RIOM_sta_5
+              - RIOM_sta_6
+              - RIOM_sta_7
+              - RIOM_sta_8
+#          for:
+#            varName:
+#              - id
+#        - from:
+#            byte: 2
+#          decoding:
+#            method: "BytesToBigEndianInt"
+#          for:
+#            varName:
+#              - len
+#        - from:
+#            byte: 2
+#    - type: FixedLengthChunk
+#      length: ${len} # 预解析的长度，必填项
+#      sections:
+#        - from: # 没有解码方式的即为不用处理，jump即可
+#            byte: 72
+#          decoding:
+#            method: "Decode8BitTo1Id"
+#          for:
+#            varName:
+#              - id
+#        - from:
+#            byte: 2
+#          decoding:
+#            method: "BytesToBigEndianInt"
+#          for:
+#            varName:
+#              - len
+#        - from:
+#            byte: 2
+#          to:
+#            device: "vobc000${id}"
+#            type: "vobc.info"
+#            fields:
+#              - RIOM_sta_1
+#              - RIOM_sta_2
+#              - RIOM_sta_3
+#              - RIOM_sta_4
+#              - RIOM_sta_5
+#              - RIOM_sta_6
+#              - RIOM_sta_7
+#              - RIOM_sta_8
+#          desc: "帧长度 长度由字节69开始计算" #字段说明
 #            byte: 2  # 字节长度
 #          decoding:
 #            method:
