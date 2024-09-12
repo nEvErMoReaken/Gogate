@@ -5,8 +5,30 @@ import (
 	"strconv"
 )
 
-// Decode8BToInt DecodeFrame takes a byte slice as input and returns the decoded value
-func Decode8BToInt(data []byte) ([]interface{}, error) {
+// DecodeByteToLittleEndianBits 将字节数组解析为小端序位数组
+func DecodeByteToLittleEndianBits(data []byte) ([]interface{}, error) {
+	// 错误检查，确保输入字节数组非空
+	if len(data) == 0 {
+		return nil, fmt.Errorf("[Decode8BToLittleEndianBits] 输入字节数组为空")
+	}
+
+	// 结果数组，长度是输入字节数组的8倍（每个字节包含8个位）
+	result := make([]interface{}, 0, len(data)*8)
+
+	// 遍历每个字节，从低位到高位（小端序），依次提取每个位
+	for _, b := range data {
+		for i := 0; i < 8; i++ { // 小端序：从低位到高位依次提取位
+			// 提取第 i 位
+			bit := (b >> i) & 0x01
+			// 将提取到的位放入结果数组
+			result = append(result, int(bit))
+		}
+	}
+	return result, nil
+}
+
+// DecodeByteToBigEndianBits DecodeFrame takes a byte slice as input and returns the decoded value
+func DecodeByteToBigEndianBits(data []byte) ([]interface{}, error) {
 	// 错误检查
 	if len(data) == 0 {
 		return nil, fmt.Errorf("[Decode8BToInt]输入字节数组为空")

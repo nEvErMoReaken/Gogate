@@ -73,7 +73,7 @@ func (t *ServerModel) Close() error {
 	return nil
 }
 
-// @deprecated initSnapshotCollection 初始化设备快照的数据点映射
+// @Deprecated initSnapshotCollection 初始化设备快照的数据点映射
 func initSnapshotCollection(comm *common.Config, v *viper.Viper, protoFile string) *model.SnapshotCollection {
 	snapshotCollection := make(model.SnapshotCollection)
 	// 遍历所有的 PreParsing 和 Parsing 步骤，初始化设备快照
@@ -135,6 +135,10 @@ func (t *ServerModel) HandleConnection(conn net.Conn, chunkSequence *ChunkSequen
 			common.Log.Errorf("未在配置清单中找到地址: %s", remoteAddr)
 			return
 		}
+		// deviceId 是string 转 *interface{}
+		// 将 string 转换为 interface{}，然后创建指针
+		var deviceIdInterface interface{} = deviceId
+		chunkSequence.VarPointer["device_id"] = &deviceIdInterface
 	}
 	// 3. 设置超时时间
 	err := conn.SetReadDeadline(time.Now().Add(t.TcpServerConfig.TCPServer.Timeout))

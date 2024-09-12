@@ -9,15 +9,8 @@ proto-train2sam-v0.0.1:
             byte: 2
           decoding:
             method: "BytesToBigEndianInt"
-          for:
-            varName:
-              - id
-        - from:
-            byte: 2
-          decoding:
-            method: "BytesToBigEndianInt"
           to:
-            device: "proto"
+            device: "${device_id}"
             type: "info"
             fields:
               - ver
@@ -26,31 +19,25 @@ proto-train2sam-v0.0.1:
         - from:
             byte: 1
           decoding:
-            method: "Decode8BToInt"
+            method: "DecodeByteToLittleEndianBits"
           to:
-            device: "status"
+            device: "${device_id}"
             type: "info"
             fields:
-              - RIOM_sta_${1..8}
+              - RIOM_sta_{1..8}
           desc: "帧长度 长度由字节69开始计算" #字段说明
         - from:
             byte: 14
         - from:
             byte: 1
           decoding:
-            method: "Decode8BToInt"
+            method: "DecodeByteToLittleEndianBits"
           to:
-            device: "status"
+            device: "${device_id}"
             type: "traction_system"
             fields:
-              - RIOM_sta_1
-              - RIOM_sta_2
-              - RIOM_sta_3
-              - RIOM_sta_4
-              - RIOM_sta_5
-              - RIOM_sta_6
-              - RIOM_sta_7
-              - RIOM_sta_8
+              - field_{1..4}
+
 
 
 
