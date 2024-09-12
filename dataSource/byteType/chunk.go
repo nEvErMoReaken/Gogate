@@ -8,13 +8,14 @@ import (
 	"gw22-train-sam/model"
 	"gw22-train-sam/util"
 	"io"
+	"regexp"
 	"strings"
 	"time"
 )
 
 // Chunk 处理器接口
 type Chunk interface {
-	Process(reader io.Reader, frame *[]byte, collection *model.SnapshotCollection) error
+	Process(reader io.Reader, frame *[]byte, collection *model.SnapshotCollection, config *common.Config) error
 	String() string // 添加 String 方法
 }
 
@@ -25,7 +26,7 @@ type ChunkSequence struct {
 }
 
 // ProcessAll 方法：处理整个 ChunkSequence
-func (c *ChunkSequence) ProcessAll(deviceId string, reader io.Reader, frame *[]byte) error {
+func (c *ChunkSequence) ProcessAll(deviceId string, reader io.Reader, frame *[]byte, config *common.Config) error {
 	// 初始化一些变量
 	// deviceId
 	result := new(interface{})
@@ -37,7 +38,7 @@ func (c *ChunkSequence) ProcessAll(deviceId string, reader io.Reader, frame *[]b
 	c.VarPointer["ts"] = timeNow
 	// 处理每一个 Chunk
 	for index, chunk := range c.Chunks {
-		err := chunk.Process(reader, frame, c.snapShotCollection)
+		err := chunk.Process(reader, frame, c.snapShotCollection, config)
 		if err != nil {
 			if err == io.EOF {
 				return err
@@ -124,7 +125,7 @@ func (f *FixedLengthChunk) String() string {
 	return fmt.Sprintf("FixedLengthChunk:\n  Length=%s\n  Sections:\n%s", lengthVal, sectionsStr)
 }
 
-func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte, collection *model.SnapshotCollection) error {
+func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte, collection *model.SnapshotCollection, config *common.Config) error {
 	// ～～～ 定长块的处理逻辑 ～～～
 	// 1. 读取固定长度数据
 	data := make([]byte, (*f.Length).(int))
@@ -184,13 +185,15 @@ func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte, collection *
 			if sec.ToDeviceType == "" || sec.ToDeviceName == "" {
 				continue
 			}
-			tarSnapshot := collection.GetDeviceSnapshot(sec.ToDeviceName, sec.ToDeviceType)
-			tarSnapshot.SetDeviceName(f.VarPointer)
+
+			parsedToDeviceName := sec.parseToDeviceName(f.VarPointer)
+			tarSnapshot := collection.GetDeviceSnapshot(parsedToDeviceName, sec.ToDeviceType)
+
 			if len(decoded) != len(sec.FieldTarget) {
 				return fmt.Errorf("解码后的数据长度与FieldTarget长度不匹配, %d != %d", len(decoded), len(sec.FieldTarget))
 			}
 			for index, field := range sec.FieldTarget {
-				tarSnapshot.SetField(field, decoded[index])
+				tarSnapshot.SetField(field, decoded[index], config)
 			}
 			tarSnapshot.Ts = (*(*f.VarPointer)["ts"]).(time.Time)
 		}
@@ -209,7 +212,7 @@ type ConditionalChunk struct {
 	Sections       []Section
 }
 
-func (c *ConditionalChunk) Process(reader io.Reader, frame *[]byte, collection *model.SnapshotCollection) error {
+func (c *ConditionalChunk) Process(reader io.Reader, frame *[]byte, collection *model.SnapshotCollection, config *common.Config) error {
 	fmt.Println("Processing ConditionalChunk")
 	// 动态选择下一个 Chunk 解析逻辑
 	return nil
@@ -223,20 +226,52 @@ type Section struct {
 	Repeat       *interface{}
 	Length       int
 	Decoding     util.ScriptFunc
-	ToDeviceName string
+	ToDeviceName string // 这里的设备名称是带模板的，需要解析。例如 ecc_{vobc_id}
 	ToDeviceType string
 	PointTarget  []*interface{} // 解码后变量的最终去向
 	FieldTarget  []string
 }
 
+// 解析 ToDeviceName 中的模板变量
+func (s *Section) parseToDeviceName(context *model.FrameContext) string {
+	// 如果不包含模板变量，直接返回
+	if !strings.Contains(s.ToDeviceName, "${") {
+		return s.ToDeviceName
+	}
+	// 使用正则表达式提取模板中的变量
+	re := regexp.MustCompile(`\${(.*?)}`)
+	matches := re.FindAllStringSubmatch(s.ToDeviceName, -1)
+
+	// 将模板变量替换为 context 中对应的值
+	result := s.ToDeviceName
+	for _, match := range matches {
+		if len(match) > 1 {
+			// match[1] 是模板中的变量名
+			templateVar := match[1]
+			// 从 context 中查找变量的值
+			contextVar := (*context)[templateVar]
+			if contextVar != nil {
+				// 替换模板中的变量
+				result = strings.Replace(result, "${"+templateVar+"}", (*contextVar).(string), -1)
+			} else {
+				// 如果没有找到变量，可以考虑报错或使用默认值
+				common.Log.Errorf("模板变量 %s 未找到", templateVar)
+			}
+		}
+	}
+
+	return result
+}
+
 // InitChunks 从配置文件初始化 Chunk
 func InitChunks(v *viper.Viper, protoFile string) (ChunkSequence, error) {
+	// 初始化 SnapshotCollection
+	snapshotCollection := make(model.SnapshotCollection)
 	var chunkSequence = ChunkSequence{
 		make([]Chunk, 0),
 		make(model.FrameContext),
-		nil,
+		&snapshotCollection,
 	}
-	fmt.Println(protoFile)
 	chunks := v.Sub(protoFile).Get("chunks").([]interface{})
 	for _, chunk := range chunks {
 		// 动态处理不同的 chunkType，生成chunkSequence

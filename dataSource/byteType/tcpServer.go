@@ -13,10 +13,12 @@ import (
 )
 
 type ServerModel struct {
-	listener        net.Listener   // 监听器
-	TcpServerConfig *TcpServer     // 配置
-	ChunkSequence   *ChunkSequence // 解析序列
-	ChDone          chan struct{}  // 停止通道
+	listener        net.Listener // 监听器
+	TcpServerConfig *TcpServer   // 配置
+	//ChunkSequence   *ChunkSequence // 解析序列
+	ChDone chan struct{} // 停止通道
+	v      *viper.Viper
+	comm   *common.Config
 }
 
 func init() {
@@ -27,6 +29,8 @@ func NewTcpServer(comm *common.Config, v *viper.Viper, chDone chan struct{}) mod
 	// 0. 创建一个新的 ServerModel
 	tcpServer := &ServerModel{
 		ChDone: chDone,
+		v:      v,
+		comm:   comm,
 	}
 
 	// 1. 读取配置文件
@@ -42,14 +46,6 @@ func NewTcpServer(comm *common.Config, v *viper.Viper, chDone chan struct{}) mod
 	}
 	tcpServer.listener = listener
 
-	// 3. 初始化chunksSequence
-	chunks, err := InitChunks(v, TcpServerConfig.ProtoFile)
-	if err != nil {
-		log.Fatalf("[tcpServer]初始化解析序列失败: %s\n", err)
-	}
-	chunks.snapShotCollection = initSnapshotCollection(comm, v, tcpServer.TcpServerConfig.ProtoFile)
-	tcpServer.ChunkSequence = &chunks
-
 	return tcpServer
 }
 
@@ -63,7 +59,9 @@ func (t *ServerModel) Listen() error {
 			return fmt.Errorf("[tcpServer]与客户端建立连接时发生错误: %s\n", err)
 		}
 		// 3. 使用 goroutine 处理连接，一个连接对应一个协程
-		go t.HandleConnection(conn)
+		common.Log.Infof("与 %s 建立连接", conn.RemoteAddr().String())
+		chunks, err := InitChunks(t.v, t.TcpServerConfig.ProtoFile)
+		go t.HandleConnection(conn, &chunks)
 	}
 }
 
@@ -75,7 +73,7 @@ func (t *ServerModel) Close() error {
 	return nil
 }
 
-// initSnapshotCollection 初始化设备快照的数据点映射
+// @deprecated initSnapshotCollection 初始化设备快照的数据点映射
 func initSnapshotCollection(comm *common.Config, v *viper.Viper, protoFile string) *model.SnapshotCollection {
 	snapshotCollection := make(model.SnapshotCollection)
 	// 遍历所有的 PreParsing 和 Parsing 步骤，初始化设备快照
@@ -97,23 +95,23 @@ func initSnapshotCollection(comm *common.Config, v *viper.Viper, protoFile strin
 			}
 			deviceSnapshot := snapshotCollection.GetDeviceSnapshot(toMap["device"].(string), toMap["type"].(string))
 			common.Log.Debugf("snapshotCollection: %+v", snapshotCollection)
-			for _, field := range toMap["fields"].([]interface{}) {
-				deviceSnapshot.SetField(field.(string), nil)
-			}
+			//for _, field := range toMap["fields"].([]interface{}) {
+			//	//deviceSnapshot.SetField(field.(string), nil)
+			//}
 			common.Log.Debugf("deviceSnapshot: %+v", deviceSnapshot)
 		}
 	}
 	// 初始化发送策略
-	for _, deviceSnapshot := range snapshotCollection {
-		deviceSnapshot.InitPointPackage(comm)
-		//common.Log.Debugf("初始化PointMap成功: %+v", deviceSnapshot.PointMap["influxdb"])
-	}
+	//for _, deviceSnapshot := range snapshotCollection {
+	//	//deviceSnapshot.InitPointPackage(comm)
+	//	//common.Log.Debugf("初始化PointMap成功: %+v", deviceSnapshot.PointMap["influxdb"])
+	//}
 	common.Log.Debugf("初始化设备快照成功: %+v", snapshotCollection)
 	return &snapshotCollection
 }
 
 // HandleConnection 处理连接, 一个连接对应一个协程
-func (t *ServerModel) HandleConnection(conn net.Conn) {
+func (t *ServerModel) HandleConnection(conn net.Conn, chunkSequence *ChunkSequence) {
 	defer func(conn net.Conn) {
 		err := conn.Close()
 		if err != nil {
@@ -154,7 +152,7 @@ func (t *ServerModel) HandleConnection(conn net.Conn) {
 			// 4.1 Frame 数组，用于存储一帧原始报文
 			frame := make([]byte, 0)
 			// 4.2 处理所有的 Chunk 并更新快照
-			err = t.ChunkSequence.ProcessAll(deviceId, reader, &frame)
+			err = chunkSequence.ProcessAll(deviceId, reader, &frame, t.comm)
 			if err != nil {
 				if err == io.EOF {
 					common.Log.Infof("[%s] 客户端断开连接: %s", deviceId, err)
@@ -165,7 +163,7 @@ func (t *ServerModel) HandleConnection(conn net.Conn) {
 			}
 
 			// 4.3 发射所有的快照
-			t.ChunkSequence.snapShotCollection.LaunchALL()
+			chunkSequence.snapShotCollection.LaunchALL()
 			// 4.4 打印原始报文
 			hexString := ""
 			for _, b := range frame {
