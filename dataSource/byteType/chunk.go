@@ -189,11 +189,11 @@ func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte, collection *
 			parsedToDeviceName := sec.parseToDeviceName(f.VarPointer)
 			tarSnapshot := collection.GetDeviceSnapshot(parsedToDeviceName, sec.ToDeviceType)
 
-			if len(decoded) != len(sec.FieldTarget) {
-				return fmt.Errorf("解码后的数据长度与FieldTarget长度不匹配, %d != %d", len(decoded), len(sec.FieldTarget))
+			if len(decoded) < len(sec.FieldTarget) {
+				return fmt.Errorf("解码后的数据长度小于FieldTarget长度, %d != %d", len(decoded), len(sec.FieldTarget))
 			}
-			for index, field := range sec.FieldTarget {
-				tarSnapshot.SetField(field, decoded[index], config)
+			for index, de := range decoded {
+				tarSnapshot.SetField(sec.FieldTarget[index], de, config)
 			}
 			tarSnapshot.Ts = (*(*f.VarPointer)["ts"]).(time.Time)
 		}
