@@ -33,7 +33,7 @@ func main() {
 	common.Log.Infof("[main]配置&日志加载成功:当前Common配置为%+v", comConfig)
 
 	// 3. 初始化脚本模块
-	err = util.LoadAllScripts(comConfig.Script.ScriptDir, comConfig.Script.Methods)
+	err = util.LoadAllScripts(comConfig.Script.ScriptDir)
 	if err != nil {
 		common.Log.Errorf("[main]加载脚本失败: %s", err)
 	}

@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"github.com/traefik/yaegi/interp"
 	"github.com/traefik/yaegi/stdlib"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"gw22-train-sam/common"
 	"os"
 	"path/filepath"
@@ -14,8 +17,41 @@ type ScriptFunc func([]byte) ([]interface{}, error)
 // ScriptFuncCache 脚本函数缓存
 var ScriptFuncCache = make(map[string]ScriptFunc)
 
-// LoadAllScripts 函数：加载/script目录下的所有脚本并缓存
-func LoadAllScripts(scriptDir string, methods []string) error {
+// extractAndCacheFunctions 解析Go文件并缓存函数名
+func extractAndCacheFunctions(i *interp.Interpreter, path string, scriptContent []byte) error {
+	// 使用 go/parser 和 go/ast 解析 Go 源码文件
+	fset := token.NewFileSet()
+	node, err := parser.ParseFile(fset, path, scriptContent, parser.AllErrors)
+	if err != nil {
+		return fmt.Errorf("无法解析脚本文件 %s: %w", path, err)
+	}
+
+	// 遍历 AST，查找函数定义
+	for _, decl := range node.Decls {
+		// 仅处理函数声明
+		if fn, isFunc := decl.(*ast.FuncDecl); isFunc {
+			funcName := fn.Name.Name
+			// 从解释器中获取该函数
+			v, err := i.Eval("script." + funcName)
+			if err != nil {
+				common.Log.Errorf("[Warning]: 在已读取脚本中未找到 %s 方法 %v\n", funcName, err)
+				continue
+			}
+
+			// 确保函数签名匹配
+			if fnFunc, ok := v.Interface().(func([]byte) ([]interface{}, error)); ok {
+				ScriptFuncCache[funcName] = fnFunc // 缓存函数
+			} else {
+				common.Log.Errorf("[Warning]: %s 方法的签名与预期的 ScriptFunc 类型不匹配\n", funcName)
+			}
+		}
+	}
+
+	return nil
+}
+
+// LoadAllScripts 加载/script目录下的所有脚本并缓存
+func LoadAllScripts(scriptDir string) error {
 	// 初始化yaegi解释器
 	i := interp.New(interp.Options{})
 	err := i.Use(stdlib.Symbols)
@@ -41,27 +77,18 @@ func LoadAllScripts(scriptDir string, methods []string) error {
 			if err != nil {
 				return fmt.Errorf("解释脚本失败 %s: %w", path, err)
 			}
+
+			// 解析文件并提取函数名
+			err = extractAndCacheFunctions(i, path, scriptContent)
+			if err != nil {
+				return fmt.Errorf("提取函数失败 %s: %w", path, err)
+			}
 		}
 		return nil
 	})
 
 	if err != nil {
 		return err
-	}
-
-	// 脚本已经全部加载并解释，现在可以缓存其中的函数
-	for _, funcName := range methods {
-		v, err := i.Eval("script." + funcName)
-		if err != nil {
-			common.Log.Errorf("[Warning]: 在已读取脚本中未找到 %s 方法 %v\n", funcName, err)
-			continue
-		}
-		// 不再使用指针类型的断言，直接断言为 ScriptFunc 类型
-		if fn, ok := v.Interface().(func([]byte) ([]interface{}, error)); ok {
-			ScriptFuncCache[funcName] = fn // 缓存函数
-		} else {
-			common.Log.Errorf("[Warning]: %s 方法的签名与预期的 ScriptFunc 类型不匹配\n", funcName)
-		}
 	}
 
 	return nil

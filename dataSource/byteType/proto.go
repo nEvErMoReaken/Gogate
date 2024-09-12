@@ -16,7 +16,6 @@ type SectionConfig struct {
 }
 
 type ForConfig struct {
-	Type    string   `mapstructure:"type"`
 	VarName []string `mapstructure:"varName"`
 }
 type FromConfig struct {

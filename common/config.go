@@ -24,8 +24,7 @@ type LogConfig struct {
 }
 
 type ScriptConfig struct {
-	ScriptDir string   `mapstructure:"dir"`
-	Methods   []string `mapstructure:"methods"`
+	ScriptDir string `mapstructure:"dir"`
 }
 
 type Config struct {
