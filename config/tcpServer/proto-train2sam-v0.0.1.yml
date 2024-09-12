@@ -3,9 +3,9 @@ proto-train2sam-v0.0.1:
     - type: FixedLengthChunk
       length: 1245
       sections:
-        - from: # 没有解码方式的即为不用处理，jump即可
+        - from: # index 1-92
             byte: 92
-        - from:
+        - from: # index 93-94
             byte: 2
           decoding:
             method: "BytesToBigEndianInt"
@@ -14,9 +14,9 @@ proto-train2sam-v0.0.1:
             type: "info"
             fields:
               - ver
-        - from:
-            byte: 10
-        - from:
+        - from: # index 95-103
+            byte: 8
+        - from: # index 104
             byte: 1
           decoding:
             method: "DecodeByteToLittleEndianBits"
@@ -26,9 +26,9 @@ proto-train2sam-v0.0.1:
             fields:
               - RIOM_sta_{1..8}
           desc: "帧长度 长度由字节69开始计算" #字段说明
-        - from:
-            byte: 14
-        - from:
+        - from: # index 105-118
+            byte: 13
+        - from:  # index 119
             byte: 1
           decoding:
             method: "DecodeByteToLittleEndianBits"
@@ -37,6 +37,192 @@ proto-train2sam-v0.0.1:
             type: "traction_system"
             fields:
               - field_{1..4}
+              - nil
+              - nil
+              - field_{5..6}
+        - from:
+            byte: 1 # index 120
+          decoding:
+            method: "DecodeByteToLittleEndianBits"
+          to:
+            device: "${device_id}"
+            type: "traction_system"
+            fields:
+              - field_{7..14}
+        - from:
+            byte: 1 # index 121
+          decoding:
+            method: "DecodeByteToLittleEndianBits"
+          to:
+            device: "${device_id}"
+            type: "traction_system"
+            fields:
+              - field_{15..22}
+        - from:
+            byte: 1 # index 122
+          decoding:
+            method: "DecodeByteToLittleEndianBits"
+          to:
+            device: "${device_id}"
+            type: "traction_system"
+            fields:
+              - field_{23..30}
+        - from:
+            byte: 1 # index 123
+          decoding:
+            method: "DecodeByteToLittleEndianBits"
+          to:
+            device: "${device_id}"
+            type: "traction_system"
+            fields:
+              - field_{31..38}
+        - from:
+            byte: 1 # index 124
+          decoding:
+            method: "DecodeByteToLittleEndianBits"
+          to:
+            device: "${device_id}"
+            type: "traction_system"
+            fields:
+              - field_{39..41}
+              - nil
+              - field_{42..45}
+
+        - from:
+            byte: 1 # index 125
+          decoding:
+            method: "DecodeByteToLittleEndianBits"
+          to:
+            device: "${device_id}"
+            type: "traction_system"
+            fields:
+              - field_{46..52}
+              - nil
+        - from:
+            byte: 1 # index 126
+          decoding:
+            method: "DecodeByteToLittleEndianBits"
+          to:
+            device: "${device_id}"
+            type: "traction_system"
+            fields:
+              - field_{53..60}
+        - from:
+            byte: 1 # index 127
+          decoding:
+            method: "DecodeByteToLittleEndianBits"
+          to:
+            device: "${device_id}"
+            type: "traction_system"
+            fields:
+              - field_{61..68}
+        - from:
+            byte: 1 # index 128
+          decoding:
+            method: "DecodeByteToLittleEndianBits"
+          to:
+            device: "${device_id}"
+            type: "traction_system"
+            fields:
+              - field_{69..75}
+              - nil
+        - from:
+            byte: 1 # index 129
+          decoding:
+            method: "DecodeByteToLittleEndianBits"
+          to:
+            device: "${device_id}"
+            type: "traction_system"
+            fields:
+              - nil
+              - field_{76..82}
+        - from:
+            byte: 1 # index 130
+          decoding:
+            method: "DecodeByteToLittleEndianBits"
+          to:
+            device: "${device_id}"
+            type: "traction_system"
+            fields:
+              - field_{83..90}
+        - from:
+            byte: 1 # index 131
+          decoding:
+            method: "DecodeByteToLittleEndianBits"
+          to:
+            device: "${device_id}"
+            type: "traction_system"
+            fields:
+              - field_{91..98}
+        - from:
+            byte: 1 # index 132
+          decoding:
+            method: "DecodeByteToLittleEndianBits"
+          to:
+            device: "${device_id}"
+            type: "traction_system"
+            fields:
+              - field_{99..106}
+        - from:
+            byte: 1 # index 133
+          decoding:
+            method: "DecodeByteToLittleEndianBits"
+          to:
+            device: "${device_id}"
+            type: "traction_system"
+            fields:
+              - field_{107..114}
+        - from:
+            byte: 1 # index 134
+          decoding:
+            method: "DecodeByteToLittleEndianBits"
+          to:
+            device: "${device_id}"
+            type: "traction_system"
+            fields:
+              - field_{115..116}
+              - nil
+              - field_{117..121}
+        - from:
+            byte: 1 # index 135
+          decoding:
+            method: "DecodeByteToLittleEndianBits"
+          to:
+            device: "${device_id}"
+            type: "traction_system"
+            fields:
+              - field_{122..127}
+              - nil
+              - field_128
+        - from:
+            byte: 1 # index 136
+          decoding:
+            method: "DecodeByteToLittleEndianBits"
+          to:
+            device: "${device_id}"
+            type: "traction_system"
+            fields:
+              - field_{129..136}
+        - from:
+            byte: 1 # index 137
+          decoding:
+            method: "DecodeByteToLittleEndianBits"
+          to:
+            device: "${device_id}"
+            type: "traction_system"
+            fields:
+              - field_{137..144}
+        - from:
+            byte: 1 # index 138
+          decoding:
+            method: "DecodeByteToLittleEndianBits"
+          to:
+            device: "${device_id}"
+            type: "traction_system"
+            fields:
+              - field_{145..150}
+              - nil
+              - nil
 
 
 

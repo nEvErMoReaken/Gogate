@@ -364,21 +364,24 @@ func createChunk(chunkMap map[string]interface{}, context *model.FrameContext) (
 				ToDeviceName: section.To.DeviceName,
 				ToDeviceType: section.To.DeviceType,
 				PointTarget:  make([]*interface{}, 0),
-				FieldTarget:  nil,
+				FieldTarget:  make([]string, 0),
 			}
-			// 如果 section.To.Fields 中是 "field${1..8}" 形式
-			if len(section.To.Fields) != 0 && strings.Contains(section.To.Fields[0], "{") && strings.Contains(section.To.Fields[0], "..") && strings.Contains(section.To.Fields[0], "}") {
-				// 解析模板 "field${1..8}"
-				fields, err := expandFieldTemplate(section.To.Fields[0])
-				if err != nil {
-					return nil, fmt.Errorf("解析模板失败: %v\n", err)
+			for i := 0; i < len(section.To.Fields); i++ {
+				// 如果 section.To.Fields 中是 "field${1..8}" 形式
+				if len(section.To.Fields) != 0 && strings.Contains(section.To.Fields[0], "{") && strings.Contains(section.To.Fields[0], "..") && strings.Contains(section.To.Fields[0], "}") {
+					// 解析模板 "field${1..8}"
+					fields, err := expandFieldTemplate(section.To.Fields[0])
+					if err != nil {
+						return nil, fmt.Errorf("解析模板失败: %v\n", err)
+					}
+					// 展开结果追加 FieldTarget
+					tmpSec.FieldTarget = append(tmpSec.FieldTarget, fields...)
+				} else {
+					// 否则直接追加
+					tmpSec.FieldTarget = append(tmpSec.FieldTarget, section.To.Fields[i])
 				}
-				// 展开结果放入 FieldTarget
-				tmpSec.FieldTarget = fields
-			} else {
-				// 否则直接赋值
-				tmpSec.FieldTarget = section.To.Fields
 			}
+
 			tmpDecoding, exist := util.GetScriptFunc(section.Decoding.Method)
 			if exist {
 				tmpSec.Decoding = tmpDecoding

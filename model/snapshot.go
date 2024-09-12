@@ -185,6 +185,10 @@ func checkFilter(deviceType, deviceName, telemetryName, filter string) bool {
 
 // SetField 设置或更新字段值，支持将值存储为指针
 func (dm *DeviceSnapshot) SetField(fieldName string, value interface{}, config *common.Config) {
+	// 如果字段值为“nil”，代表是需要丢弃的值，则不进行任何操作
+	if fieldName == "nil" {
+		return
+	}
 	// 如果fileds中已经存在该字段，则更新字段值，不创建新的指针
 	if _, exists := dm.Fields[fieldName]; exists {
 		*dm.Fields[fieldName] = value

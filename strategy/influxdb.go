@@ -6,6 +6,7 @@ import (
 	"github.com/mitchellh/mapstructure"
 	"gw22-train-sam/common"
 	"gw22-train-sam/model"
+	"strconv"
 )
 
 // 拓展数据源步骤
@@ -41,15 +42,17 @@ type InfluxDbStrategy struct {
 	pointChan chan *model.Point
 	stopChan  chan struct{}
 	writeAPI  api.WriteAPI
+	info      infoType
 }
 
 // infoType InfluxDB的专属配置
 type infoType struct {
-	URL       string `mapstructure:"url"`
-	Org       string `mapstructure:"org"`
-	Token     string `mapstructure:"token"`
-	Bucket    string `mapstructure:"bucket"`
-	BatchSize uint   `mapstructure:"batch_size"`
+	URL       string   `mapstructure:"url"`
+	Org       string   `mapstructure:"org"`
+	Token     string   `mapstructure:"token"`
+	Bucket    string   `mapstructure:"bucket"`
+	BatchSize uint     `mapstructure:"batch_size"`
+	Tags      []string `mapstructure:"tags"`
 }
 
 // NewInfluxDbStrategy 构造函数
@@ -59,6 +62,7 @@ func NewInfluxDbStrategy(dbConfig *common.StrategyConfig, stopChan chan struct{}
 	if err := mapstructure.Decode(dbConfig.Config, &info); err != nil {
 		common.Log.Fatalf("[NewInfluxDbStrategy] Error decoding map to struct: %v", err)
 	}
+
 	client := influxdb2.NewClientWithOptions(info.URL, info.Token, influxdb2.DefaultOptions().SetBatchSize(info.BatchSize))
 	// 获取写入 API
 	writeAPI := client.WriteAPI(info.Org, info.Bucket)
@@ -75,6 +79,7 @@ func NewInfluxDbStrategy(dbConfig *common.StrategyConfig, stopChan chan struct{}
 		stopChan:  stopChan,
 		client:    client,
 		writeAPI:  writeAPI,
+		info:      info,
 	}
 }
 
@@ -84,32 +89,53 @@ func (b *InfluxDbStrategy) Publish(point *model.Point) {
 
 	// 创建一个新的 map[string]interface{} 来存储解引用的字段
 	decodedFields := make(map[string]interface{})
-
-	// 遍历 Field 中的所有键值对并解引用 *interface{}
-	for key, valuePtr := range point.Field {
-		if valuePtr != nil {
-			value := *valuePtr
-			switch v := value.(type) {
-			case int, int64, float64, string, bool:
-				decodedFields[key] = v
-			default:
-				common.Log.Warnf("Unsupported field type for key %s: %T", key, value)
-				decodedFields[key] = nil // 或者跳过该字段
-			}
+	// 将 b.info.Tags 转换为一个 map，以便快速查找
+	tagsSet := make(map[string]struct{})
+	if b.info.Tags != nil {
+		for _, tag := range b.info.Tags {
+			tagsSet[tag] = struct{}{}
 		}
 	}
+	tagsMap := make(map[string]string)
+	// 遍历 point.Field
+	for key, valuePtr := range point.Field {
+		if valuePtr == nil {
+			continue // 如果值为 nil，直接跳过
+		}
 
+		value := *valuePtr
+		// 判断 key 是否在 tags 中
+		if _, isTag := tagsSet[key]; isTag {
+			// 如果是 tags 中的字段，处理类型转换
+			switch v := value.(type) {
+			case int:
+				tagsMap[key] = strconv.Itoa(v)
+			case int64:
+				tagsMap[key] = strconv.Itoa(int(v))
+			case float64:
+				tagsMap[key] = strconv.FormatFloat(v, 'f', -1, 64)
+			case string:
+				tagsMap[key] = v
+			case bool:
+				tagsMap[key] = strconv.FormatBool(v)
+			default:
+				common.Log.Warnf("Unexpected type for key %s in tagsMap", key)
+			}
+		} else {
+			// 如果不是 tags 中的字段，直接放入 decodedFields
+			decodedFields[key] = value
+		}
+	}
+	tagsMap["devName"] = *point.DeviceName
 	//common.Log.Debugf("正在发送 %+v", decodedFields)
 	// 创建一个数据点
 	p := influxdb2.NewPoint(
 		*point.DeviceType, // measurement
-		map[string]string{
-			"train_id": *point.DeviceName, // tags
-		},
-		decodedFields, // fields (converted)
-		*point.Ts,     // timestamp
+		tagsMap,           // tags
+		decodedFields,     // fields (converted)
+		*point.Ts,         // timestamp
 	)
-	common.Log.Debugf("正在发送 ,%+v,%+v,%+v,%+v", *point.DeviceType, *point.DeviceName, decodedFields, *point.Ts)
+	common.Log.Debugf("正在发送:\n , %+v, %+v, %+v, %+v", *point.DeviceType, *point.DeviceName, decodedFields, *point.Ts)
 	// 写入到 InfluxDB
 	b.writeAPI.WritePoint(p)
 
