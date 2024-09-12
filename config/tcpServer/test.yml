@@ -1,0 +1,21 @@
+test:
+  chunks:
+    - type: FixedLengthChunk
+      length: 1
+      sections:
+        - from:
+            byte: 1
+          decoding:
+            method: "Decode8BToInt"
+          to:
+            device: "status"
+            type: "traction_system"
+            fields:
+              - RIOM_sta_{1..8}
+
+
+
+
+
+
+

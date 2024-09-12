@@ -1,17 +1,47 @@
 proto-train2sam-v0.0.1:
   chunks:
     - type: FixedLengthChunk
-      length: 1
-    - type: FixedLengthChunk
-      length: 1
+      length: 1245
       sections:
         - from: # 没有解码方式的即为不用处理，jump即可
+            byte: 92
+        - from:
+            byte: 2
+          decoding:
+            method: "BytesToBigEndianInt"
+          for:
+            varName:
+              - id
+        - from:
+            byte: 2
+          decoding:
+            method: "BytesToBigEndianInt"
+          to:
+            device: "proto"
+            type: "info"
+            fields:
+              - ver
+        - from:
+            byte: 10
+        - from:
             byte: 1
           decoding:
             method: "Decode8BToInt"
           to:
-            device: "vobc0001"
-            type: "vobc.info"
+            device: "status"
+            type: "info"
+            fields:
+              - RIOM_sta_${1..8}
+          desc: "帧长度 长度由字节69开始计算" #字段说明
+        - from:
+            byte: 14
+        - from:
+            byte: 1
+          decoding:
+            method: "Decode8BToInt"
+          to:
+            device: "status"
+            type: "traction_system"
             fields:
               - RIOM_sta_1
               - RIOM_sta_2
@@ -21,114 +51,10 @@ proto-train2sam-v0.0.1:
               - RIOM_sta_6
               - RIOM_sta_7
               - RIOM_sta_8
-#          for:
-#            varName:
-#              - id
-#        - from:
-#            byte: 2
-#          decoding:
-#            method: "BytesToBigEndianInt"
-#          for:
-#            varName:
-#              - len
-#        - from:
-#            byte: 2
-#    - type: FixedLengthChunk
-#      length: ${len} # 预解析的长度，必填项
-#      sections:
-#        - from: # 没有解码方式的即为不用处理，jump即可
-#            byte: 72
-#          decoding:
-#            method: "Decode8BitTo1Id"
-#          for:
-#            varName:
-#              - id
-#        - from:
-#            byte: 2
-#          decoding:
-#            method: "BytesToBigEndianInt"
-#          for:
-#            varName:
-#              - len
-#        - from:
-#            byte: 2
-#          to:
-#            device: "vobc000${id}"
-#            type: "vobc.info"
-#            fields:
-#              - RIOM_sta_1
-#              - RIOM_sta_2
-#              - RIOM_sta_3
-#              - RIOM_sta_4
-#              - RIOM_sta_5
-#              - RIOM_sta_6
-#              - RIOM_sta_7
-#              - RIOM_sta_8
-#          desc: "帧长度 长度由字节69开始计算" #字段说明
-#            byte: 2  # 字节长度
-#          decoding:
-#            method:
-#          for:
-#            type: string
-#            varName:
-#              - "checksum"
-#          desc: "checksum校验" #字段说明
-#        - from:
-#            byte: 16
-#        - from:
-#            byte: 2  # 字节长度
-#          decoding:
-#            method:
-#          to:
-#            cached: true # 该字段开启缓存，变化才发送，对应tb attribute思想
-#            stable: true # 该字段是z稳定信息，例如版本参数，设备物理参数等不常变化的信息且唯一。
-#          desc: "协议版本"
-#        - from:
-#            byte: 2  # 字节长度
-#          decoding:
-#            method:
-#          for:
-#            type: string
-#            varName:
-#              - "inner_len"
-#          desc: "内部帧长度，从 TYPE 字节到最后一个字节" #字段说明
-#        - from:
-#            byte: 2
-#        - from:
-#            byte: 2
-#          decoding:
-#            method:
-#          for:
-#            type: string
-#            varName:
-#             - "crc"
-#          desc: "crc校验计算" #字段说明
-#        - from:
-#            byte: 3
-#    - type: FixedLengthChunk
-#      length: ${len}
-#      sections:
-#        - from:
-#            repeat: 8 # 重复次数
-#            byte: 1 # 字节偏移量基础上的位偏移量
-#          decoding:
-#            method: # 解码脚本
-#          to:
-#            device: "vobc"
-#            type: "vobc.info"
-#            fields:
-#              - RIOM_sta_${atom.index} # 使用占位符表示当前索引
-#        - from:
-#            byte: 6
-#          decoding:
-#            method:
-#          to: # 转换相关配置
-#
-#          desc: "协议中的时间戳" #字段说明
-#
-#
-#
-#
+
+
+
+
 
 
 

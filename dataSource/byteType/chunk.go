@@ -9,6 +9,7 @@ import (
 	"gw22-train-sam/util"
 	"io"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -177,7 +178,6 @@ func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte, collection *
 				return fmt.Errorf("解码后的数据长度与PointTarget长度不匹配, %d != %d", len(decoded), len(sec.PointTarget))
 			}
 			for i, pt := range sec.PointTarget {
-
 				*pt = decoded[i]
 			}
 			// 2.4 设备快照更新逻辑
@@ -265,6 +265,7 @@ func (s *Section) parseToDeviceName(context *model.FrameContext) string {
 
 // InitChunks 从配置文件初始化 Chunk
 func InitChunks(v *viper.Viper, protoFile string) (ChunkSequence, error) {
+	common.Log.Infof("当前启用的协议文件: %s", protoFile)
 	// 初始化 SnapshotCollection
 	snapshotCollection := make(model.SnapshotCollection)
 	var chunkSequence = ChunkSequence{
@@ -286,6 +287,42 @@ func InitChunks(v *viper.Viper, protoFile string) (ChunkSequence, error) {
 	return chunkSequence, nil
 }
 
+// 解析类似 "efef_{1..8}" 范围并展开
+func expandFieldTemplate(template string) ([]string, error) {
+	// 使用正则表达式匹配 "{a..b}" 的范围
+	re := regexp.MustCompile(`\{(\d+)\.\.(\d+)}`) // 匹配大括号里的范围
+	matches := re.FindStringSubmatch(template)
+	if len(matches) != 3 {
+		return nil, fmt.Errorf("无法解析模板: %s", template)
+	}
+
+	// 提取起始和结束范围
+	start, err := strconv.Atoi(matches[1])
+	if err != nil {
+		return nil, fmt.Errorf("解析起始数字错误: %v", err)
+	}
+	end, err := strconv.Atoi(matches[2])
+	if err != nil {
+		return nil, fmt.Errorf("解析结束数字错误: %v", err)
+	}
+
+	// 检查范围有效性
+	if start > end {
+		return nil, fmt.Errorf("起始数字不能大于结束数字: %d..%d", start, end)
+	}
+
+	// 提取前缀部分 (例如 "efef_")
+	prefix := template[:strings.Index(template, "{")]
+
+	// 生成字段名称数组
+	result := make([]string, 0, end-start+1)
+	for i := start; i <= end; i++ {
+		result = append(result, fmt.Sprintf("%s%d", prefix, i)) // 拼接前缀和数字
+	}
+
+	return result, nil
+}
+
 // createChunk 根据 chunkType 动态创建对应的 Chunk
 func createChunk(chunkMap map[string]interface{}, context *model.FrameContext) (Chunk, error) {
 	switch chunkType := chunkMap["type"].(string); chunkType {
@@ -295,7 +332,6 @@ func createChunk(chunkMap map[string]interface{}, context *model.FrameContext) (
 		if err != nil {
 			return nil, fmt.Errorf("[createChunk]failed to mapstructure FixedLengthChunk: %v", err)
 		}
-		//fmt.Printf("FixedChunkConfig: %+v\n", fixedChunkConfig)
 		//fmt.Println()
 		// 设置默认值: 若 Repeat 未设置，则设置为 1
 		for i, section := range fixedChunkConfig.Sections {
@@ -328,7 +364,20 @@ func createChunk(chunkMap map[string]interface{}, context *model.FrameContext) (
 				ToDeviceName: section.To.DeviceName,
 				ToDeviceType: section.To.DeviceType,
 				PointTarget:  make([]*interface{}, 0),
-				FieldTarget:  section.To.Fields,
+				FieldTarget:  nil,
+			}
+			// 如果 section.To.Fields 中是 "field${1..8}" 形式
+			if len(section.To.Fields) != 0 && strings.Contains(section.To.Fields[0], "{") && strings.Contains(section.To.Fields[0], "..") && strings.Contains(section.To.Fields[0], "}") {
+				// 解析模板 "field${1..8}"
+				fields, err := expandFieldTemplate(section.To.Fields[0])
+				if err != nil {
+					return nil, fmt.Errorf("解析模板失败: %v\n", err)
+				}
+				// 展开结果放入 FieldTarget
+				tmpSec.FieldTarget = fields
+			} else {
+				// 否则直接赋值
+				tmpSec.FieldTarget = section.To.Fields
 			}
 			tmpDecoding, exist := util.GetScriptFunc(section.Decoding.Method)
 			if exist {
