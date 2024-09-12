@@ -15,6 +15,8 @@ script:
   methods:
     - Decode8BToInt
     - Decode8BitTo1Int
+    - Decode8BitTo1Id
+
 
 
 connector:

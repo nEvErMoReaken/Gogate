@@ -1,23 +1,21 @@
 proto-train2sam-v0.0.1:
   chunks:
     - type: FixedLengthChunk
-      length: 3 # 预解析的长度，必填项
+      length: 76 # 预解析的长度，必填项
       sections:
         - from: # 没有解码方式的即为不用处理，jump即可
-            byte: 1
+            byte: 72
           decoding:
-            method: "Decode8BitTo1Int"
+            method: "Decode8BitTo1Id"
           for:
-            type: int
             varName:
-              - len
+              - id
         - from:
-            byte: 1
-            repeat: ${len} # 字节长度
+            byte: 2
           decoding:
             method: "Decode8BToInt"
           to:
-            device: "vobc"
+            device: "vobc000${id}"
             type: "vobc.info"
             fields:
               - RIOM_sta_1 # 使用占位符表示当前索引

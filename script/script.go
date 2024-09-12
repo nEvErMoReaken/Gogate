@@ -1,6 +1,9 @@
 package script
 
-import "fmt"
+import (
+	"fmt"
+	"strconv"
+)
 
 // Decode8BToInt DecodeFrame takes a byte slice as input and returns the decoded value
 func Decode8BToInt(data []byte) ([]interface{}, error) {
@@ -23,13 +26,32 @@ func Decode8BToInt(data []byte) ([]interface{}, error) {
 	return result, nil
 }
 
-// Decode8BitTo1Int 将 8 位的数据转换为 1 位的数据, 例如 0x02 -> 2 结果放入一个长度为1的数组
-func Decode8BitTo1Int(data []byte) ([]interface{}, error) {
+// BytesToBigEndianInt 将字节数组解析 结果放入一个长度为1的数组
+func BytesToBigEndianInt(data []byte) ([]interface{}, error) {
+	if len(data) == 0 {
+		return nil, fmt.Errorf("input data is empty")
+	}
+	// 检查字节数组是否超过 int 的字节数限制（假设 int 为 64 位）
+	if len(data) > 8 {
+		return nil, fmt.Errorf("input data exceeds size of int")
+	}
+
+	// 处理所有字节，将其转换为 int
+	result := 0
+	for _, b := range data {
+		result = result<<8 + int(b)
+	}
+	// 将结果放入一个长度为 1 的 interface{} 数组
+	return []interface{}{result}, nil
+}
+
+// Decode8BitTo1Id 将 8 位的数据转换为 1 位的数据, 例如 0x02 -> 2 结果放入一个长度为1的数组
+func Decode8BitTo1Id(data []byte) ([]interface{}, error) {
 	if len(data) == 0 {
 		return nil, fmt.Errorf("input data is empty")
 	}
 	// 只处理第一个字节的数据，转换为 int
-	result := int(data[0])
+	result := strconv.Itoa(int(data[0]))
 
 	// 将结果放入一个长度为 1 的 interface{} 数组
 	return []interface{}{result}, nil
