@@ -20,6 +20,19 @@ type DeviceSnapshot struct {
 	Ts         time.Time                // 时间戳
 }
 
+// Clear 清空设备快照信息
+func (dm *DeviceSnapshot) Clear() {
+	// 将Fields中的字面量值置空
+	for _, value := range dm.Fields {
+		if value != nil {
+			// 重置为零值，确保引用保留，但内容清空
+			*value = nil
+		}
+	}
+	// 清空Ts
+	dm.Ts = time.Time{}
+}
+
 // FrameContext 每一帧中, 也就是多Chunks共享的上下文
 type FrameContext map[string]*interface{}
 
@@ -213,6 +226,8 @@ func (dm *DeviceSnapshot) launch() {
 	for _, pp := range dm.PointMap {
 		pp.launch()
 	}
+	// 清空设备快照
+	dm.Clear()
 }
 
 // LaunchALL 发射所有数据点
