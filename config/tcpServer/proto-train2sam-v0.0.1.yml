@@ -10,7 +10,7 @@ proto-train2sam-v0.0.1:
           decoding:
             method: "BytesToBigEndianInt"
           to:
-            device: "${device_id}"
+            device: "train_1"
             type: "info"
             fields:
               - ver
@@ -21,7 +21,7 @@ proto-train2sam-v0.0.1:
           decoding:
             method: "DecodeByteToLittleEndianBits"
           to:
-            device: "${device_id}"
+            device: "train_1"
             type: "info"
             fields:
               - RIOM_sta_{1..8}
@@ -33,7 +33,7 @@ proto-train2sam-v0.0.1:
           decoding:
             method: "DecodeByteToLittleEndianBits"
           to:
-            device: "${device_id}"
+            device: "train_1"
             type: "traction_system"
             fields:
               - field_{1..4}
@@ -45,7 +45,7 @@ proto-train2sam-v0.0.1:
           decoding:
             method: "DecodeByteToLittleEndianBits"
           to:
-            device: "${device_id}"
+            device: "train_1"
             type: "traction_system"
             fields:
               - field_{7..14}
@@ -54,7 +54,7 @@ proto-train2sam-v0.0.1:
           decoding:
             method: "DecodeByteToLittleEndianBits"
           to:
-            device: "${device_id}"
+            device: "train_1"
             type: "traction_system"
             fields:
               - field_{15..22}
@@ -63,7 +63,7 @@ proto-train2sam-v0.0.1:
           decoding:
             method: "DecodeByteToLittleEndianBits"
           to:
-            device: "${device_id}"
+            device: "train_1"
             type: "traction_system"
             fields:
               - field_{23..30}
@@ -72,7 +72,7 @@ proto-train2sam-v0.0.1:
           decoding:
             method: "DecodeByteToLittleEndianBits"
           to:
-            device: "${device_id}"
+            device: "train_1"
             type: "traction_system"
             fields:
               - field_{31..38}
@@ -81,7 +81,7 @@ proto-train2sam-v0.0.1:
           decoding:
             method: "DecodeByteToLittleEndianBits"
           to:
-            device: "${device_id}"
+            device: "train_1"
             type: "traction_system"
             fields:
               - field_{39..41}
@@ -93,7 +93,7 @@ proto-train2sam-v0.0.1:
           decoding:
             method: "DecodeByteToLittleEndianBits"
           to:
-            device: "${device_id}"
+            device: "train_1"
             type: "traction_system"
             fields:
               - field_{46..52}
@@ -103,7 +103,7 @@ proto-train2sam-v0.0.1:
           decoding:
             method: "DecodeByteToLittleEndianBits"
           to:
-            device: "${device_id}"
+            device: "train_1"
             type: "traction_system"
             fields:
               - field_{53..60}
@@ -112,7 +112,7 @@ proto-train2sam-v0.0.1:
           decoding:
             method: "DecodeByteToLittleEndianBits"
           to:
-            device: "${device_id}"
+            device: "train_1"
             type: "traction_system"
             fields:
               - field_{61..68}
@@ -121,7 +121,7 @@ proto-train2sam-v0.0.1:
           decoding:
             method: "DecodeByteToLittleEndianBits"
           to:
-            device: "${device_id}"
+            device: "train_1"
             type: "traction_system"
             fields:
               - field_{69..75}
@@ -131,7 +131,7 @@ proto-train2sam-v0.0.1:
           decoding:
             method: "DecodeByteToLittleEndianBits"
           to:
-            device: "${device_id}"
+            device: "train_1"
             type: "traction_system"
             fields:
               - nil
@@ -141,7 +141,7 @@ proto-train2sam-v0.0.1:
           decoding:
             method: "DecodeByteToLittleEndianBits"
           to:
-            device: "${device_id}"
+            device: "train_1"
             type: "traction_system"
             fields:
               - field_{83..90}
@@ -150,7 +150,7 @@ proto-train2sam-v0.0.1:
           decoding:
             method: "DecodeByteToLittleEndianBits"
           to:
-            device: "${device_id}"
+            device: "train_1"
             type: "traction_system"
             fields:
               - field_{91..98}
@@ -159,7 +159,7 @@ proto-train2sam-v0.0.1:
           decoding:
             method: "DecodeByteToLittleEndianBits"
           to:
-            device: "${device_id}"
+            device: "train_1"
             type: "traction_system"
             fields:
               - field_{99..106}
@@ -168,7 +168,7 @@ proto-train2sam-v0.0.1:
           decoding:
             method: "DecodeByteToLittleEndianBits"
           to:
-            device: "${device_id}"
+            device: "train_1"
             type: "traction_system"
             fields:
               - field_{107..114}
@@ -177,7 +177,7 @@ proto-train2sam-v0.0.1:
           decoding:
             method: "DecodeByteToLittleEndianBits"
           to:
-            device: "${device_id}"
+            device: "train_1"
             type: "traction_system"
             fields:
               - field_{115..116}
@@ -188,7 +188,7 @@ proto-train2sam-v0.0.1:
           decoding:
             method: "DecodeByteToLittleEndianBits"
           to:
-            device: "${device_id}"
+            device: "train_1"
             type: "traction_system"
             fields:
               - field_{122..127}
@@ -199,7 +199,7 @@ proto-train2sam-v0.0.1:
           decoding:
             method: "DecodeByteToLittleEndianBits"
           to:
-            device: "${device_id}"
+            device: "train_1"
             type: "traction_system"
             fields:
               - field_{129..136}
@@ -208,7 +208,7 @@ proto-train2sam-v0.0.1:
           decoding:
             method: "DecodeByteToLittleEndianBits"
           to:
-            device: "${device_id}"
+            device: "train_1"
             type: "traction_system"
             fields:
               - field_{137..144}
@@ -217,12 +217,748 @@ proto-train2sam-v0.0.1:
           decoding:
             method: "DecodeByteToLittleEndianBits"
           to:
-            device: "${device_id}"
+            device: "train_1"
             type: "traction_system"
             fields:
               - field_{145..150}
               - nil
               - nil
+        - from:
+            byte: 1 # index 139
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "traction_system"
+              fields:
+                - field_{151..158}
+        - from:
+            byte: 1 # index 140
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "traction_system"
+              fields:
+                - field_{159..160}
+                - nil
+                - nil
+                - nil
+                - nil
+                - nil
+                - nil
+        # 1车 制动系统
+        - from:
+            byte: 3 # index 141-143
+        - from:
+            byte: 1 # index 144
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "braking_system"
+              fields:
+                - field_{1..8}
+        - from:
+            byte: 1 # index 145
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "braking_system"
+              fields:
+                - field_{9..16}
+        - from:
+            byte: 1 # index 146
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "braking_system"
+              fields:
+                - field_{17..24}
+        - from:
+            byte: 1 # index 147
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "braking_system"
+              fields:
+                - field_{25..32}
+        - from:
+            byte: 1 # index 148
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "braking_system"
+              fields:
+                - field_{33..40}
+        - from:
+            byte: 1 # index 149
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "braking_system"
+              fields:
+                - field_{41..48}
+        - from:
+            byte: 1 # index 150
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "braking_system"
+              fields:
+                - field_{49..50}
+                - nil
+                - nil
+                - nil
+                - nil
+                - nil
+                - nil
+        - from:
+            byte: 1 # index 151
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+                device: "train_1"
+                type: "auxiliary_power_system"
+                fields:
+                  - nil
+                  - nil
+                  - nil
+                  - nil
+                  - field_{1..4}
+        - from:
+            byte: 1 # index 152
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+                device: "train_1"
+                type: "auxiliary_power_system"
+                fields:
+                  - field_{5..12}
+        - from:
+            byte: 1 # index 153
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+                device: "train_1"
+                type: "auxiliary_power_system"
+                fields:
+                  - field_{13..20}
+        - from:
+            byte: 1 # index 154
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+                device: "train_1"
+                type: "auxiliary_power_system"
+                fields:
+                  - field_{21..28}
+        - from:
+            byte: 1 # index 155
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+                device: "train_1"
+                type: "auxiliary_power_system"
+                fields:
+                  - field_{29..36}
+        - from:
+            byte: 1 # index 156
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+                device: "train_1"
+                type: "auxiliary_power_system"
+                fields:
+                  - field_{37..42}
+                  - nil
+                  - nil
+        - from:
+            byte: 5 # index 157-161
+        # 1车 动力电池管理器
+        - from:
+            byte: 1 # index 162
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+                device: "train_1"
+                type: "power_battery_manager"
+                fields:
+                  - nil
+                  - nil
+                  - nil
+                  - nil
+                  - nil
+                  - nil
+                  - field_{1..2}
+        - from:
+            byte: 1 # index 163
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+                device: "train_1"
+                type: "power_battery_manager"
+                fields:
+                  - field_{3..10}
+        - from:
+            byte: 1 # index 164
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+                device: "train_1"
+                type: "power_battery_manager"
+                fields:
+                  - field_{11..18}
+        - from:
+            byte: 1 # index 165
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+                device: "train_1"
+                type: "power_battery_manager"
+                fields:
+                  - field_{19..26}
+        - from:
+            byte: 1 # index 166
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+                device: "train_1"
+                type: "power_battery_manager"
+                fields:
+                  - field_{27..34}
+        - from:
+            byte: 1 # index 167
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+                device: "train_1"
+                type: "power_battery_manager"
+                fields:
+                  - field_{35..39}
+                  - nil
+                  - nil
+                  - nil
+        - from:
+            byte: 1 # index 168
+        # 1车 冷却系统
+        - from:
+            byte: 1 # index 169
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "cooling_system"
+              fields:
+                - field_{1..8}
+        - from:
+            byte: 1 # index 170
+        # 1车 风源系统
+        - from:
+            byte: 1 # index 171
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "air_supply_system"
+              fields:
+                - nil
+                - nil
+                - nil
+                - nil
+                - field_{1..4}
+        - from:
+            byte: 1 # index 172
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "air_supply_system"
+              fields:
+                - field_{5..12}
+        - from:
+            byte: 1 # index 173
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "air_supply_system"
+              fields:
+                - field_{13..20}
+        - from:
+            byte: 1 # index 174
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "air_supply_system"
+              fields:
+                - field_{21..28}
+        - from:
+            byte: 1 # index 175
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "air_supply_system"
+              fields:
+                - field_29
+                - nil
+                - nil
+                - nil
+                - nil
+                - nil
+                - nil
+                - nil
+        # 1车 车门系统
+        - from:
+            byte: 1 # index 176
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "door_system"
+              fields:
+                - nil
+                - nil
+                - nil
+                - nil
+                - field_{1..4}
+        - from:
+            byte: 1 # index 177
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "door_system"
+              fields:
+                - field_{5..12}
+        - from:
+            byte: 1 # index 178
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "door_system"
+              fields:
+                - field_{13..20}
+        - from:
+            byte: 1 # index 179
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "door_system"
+              fields:
+                - field_{21..28}
+        - from:
+            byte: 1 # index 180
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "door_system"
+              fields:
+                - field_{29..36}
+        - from:
+            byte: 1 # index 181
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "door_system"
+              fields:
+                - field_{37..44}
+        - from:
+            byte: 1 # index 182
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "door_system"
+              fields:
+                - field_{45..52}
+        - from:
+            byte: 1 # index 183
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "door_system"
+              fields:
+                - field_{53..60}
+        - from:
+            byte: 1 # index 184
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "door_system"
+              fields:
+                - field_{61..68}
+        - from:
+            byte: 1 # index 185
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "door_system"
+              fields:
+                - field_{69..76}
+        - from:
+            byte: 1 # index 186
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "door_system"
+              fields:
+                - field_{77..84}
+        - from:
+            byte: 1 # index 187
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "door_system"
+              fields:
+                - field_{85..92}
+        - from:
+            byte: 1 # index 188
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "door_system"
+              fields:
+                - field_{93..100}
+        - from:
+            byte: 1 # index 189
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "door_system"
+              fields:
+                - field_{101..108}
+        - from:
+            byte: 1 # index 190
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "door_system"
+              fields:
+                - field_{109..116}
+        - from:
+            byte: 1 # index 191
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "door_system"
+              fields:
+                - field_{117..124}
+        # 1车 110V蓄电池
+        - from:
+            byte: 1 # index 192
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "battery_110v"
+              fields:
+                - nil
+                - nil
+                - nil
+                - nil
+                - nil
+                - nil
+                - field_{1..2}
+        - from:
+            byte: 1 # index 193
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "battery_110v"
+              fields:
+                - field_{3..10}
+        - from:
+            byte: 1 # index 194
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "battery_110v"
+              fields:
+                - field_{11..18}
+        - from:
+            byte: 1 # index 195
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "battery_110v"
+              fields:
+                - field_{19..26}
+        - from:
+            byte: 1 # index 196
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "battery_110v"
+              fields:
+                - field_{27..29}
+                - nil
+                - nil
+                - nil
+                - nil
+                - nil
+        # 1车 空调系统
+        - from:
+            byte: 1 # index 197
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "air_conditioning_system"
+              fields:
+                - nil
+                - nil
+                - nil
+                - nil
+                - nil
+                - field_{1..3}
+        - from:
+            byte: 1 # index 198
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "air_conditioning_system"
+              fields:
+                - field_{4..7}
+                - nil
+                - nil
+                - field_{8..9}
+        - from:
+            byte: 1 # index 199
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "air_conditioning_system"
+              fields:
+                - nil
+                - nil
+                - field_{10..15}
+        - from:
+            byte: 1 # index 200
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "air_conditioning_system"
+              fields:
+                - field_{16..23}
+        - from:   # index 201
+            byte: 1
+        - from:
+            byte: 1 # index 202
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "air_conditioning_system"
+              fields:
+                - field_{24..28}
+                - nil
+                - field_{29..30}
+        - from:
+            byte: 1 # index 203
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "air_conditioning_system"
+              fields:
+                - field_31
+                - nil
+                - nil
+                - nil
+                - nil
+                - nil
+                - nil
+                - nil
+        # 1车 胎压系统
+        - from:
+            byte: 1 # index 204
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "tire_pressure_system"
+              fields:
+                - field_{1..8}
+        - from:
+            byte: 1 # index 205
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "tire_pressure_system"
+              fields:
+                - field_{9..16}
+        - from:
+            byte: 1 # index 206
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "tire_pressure_system"
+              fields:
+                - field_{17..24}
+        - from:
+            byte: 1 # index 207
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "tire_pressure_system"
+              fields:
+                - field_{25..32}
+        - from:
+            byte: 1 # index 208
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "tire_pressure_system"
+              fields:
+                - field_{33..40}
+        - from:
+            byte: 1 # index 209
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "tire_pressure_system"
+              fields:
+                - field_{41..48}
+        - from:
+            byte: 1 # index 210
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "tire_pressure_system"
+              fields:
+                - field_{49..56}
+        - from:
+            byte: 1 # index 211
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "tire_pressure_system"
+              fields:
+                - field_{57..64}
+        - from:
+            byte: 1 # index 212
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "tire_pressure_system"
+              fields:
+                - field_{65..72}
+        - from:
+            byte: 1 # index 213
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "tire_pressure_system"
+              fields:
+                - field_{73..80}
+        - from:
+            byte: 1 # index 214
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "tire_pressure_system"
+              fields:
+                - field_{81..88}
+        - from:
+            byte: 1 # index 215
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "tire_pressure_system"
+              fields:
+                - field_{89..96}
+        - from:
+            byte: 1 # index 216 字节非常特殊，前两位和后6位竟然属于不同的设备类型，故采用byte0的方式,
+        - from:
+            byte: 0 # index 216 这样的指定方式会让游标停留在byte0的位置，而不是byte1的位置
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "tire_pressure_system"
+              fields:
+                - field_{97..98}
+                - nil
+                - nil
+                - nil
+                - nil
+                - nil
+                - nil
+        # 1车 火灾探测和灭火系统
+        - from:
+            byte: 0 # index 216 理论上只要Byte为0时，可以解析无数次
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "fire_detection_extinguishing_system"
+              fields:
+                - nil
+                - nil
+                - field_{1..6}
+        -
+        - from:
+            byte: 1 # index 217
+            decoding:
+              method: "DecodeByteToLittleEndianBits"
+            to:
+              device: "train_1"
+              type: "fire_detection_extinguishing_system"
+              fields:
+                - field_7
+                - nil
+                - nil
+                - nil
+                - nil
+                - nil
+                - nil
+                - nil
+
+
+
+
+
+
 
 
 

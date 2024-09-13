@@ -146,26 +146,37 @@ func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte, collection *
 	*frame = append(*frame, data...)
 	// 2. 解析数据
 	common.Log.Debugf("Processing FixedLengthChunk")
-	cursor := 0
+	byteCursor := 0
 	for index, sec := range f.Sections {
+		var parsedToDeviceName string
+		var tarSnapshot *model.DeviceSnapshot
+
 		for i := 0; i < (*sec.Repeat).(int); i++ {
 			// 2.1. 根据Sec的length解码
 			if sec.Decoding == nil {
 				common.Log.Debugf("Step.%+v: Loop.%+v: Jump For %+v Byte", index+1, i+1, sec.Length)
 				// 如果没有解码函数，直接跳过
-				cursor += sec.Length
+				byteCursor += sec.Length
 				continue
 			}
-			if cursor+sec.Length > len(data) {
+			if byteCursor+sec.Length > len(data) {
 				return fmt.Errorf("游标超出数据长度")
 			}
-			decoded, err := sec.Decoding(data[cursor : cursor+sec.Length])
+			var decoded []interface{}
+			var err error
+			// 这样涉及的的目的是解决1个字节中有多个设备数据的情况， 即长度为0时不移动游标，而继续解析当前字节
+			if sec.Length == 0 {
+				decoded, err = sec.Decoding(data[byteCursor : byteCursor+1])
+			} else {
+				decoded, err = sec.Decoding(data[byteCursor : byteCursor+sec.Length])
+			}
+
 			common.Log.Debugf("Step.%+v: Loop.%+v: Decoded: %v Byte to %+v", index+1, i+1, sec.Length, decoded)
 			if err != nil {
 				return err
 			}
 			// 2.2 移动游标
-			cursor += sec.Length
+			byteCursor += sec.Length
 
 			// 2.3 保存解码后的数据到对应的 PointTarget下标内
 			// sec.PointTarget[i] = decoded[i]
@@ -185,17 +196,23 @@ func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte, collection *
 			if sec.ToDeviceType == "" || sec.ToDeviceName == "" {
 				continue
 			}
-
-			parsedToDeviceName := sec.parseToDeviceName(f.VarPointer)
-			tarSnapshot := collection.GetDeviceSnapshot(parsedToDeviceName, sec.ToDeviceType)
+			// 避免重复解析
+			if parsedToDeviceName == "" {
+				parsedToDeviceName = sec.parseToDeviceName(f.VarPointer)
+			}
+			if tarSnapshot == nil {
+				tarSnapshot = collection.GetDeviceSnapshot(parsedToDeviceName, sec.ToDeviceType)
+			}
 
 			if len(decoded) < len(sec.FieldTarget) {
 				return fmt.Errorf("解码后的数据长度小于FieldTarget长度, %d != %d", len(decoded), len(sec.FieldTarget))
 			}
-			for index, de := range decoded {
-				tarSnapshot.SetField(sec.FieldTarget[index], de, config)
+			for ii, de := range decoded {
+				tarSnapshot.SetField(sec.FieldTarget[ii], de, config)
 			}
 			tarSnapshot.Ts = (*(*f.VarPointer)["ts"]).(time.Time)
+			// data_source对于客户端应该是常驻变量， TODO 后续考虑是否用配置文件配置
+			tarSnapshot.SetField("data_source", (*f.VarPointer)["data_source"], config)
 		}
 	}
 	//if cursor != len(data) {
@@ -224,6 +241,7 @@ func (c *ConditionalChunk) String() string {
 
 type Section struct {
 	Repeat       *interface{}
+	Bit          int
 	Length       int
 	Decoding     util.ScriptFunc
 	ToDeviceName string // 这里的设备名称是带模板的，需要解析。例如 ecc_{vobc_id}
