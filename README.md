@@ -8,17 +8,21 @@
 
 ## DataSource 数据源
 
-支持多种类型的数据源
-
+拟支持多种类型的数据源
 - Json类型数据源
-    - Mqtt
+    - Mqtt (正在编写...)
     - Kafka
 - Byte类型数据源
-    - TcpServer (作为TcpServer接收报文)
+    - TcpServer (作为TcpServer接收报文) (已完成)
     - TcpClient (作为TcpClient主动fetch报文)
     - UdpServer (作为TcpServer接收报文)
     - UdpClient (作为UdpClient主动fetch报文)
 - Protobuf (?)
+- Sql 通过轮询sql获取数据
+  - oracle
+  - mysql
+  - postgres
+- 其他形式数据源
 
 dataSource 仅需要满足两点：
 - 接收数据
@@ -193,6 +197,17 @@ type DeviceSnapshot struct {
 ## Strategy 策略
 
 策略的配置也非常简单，只需要通过语法：
+
+拟支持的策略有：
+- influxdb （已完成）
+- iotdb (Todo)
+- sql
+- mqtt
+- kafka
+- mq
+- redis
+- prometheus + grafana 可视化网关设备参数
+- 其他策略
 
 ```yaml
 strategy:
