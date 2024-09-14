@@ -3,8 +3,8 @@ package model
 import (
 	"encoding/json"
 	"fmt"
+	"gateway/common"
 	"github.com/google/uuid"
-	"gw22-train-sam/common"
 	"regexp"
 	"strings"
 	"time"

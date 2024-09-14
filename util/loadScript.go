@@ -2,12 +2,12 @@ package util
 
 import (
 	"fmt"
+	"gateway/common"
 	"github.com/traefik/yaegi/interp"
 	"github.com/traefik/yaegi/stdlib"
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"gw22-train-sam/common"
 	"os"
 	"path/filepath"
 )

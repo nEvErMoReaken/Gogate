@@ -2,8 +2,8 @@ package byteType_test
 
 import (
 	"bufio"
+	"gateway/dataSource/byteType"
 	"github.com/stretchr/testify/assert"
-	"gw22-train-sam/dataSource/byteType"
 	"io"
 	"net"
 	"testing"

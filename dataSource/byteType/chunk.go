@@ -2,11 +2,11 @@ package byteType
 
 import (
 	"fmt"
+	"gateway/common"
+	"gateway/model"
+	"gateway/util"
 	"github.com/mitchellh/mapstructure"
 	"github.com/spf13/viper"
-	"gw22-train-sam/common"
-	"gw22-train-sam/model"
-	"gw22-train-sam/util"
 	"io"
 	"regexp"
 	"strconv"

@@ -2,12 +2,12 @@ package main
 
 import (
 	"fmt"
+	"gateway/common"
+	_ "gateway/dataSource/byteType"
+	"gateway/model"
+	"gateway/strategy"
+	"gateway/util"
 	"go.uber.org/zap"
-	"gw22-train-sam/common"
-	_ "gw22-train-sam/dataSource/byteType"
-	"gw22-train-sam/model"
-	"gw22-train-sam/strategy"
-	"gw22-train-sam/util"
 	"log"
 	"os"
 	"os/signal"

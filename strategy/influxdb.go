@@ -1,11 +1,11 @@
 package strategy
 
 import (
+	"gateway/common"
+	"gateway/model"
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/influxdata/influxdb-client-go/v2/api"
 	"github.com/mitchellh/mapstructure"
-	"gw22-train-sam/common"
-	"gw22-train-sam/model"
 	"strconv"
 )
 

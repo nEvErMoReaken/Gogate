@@ -1,8 +1,8 @@
 package strategy
 
 import (
-	"gw22-train-sam/common"
-	"gw22-train-sam/model"
+	"gateway/common"
+	"gateway/model"
 )
 
 // RunStrategy 因为需要等待配置文件加载完毕，所以选择手动初始化

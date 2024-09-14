@@ -2,8 +2,8 @@ package model
 
 import (
 	"fmt"
+	"gateway/common"
 	"github.com/spf13/viper"
-	"gw22-train-sam/common"
 )
 
 // Connector 是所有数据源的通用接口

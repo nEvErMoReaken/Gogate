@@ -6,7 +6,7 @@ ENV GOPROXY=https://goproxy.cn,direct
 WORKDIR /app
 
 # 复制go.mod和go.sum文件并下载依赖信息
-COPY go.mod go.sum ./
+COPY ../gateway/go.mod go.sum ./
 RUN go mod download
 
 # 复制源代码

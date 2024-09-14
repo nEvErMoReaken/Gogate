@@ -3,9 +3,9 @@ package byteType
 import (
 	"bufio"
 	"fmt"
+	"gateway/common"
+	"gateway/model"
 	"github.com/spf13/viper"
-	"gw22-train-sam/common"
-	"gw22-train-sam/model"
 	"io"
 	"log"
 	"net"

@@ -1,7 +1,7 @@
 package model
 
 import (
-	"gw22-train-sam/common"
+	"gateway/common"
 )
 
 // StFactoryFunc 代表一个发送策略的工厂函数
