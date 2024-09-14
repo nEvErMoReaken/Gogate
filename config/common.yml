@@ -28,9 +28,9 @@ strategy:
     batch_size: 2000
     filter: # 格式<设备类型>:<设备名称>:<遥测名称>
        - ".*:.*:.*"
+#       - "vobc\\.info:vobc.*:RIOM_sta_3"
     tags:
       - "data_source"
-#      - "vobc\\.info:vobc.*:RIOM_sta_3"
 #  - type: mqtt
 #    enable: false
 #    url: tcp://

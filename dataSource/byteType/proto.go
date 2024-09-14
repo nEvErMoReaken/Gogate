@@ -28,8 +28,6 @@ type Decoding struct {
 }
 
 type ToConfig struct {
-	Cached     bool     `mapstructure:"cached"`
-	Stable     bool     `mapstructure:"stable"`
 	DeviceName string   `mapstructure:"device"`
 	DeviceType string   `mapstructure:"type"`
 	Fields     []string `mapstructure:"fields"`
