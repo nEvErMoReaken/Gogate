@@ -31,6 +31,13 @@ strategy:
 #       - "vobc\\.info:vobc.*:RIOM_sta_3"
     tags:
       - "data_source"
+  - type: iotdb
+    enable: false
+    url: "127.0.0.1:6667,127.0.0.1:6668,127.0.0.1:6669"
+    username:
+    password:
+    batch_size:
+
 #  - type: mqtt
 #    enable: false
 #    url: tcp://

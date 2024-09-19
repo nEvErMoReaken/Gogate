@@ -42,11 +42,11 @@ type InfluxDbStrategy struct {
 	pointChan chan *model.Point
 	stopChan  chan struct{}
 	writeAPI  api.WriteAPI
-	info      infoType
+	info      InfluxDbInfo
 }
 
-// infoType InfluxDB的专属配置
-type infoType struct {
+// InfluxDbInfo InfluxDB的专属配置
+type InfluxDbInfo struct {
 	URL       string   `mapstructure:"url"`
 	Org       string   `mapstructure:"org"`
 	Token     string   `mapstructure:"token"`
@@ -57,7 +57,7 @@ type infoType struct {
 
 // NewInfluxDbStrategy 构造函数
 func NewInfluxDbStrategy(dbConfig *common.StrategyConfig, stopChan chan struct{}) model.SendStrategy {
-	var info infoType
+	var info InfluxDbInfo
 	// 将 map 转换为结构体
 	if err := mapstructure.Decode(dbConfig.Config, &info); err != nil {
 		common.Log.Fatalf("[NewInfluxDbStrategy] Error decoding map to struct: %v", err)

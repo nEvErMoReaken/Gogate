@@ -4,10 +4,11 @@ mqtt:
     test/topic1: 0  # 主题1, QoS = 0
     test/topic2: 1  # 主题2, QoS = 1
     test/topic3: 2  # 主题3, QoS = 2
-#    QoS 级别
-#    0：最多一次交付（At most once）。消息可能丢失，不会有重试。
-#    1：至少一次交付（At least once）。消息会至少发送一次，可能会有重复消息。
-#    2：仅一次交付（Exactly once）。消息保证只会到达一次，最安全的 QoS。
+    #    QoS 级别
+    #    0：最多一次交付（At most once）。消息可能丢失，不会有重试。
+    #    1：至少一次交付（At least once）。消息会至少发送一次，可能会有重复消息。
+    #    2：仅一次交付（Exactly once）。消息保证只会到达一次，最安全的 QoS。
+    #    发布端和订阅端的 QoS 可以是不同的。消息的实际传递 QoS 取决于 发布者设置的 QoS 和 订阅者设置的 QoS 中的 最小值。
   clientID: "gateway"
   username:
   password:
