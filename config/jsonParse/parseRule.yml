@@ -1,14 +1,2 @@
-
-device_name:
-  path: "device.name"
-
-device_type:
-  path: "device.type"
-
-fields:
-  path: "device.data"
-
-ts:
-  path: "timestamp"
-  type: "datetime"
-  format: "2006-01-02T15:04:05Z07:00"
+jsonParseConfig:
+  method: "ConvertOldGatewayTelemetry"  # simple, 或者具体的方法名

@@ -243,7 +243,7 @@ type Section struct {
 	Repeat       *interface{}
 	Bit          int
 	Length       int
-	Decoding     util.ScriptFunc
+	Decoding     util.ByteScriptFunc
 	ToDeviceName string // 这里的设备名称是带模板的，需要解析。例如 ecc_{vobc_id}
 	ToDeviceType string
 	PointTarget  []*interface{} // 解码后变量的最终去向

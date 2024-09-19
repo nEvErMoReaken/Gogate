@@ -5,6 +5,18 @@ import (
 	"strconv"
 )
 
+/* JsonType的脚本 */
+// 遵循格式: type JsonScriptFunc func(map[string]interface{}) (string, string, map[string]interface{}, error)
+
+func ConvertOldGatewayTelemetry(jsonMap map[string]interface{}) (string, string, map[string]interface{}, error) {
+	devName := jsonMap["deviceName"].(string)
+	devType := jsonMap["deviceType"].(string)
+	fields := jsonMap["fields"].(map[string]interface{})
+	return devName, devType, fields, nil
+}
+
+/* ByteType的脚本 */
+
 // DecodeByteToLittleEndianBits 将字节数组解析为小端序位数组
 func DecodeByteToLittleEndianBits(data []byte) ([]interface{}, error) {
 	// 错误检查，确保输入字节数组非空

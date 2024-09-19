@@ -11,12 +11,13 @@ import (
 
 // MqttConnector Connector的TcpServer版本实现
 type MqttConnector struct {
-	MqttConfig *MqttConfig   // 配置
-	ChDone     chan struct{} // 停止通道
-	v          *viper.Viper
-	comm       *common.Config
-	client     *mqtt.Client
-	conversion *jsonType.ConversionConfig
+	MqttConfig         *MqttConfig               // 配置
+	ChDone             chan struct{}             // 停止通道
+	v                  *viper.Viper              // 配置文件
+	comm               *common.Config            // 全局配置
+	client             *mqtt.Client              // MQTT 客户端
+	conversion         *jsonType.JsonParseConfig // 转换配置
+	snapshotCollection *model.SnapshotCollection // 快照集合
 }
 
 func init() {
@@ -30,7 +31,7 @@ func (m *MqttConnector) Listen() error {
 	}
 
 	// 订阅多个话题
-	token := (*m.client).SubscribeMultiple(m.MqttConfig.Topics, messagePubHandler)
+	token := (*m.client).SubscribeMultiple(m.MqttConfig.Topics, m.messagePubHandler)
 	token.Wait() // 等待订阅完成
 	if err := token.Error(); err != nil {
 		return fmt.Errorf("MQTT订阅失败: %v", err)
@@ -63,7 +64,9 @@ func NewMqttConnector(comm *common.Config, v *viper.Viper, stopChan chan struct{
 	if err != nil {
 		common.Log.Fatalf("初始化转换配置失败: %v", err)
 	}
-
+	// 3. 创建一个新的快照集合
+	snapshotCollection := make(model.SnapshotCollection)
+	// 4. 创建一个新的 MQTT 客户端
 	opts := mqtt.NewClientOptions()
 	opts.AddBroker(mqttConfig.Broker)
 	opts.SetClientID(mqttConfig.ClientID)
@@ -80,14 +83,15 @@ func NewMqttConnector(comm *common.Config, v *viper.Viper, stopChan chan struct{
 	// 创建 MQTT 客户端
 	client := mqtt.NewClient(opts)
 
-	// 2. 创建一个新的 MqttConnector
+	// 5. 创建一个新的 MqttConnector
 	mqttConnector := &MqttConnector{
-		ChDone:     stopChan,
-		v:          v,
-		comm:       comm,
-		client:     &client,
-		MqttConfig: mqttConfig,
-		conversion: conversion,
+		ChDone:             stopChan,
+		v:                  v,
+		comm:               comm,
+		client:             &client,
+		MqttConfig:         mqttConfig,
+		conversion:         conversion,
+		snapshotCollection: &snapshotCollection,
 	}
 
 	// 检查客户端是否能成功创建并连接
@@ -97,9 +101,17 @@ func NewMqttConnector(comm *common.Config, v *viper.Viper, stopChan chan struct{
 	return mqttConnector
 }
 
-// 消息处理函数
-var messagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
+func (m *MqttConnector) messagePubHandler(_ mqtt.Client, msg mqtt.Message) {
 	common.Log.Infof("Received message: %s from topic: %s\n", msg.Payload(), msg.Topic())
+
+	// 1. 将 MQTT 消息 Payload 转换为字符串
+	js := string(msg.Payload())
+
+	// 2. 调用 ConversionToSnapshot 并传入必要的参数
+	jsonType.ConversionToSnapshot(js, m.conversion, m.snapshotCollection, m.comm)
+
+	// 3. 发射所有快照
+	m.snapshotCollection.LaunchALL()
 }
 
 // 连接成功回调

@@ -12,10 +12,28 @@ import (
 	"path/filepath"
 )
 
-type ScriptFunc func([]byte) ([]interface{}, error)
+// ByteScriptFunc 定义脚本函数签名
+type ByteScriptFunc func([]byte) ([]interface{}, error)
 
-// ScriptFuncCache 脚本函数缓存
-var ScriptFuncCache = make(map[string]ScriptFunc)
+// JsonScriptFunc 定义了一种脚本函数的签名，用于处理解析后的 JSON 数据。
+//
+// 参数:
+//
+//	data: 从 JSON 解析后的数据，类型为 map[string]interface{}。
+//
+// 返回:
+//
+//	devName: 设备名称，字符串。
+//	devType: 设备类型，字符串。
+//	fields: 设备的字段数据，类型为 map[string]interface{}。
+//	err: 如果出现错误，返回错误信息，否则为 nil。
+type JsonScriptFunc func(map[string]interface{}) (string, string, map[string]interface{}, error)
+
+// ByteScriptFuncCache 脚本函数缓存
+var ByteScriptFuncCache = make(map[string]ByteScriptFunc)
+
+// JsonScriptFuncCache 脚本函数缓存
+var JsonScriptFuncCache = make(map[string]JsonScriptFunc)
 
 // extractAndCacheFunctions 解析Go文件并缓存函数名
 func extractAndCacheFunctions(i *interp.Interpreter, path string, scriptContent []byte) error {
@@ -38,12 +56,22 @@ func extractAndCacheFunctions(i *interp.Interpreter, path string, scriptContent 
 				continue
 			}
 
-			// 确保函数签名匹配
-			if fnFunc, ok := v.Interface().(func([]byte) ([]interface{}, error)); ok {
-				ScriptFuncCache[funcName] = fnFunc // 缓存函数
-			} else {
-				common.Log.Errorf("[Warning]: %s 方法的签名与预期的 ScriptFunc 类型不匹配\n", funcName)
+			// 尝试将函数解析为 ByteScriptFunc
+			if fnFunc, ok := v.Interface().(ByteScriptFunc); ok {
+				ByteScriptFuncCache[funcName] = fnFunc // 缓存 ByteScriptFunc 类型函数
+				common.Log.Infof("[Info]: %s 方法已缓存为 ByteScriptFunc", funcName)
+				continue
 			}
+
+			// 尝试将函数解析为 JsonScriptFunc
+			if fnFunc, ok := v.Interface().(JsonScriptFunc); ok {
+				JsonScriptFuncCache[funcName] = fnFunc // 缓存 JsonScriptFunc 类型函数
+				common.Log.Infof("[Info]: %s 方法已缓存为 JsonScriptFunc", funcName)
+				continue
+			}
+
+			// 如果不匹配任何已知函数签名，输出警告
+			common.Log.Errorf("[Warning]: %s 方法的签名与预期的 ByteScriptFunc 或 JsonScriptFunc 类型不匹配\n", funcName)
 		}
 	}
 
@@ -95,8 +123,8 @@ func LoadAllScripts(scriptDir string) error {
 }
 
 // GetScriptFunc 获取缓存的脚本函数, 如果不存在则返回一个默认的函数(多用于jump场景)
-func GetScriptFunc(funcName string) (ScriptFunc, bool) {
-	if decodeFunc, exists := ScriptFuncCache[funcName]; exists {
+func GetScriptFunc(funcName string) (ByteScriptFunc, bool) {
+	if decodeFunc, exists := ByteScriptFuncCache[funcName]; exists {
 		return decodeFunc, true
 	}
 	// 返回一个默认的空实现函数

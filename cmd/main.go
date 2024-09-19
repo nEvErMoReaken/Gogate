@@ -37,7 +37,7 @@ func main() {
 	if err != nil {
 		common.Log.Errorf("[main]加载脚本失败: %s", err)
 	}
-	common.Log.Infof("已加载脚本:%v", util.ScriptFuncCache)
+	common.Log.Infof("已加载脚本:%v", util.ByteScriptFuncCache)
 	// 4. 启动所有发送策略
 	chDone := make(chan struct{})
 	strategy.RunStrategy(comConfig, chDone)
