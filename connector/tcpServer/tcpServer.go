@@ -1,10 +1,11 @@
-package byteType
+package tcpServer
 
 import (
 	"bufio"
 	"fmt"
 	"gateway/common"
 	"gateway/model"
+	"gateway/parser/byteType"
 	"github.com/spf13/viper"
 	"io"
 	"log"
@@ -12,7 +13,8 @@ import (
 	"time"
 )
 
-type ServerModel struct {
+// TcpServerConnector Connector的TcpServer版本实现
+type TcpServerConnector struct {
 	listener        net.Listener // 监听器
 	TcpServerConfig *TcpServer   // 配置
 	//ChunkSequence   *ChunkSequence // 解析序列
@@ -26,8 +28,8 @@ func init() {
 }
 
 func NewTcpServer(comm *common.Config, v *viper.Viper, chDone chan struct{}) model.Connector {
-	// 0. 创建一个新的 ServerModel
-	tcpServer := &ServerModel{
+	// 0. 创建一个新的 TcpServerConnector
+	tcpServer := &TcpServerConnector{
 		ChDone: chDone,
 		v:      v,
 		comm:   comm,
@@ -49,7 +51,7 @@ func NewTcpServer(comm *common.Config, v *viper.Viper, chDone chan struct{}) mod
 	return tcpServer
 }
 
-func (t *ServerModel) Listen() error {
+func (t *TcpServerConnector) Listen() error {
 	// 1. 监听指定的端口
 	common.Log.Infof("TCPServer listening on port %s", t.TcpServerConfig.TCPServer.Port)
 	for {
@@ -60,12 +62,12 @@ func (t *ServerModel) Listen() error {
 		}
 		// 3. 使用 goroutine 处理连接，一个连接对应一个协程
 		common.Log.Infof("与 %s 建立连接", conn.RemoteAddr().String())
-		chunks, err := InitChunks(t.v, t.TcpServerConfig.ProtoFile)
+		chunks, err := byteType.InitChunks(t.v, t.TcpServerConfig.ProtoFile)
 		go t.HandleConnection(conn, &chunks)
 	}
 }
 
-func (t *ServerModel) Close() error {
+func (t *TcpServerConnector) Close() error {
 	err := t.listener.Close()
 	if err != nil {
 		return fmt.Errorf("[tcpServer]关闭监听程序失败: %s\n", err)
@@ -111,7 +113,7 @@ func initSnapshotCollection(comm *common.Config, v *viper.Viper, protoFile strin
 }
 
 // HandleConnection 处理连接, 一个连接对应一个协程
-func (t *ServerModel) HandleConnection(conn net.Conn, chunkSequence *ChunkSequence) {
+func (t *TcpServerConnector) HandleConnection(conn net.Conn, chunkSequence *byteType.ChunkSequence) {
 	defer func(conn net.Conn) {
 		err := conn.Close()
 		if err != nil {
@@ -167,7 +169,7 @@ func (t *ServerModel) HandleConnection(conn net.Conn, chunkSequence *ChunkSequen
 			}
 
 			// 4.3 发射所有的快照
-			chunkSequence.snapShotCollection.LaunchALL()
+			chunkSequence.SnapShotCollection.LaunchALL()
 			// 4.4 打印原始报文
 			hexString := ""
 			for _, b := range frame {

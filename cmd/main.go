@@ -3,8 +3,8 @@ package main
 import (
 	"fmt"
 	"gateway/common"
-	_ "gateway/dataSource/byteType"
 	"gateway/model"
+	_ "gateway/parser/byteType"
 	"gateway/strategy"
 	"gateway/util"
 	"go.uber.org/zap"

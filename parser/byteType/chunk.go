@@ -23,7 +23,7 @@ type Chunk interface {
 type ChunkSequence struct {
 	Chunks             []Chunk `mapstructure:"chunks"`
 	VarPointer         model.FrameContext
-	snapShotCollection *model.SnapshotCollection // 快照集合
+	SnapShotCollection *model.SnapshotCollection // 快照集合
 }
 
 // ProcessAll 方法：处理整个 ChunkSequence
@@ -39,7 +39,7 @@ func (c *ChunkSequence) ProcessAll(deviceId string, reader io.Reader, frame *[]b
 	c.VarPointer["ts"] = timeNow
 	// 处理每一个 Chunk
 	for index, chunk := range c.Chunks {
-		err := chunk.Process(reader, frame, c.snapShotCollection, config)
+		err := chunk.Process(reader, frame, c.SnapShotCollection, config)
 		if err != nil {
 			if err == io.EOF {
 				return err

@@ -16,7 +16,7 @@ script:
 
 
 connector:
-  type: tcpServer
+  type: mqtt
 
 strategy:
   - type: influxdb
