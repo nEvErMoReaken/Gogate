@@ -37,10 +37,12 @@ strategy:
     username:
     password:
     batch_size:
-
-#  - type: mqtt
-#    enable: false
-#    url: tcp://
-#    topic: "sam"
-#    filter: # 格式<设备类型>:<设备名称>:<遥测名称>
-#      - ".*:.*:.*"
+  - type: mqtt
+    enable: false
+    url: tcp://
+    clientID:
+    username:
+    password:
+    willTopic: "status/gateway"
+    filter: # 格式<设备类型>:<设备名称>:<遥测名称>
+      - ".*:.*:.*"
