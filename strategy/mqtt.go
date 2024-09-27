@@ -108,7 +108,7 @@ func NewMqttStrategy(dbConfig *common.StrategyConfig, stopChan chan struct{}) mo
 	}
 }
 
-// Stop 停止 InfluxDBStrategy
+// Stop 停止 MQTTStrategy
 func (m *MqttStrategy) Stop() {
 	m.client.Publish(m.info.WillTopic, 1, true, "offline")
 }

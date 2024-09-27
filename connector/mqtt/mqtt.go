@@ -21,7 +21,7 @@ type MqttConnector struct {
 }
 
 func init() {
-	model.RegisterConn("tcpServer", NewMqttConnector)
+	model.RegisterConn("mqtt", NewMqttConnector)
 }
 
 func (m *MqttConnector) Listen() error {
