@@ -3,7 +3,7 @@
 protoFile: test
 
 
-# 检查CRC校验码：true启用，false禁用
+# 检查CRC校验码：true启用，false禁用 还未实现
 check_crc: true
 
 

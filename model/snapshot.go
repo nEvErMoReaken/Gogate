@@ -12,12 +12,12 @@ import (
 
 // DeviceSnapshot 代表一个设备的物模型在某时刻的快照
 type DeviceSnapshot struct {
-	id         uuid.UUID                // 设备 ID
-	DeviceName string                   // 设备名称，例如 "vobc0001.abc"
-	DeviceType string                   // 设备类型，例如 "vobc.info"
-	Fields     map[string]*interface{}  // 字段存储，key 为字段名称，value 为字段值
-	PointMap   map[string]*PointPackage // 数据点映射，key 为策略名称，value 为数据点，仅为了方便查找
-	Ts         time.Time                // 时间戳
+	id         uuid.UUID               // 设备 ID
+	DeviceName string                  // 设备名称，例如 "vobc0001.abc"
+	DeviceType string                  // 设备类型，例如 "vobc.info"
+	Fields     map[string]*interface{} // 字段存储，key 为字段名称，value 为字段值
+	PointMap   map[string]Point        // 数据点映射，key 为策略名称，value 为数据点，仅为了方便查找
+	Ts         time.Time               // 时间戳
 }
 
 // Clear 清空设备快照信息
@@ -76,7 +76,7 @@ func NewSnapshot(deviceName string, deviceType string) *DeviceSnapshot {
 		DeviceType: deviceType,
 		DeviceName: deviceName,
 		Fields:     make(map[string]*interface{}),
-		PointMap:   make(map[string]*PointPackage),
+		PointMap:   make(map[string]Point),
 	}
 }
 
@@ -95,7 +95,8 @@ func (dm *DeviceSnapshot) toJSON() string {
 	// 将 PointMap 转换为简单的形式
 	pointMap := make(map[string]map[string]*interface{})
 	for key, value := range dm.PointMap {
-		pointMap[key] = value.Point.Field
+		pointMap[key] = make(map[string]*interface{})
+		pointMap[key] = value.Field
 	}
 
 	// 创建序列化时使用的快照结构体
@@ -119,33 +120,29 @@ func (dm *DeviceSnapshot) toJSON() string {
 }
 
 // InitPointPackage 初始化设备快照的数据点映射结构
-// 前提：DeviceSnapshot的TemplateDeviceName, DeviceType, Fields字段已经初始化
+// 前提：DeviceSnapshot的DeviceName, DeviceType, Fields字段已经初始化
 func (dm *DeviceSnapshot) InitPointPackage(fieldKey string, common *common.Config) {
 	for _, strategy := range common.Strategy {
 		for _, filter := range strategy.Filter {
 			// 遍历字段，判断是否符合策略过滤条件
 			if checkFilter(dm.DeviceType, dm.DeviceName, fieldKey, filter) {
-				st := GetStrategy(strategy.Type)
-				// 检查 PointMap 是否已经存在该策略对应的 PointPackage
+				// 检查 PointMap 是否已经存在该策略对应的 Point
 				if _, exists := dm.PointMap[strategy.Type]; !exists {
-					// 创建新的 PointPackage，并使用指针引用字段
-					dm.PointMap[strategy.Type] = &PointPackage{
-						Point: Point{
-							DeviceName: &dm.DeviceName,
-							DeviceType: &dm.DeviceType,
-							Field:      map[string]*interface{}{fieldKey: dm.Fields[fieldKey]}, // 引用字段
-							Ts:         &dm.Ts,                                                 // 使用快照的时间戳引用
-						},
-						Strategy: st,
+					// 创建新的 Point，并使用指针引用字段
+					dm.PointMap[strategy.Type] = Point{
+						DeviceName: dm.DeviceName,
+						DeviceType: dm.DeviceType,
+						Field:      map[string]*interface{}{fieldKey: dm.Fields[fieldKey]}, // 引用字段
+						Ts:         &dm.Ts,                                                 // 使用快照的时间戳引用
 					}
 				} else {
-					// 如果 PointPackage 已存在，更新其字段引用
-					pointPackage := dm.PointMap[strategy.Type]
-					if pointPackage.Point.Field == nil {
-						pointPackage.Point.Field = make(map[string]*interface{})
+					// 如果 Point 已存在，更新其字段引用
+					point := dm.PointMap[strategy.Type]
+					if point.Field == nil {
+						point.Field = make(map[string]*interface{})
 					}
-					// 更新 PointPackage 中的字段引用
-					pointPackage.Point.Field[fieldKey] = dm.Fields[fieldKey]
+					// 更新 point 中的字段引用
+					point.Field[fieldKey] = dm.Fields[fieldKey]
 				}
 			}
 
@@ -160,7 +157,7 @@ func checkFilter(deviceType, deviceName, telemetryName, filter string) bool {
 	parts := strings.Split(filter, ":")
 	if len(parts) != 3 {
 		// 如果过滤条件不符合预期语法
-		fmt.Println("过滤条件格式不正确")
+		common.Log.Errorf("过滤条件格式不正确")
 		return false
 	}
 
@@ -171,7 +168,7 @@ func checkFilter(deviceType, deviceName, telemetryName, filter string) bool {
 
 	// 检查正则表达式编译错误
 	if err1 != nil || err2 != nil || err3 != nil {
-		fmt.Printf("Error compiling regex: %v, %v, %v\n", err1, err2, err3)
+		common.Log.Errorf("Error compiling regex: %v, %v, %v\n", err1, err2, err3)
 		return false
 	}
 	common.Log.Debugf("deviceType: %s, DeviceName: %s, telemetryName: %s", deviceType, deviceName, telemetryName)
@@ -225,8 +222,8 @@ func (dm *DeviceSnapshot) Equal(other *DeviceSnapshot) bool {
 // launch 发射所有数据点
 func (dm *DeviceSnapshot) launch() {
 	common.Log.Info(dm.toJSON())
-	for _, pp := range dm.PointMap {
-		pp.launch()
+	for st, pp := range dm.PointMap {
+		GetStrategy(st).GetChan() <- DeepCopyPoint(pp) // 深拷贝，避免后续clear带给后面发送流程的不良影响。
 	}
 	// 清空设备快照
 	dm.Clear()

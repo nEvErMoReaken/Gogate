@@ -17,7 +17,7 @@ func init() {
 }
 
 // GetChan Step.2
-func (b *InfluxDbStrategy) GetChan() chan *model.Point {
+func (b *InfluxDbStrategy) GetChan() chan model.Point {
 	return b.pointChan
 }
 
@@ -39,7 +39,7 @@ func (b *InfluxDbStrategy) Start() {
 // InfluxDbStrategy 实现将数据发布到 InfluxDB 的逻辑
 type InfluxDbStrategy struct {
 	client    influxdb2.Client
-	pointChan chan *model.Point
+	pointChan chan model.Point
 	stopChan  chan struct{}
 	writeAPI  api.WriteAPI
 	info      InfluxDbInfo
@@ -75,7 +75,7 @@ func NewInfluxDbStrategy(dbConfig *common.StrategyConfig, stopChan chan struct{}
 		}
 	}()
 	return &InfluxDbStrategy{
-		pointChan: make(chan *model.Point, 200), // 容量为200的通道
+		pointChan: make(chan model.Point, 200), // 容量为200的通道
 		stopChan:  stopChan,
 		client:    client,
 		writeAPI:  writeAPI,
@@ -83,7 +83,7 @@ func NewInfluxDbStrategy(dbConfig *common.StrategyConfig, stopChan chan struct{}
 	}
 }
 
-func (b *InfluxDbStrategy) Publish(point *model.Point) {
+func (b *InfluxDbStrategy) Publish(point model.Point) {
 	// ～～～将数据发布到 InfluxDB 的逻辑～～～
 	common.Log.Debugf("正在发送 %+v", point)
 
@@ -126,16 +126,16 @@ func (b *InfluxDbStrategy) Publish(point *model.Point) {
 			decodedFields[key] = value
 		}
 	}
-	tagsMap["devName"] = *point.DeviceName
+	tagsMap["devName"] = point.DeviceName
 	//common.Log.Debugf("正在发送 %+v", decodedFields)
 	// 创建一个数据点
 	p := influxdb2.NewPoint(
-		*point.DeviceType, // measurement
-		tagsMap,           // tags
-		decodedFields,     // fields (converted)
-		*point.Ts,         // timestamp
+		point.DeviceType, // measurement
+		tagsMap,          // tags
+		decodedFields,    // fields (converted)
+		*point.Ts,        // timestamp
 	)
-	common.Log.Debugf("正在发送:\n , %+v, %+v, %+v, %+v", *point.DeviceType, *point.DeviceName, decodedFields, *point.Ts)
+	common.Log.Debugf("正在发送:\n , %+v, %+v, %+v, %+v", point.DeviceType, point.DeviceName, decodedFields, *point.Ts)
 	// 写入到 InfluxDB
 	b.writeAPI.WritePoint(p)
 

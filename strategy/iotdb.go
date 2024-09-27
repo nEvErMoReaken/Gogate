@@ -19,7 +19,7 @@ func init() {
 // IoTDBStrategy 实现将数据发布到 IoTDB 的逻辑
 type IoTDBStrategy struct {
 	sessionPool *client.SessionPool
-	pointChan   chan *model.Point
+	pointChan   chan model.Point
 	stopChan    chan struct{}
 	info        IotDBInfo
 }
@@ -71,7 +71,7 @@ func NewIoTDBStrategy(dbConfig *common.StrategyConfig, stopChan chan struct{}) m
 	}
 
 	return &IoTDBStrategy{
-		pointChan:   make(chan *model.Point, 200), // 容量为 200 的通道
+		pointChan:   make(chan model.Point, 200), // 容量为 200 的通道
 		stopChan:    stopChan,
 		sessionPool: &sessionPool,
 		info:        info,
@@ -79,7 +79,7 @@ func NewIoTDBStrategy(dbConfig *common.StrategyConfig, stopChan chan struct{}) m
 }
 
 // GetChan 返回通道
-func (b *IoTDBStrategy) GetChan() chan *model.Point {
+func (b *IoTDBStrategy) GetChan() chan model.Point {
 	return b.pointChan
 }
 
@@ -99,7 +99,7 @@ func (b *IoTDBStrategy) Start() {
 }
 
 // Publish 将数据发布到 IoTDB
-func (b *IoTDBStrategy) Publish(point *model.Point) {
+func (b *IoTDBStrategy) Publish(point model.Point) {
 	// 日志记录
 	common.Log.Debugf("正在发送 %+v", point)
 	session, err := b.sessionPool.GetSession()
@@ -149,10 +149,10 @@ func (b *IoTDBStrategy) Publish(point *model.Point) {
 		}
 	}
 
-	if point.DeviceType != nil && *point.DeviceType != "" {
-		deviceId = fmt.Sprintf("root.%s.%s", *point.DeviceType, *point.DeviceName)
+	if point.DeviceType != "" {
+		deviceId = fmt.Sprintf("root.%s.%s", point.DeviceType, point.DeviceName)
 	} else {
-		deviceId = fmt.Sprintf("root.%s", *point.DeviceName)
+		deviceId = fmt.Sprintf("root.%s", point.DeviceName)
 	}
 
 	// 设置时间戳（毫秒）

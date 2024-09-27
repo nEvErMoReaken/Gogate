@@ -19,7 +19,7 @@ func init() {
 // MqttStrategy 实现将数据发布到 MQTT 的逻辑
 type MqttStrategy struct {
 	client    MQTT.Client
-	pointChan chan *model.Point
+	pointChan chan model.Point
 	stopChan  chan struct{}
 	info      MQTTInfo
 }
@@ -34,7 +34,7 @@ type MQTTInfo struct {
 }
 
 // GetChan Step.2
-func (m *MqttStrategy) GetChan() chan *model.Point {
+func (m *MqttStrategy) GetChan() chan model.Point {
 	return m.pointChan
 }
 
@@ -55,7 +55,7 @@ func (m *MqttStrategy) Start() {
 	}
 }
 
-func (m *MqttStrategy) Publish(point *model.Point) {
+func (m *MqttStrategy) Publish(point model.Point) {
 	// 创建一个新的 map[string]interface{} 来存储解引用的字段
 	decodedFields := make(map[string]interface{})
 	for key, valuePtr := range point.Field {
@@ -71,7 +71,7 @@ func (m *MqttStrategy) Publish(point *model.Point) {
 		common.Log.Errorf("序列化 JSON 失败: %+v", err)
 		return
 	}
-	topic := fmt.Sprintf("gateway/%s/%s/fields", *point.DeviceType, *point.DeviceName)
+	topic := fmt.Sprintf("gateway/%s/%s/fields", point.DeviceType, point.DeviceName)
 	m.client.Publish(topic, 0, true, jsonData)
 	common.Log.Infof("[MqttStrategy]发布消息到 %s: %s", topic, string(jsonData))
 }
@@ -102,7 +102,7 @@ func NewMqttStrategy(dbConfig *common.StrategyConfig, stopChan chan struct{}) mo
 	}
 	return &MqttStrategy{
 		client:    mqCLi,
-		pointChan: make(chan *model.Point, 200),
+		pointChan: make(chan model.Point, 200),
 		stopChan:  stopChan,
 		info:      info,
 	}

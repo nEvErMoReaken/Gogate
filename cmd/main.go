@@ -16,12 +16,13 @@ import (
 )
 
 func main() {
-	// 1. 初始化config
+	// 1. 初始化common config
 	comConfig, v, err := common.InitCommon("config")
 	if err != nil {
 		log.Fatalf("[main] 加载配置失败: %s", err)
 		return
 	}
+
 	// 2. 初始化log
 	common.InitLogger(&comConfig.LogConfig)
 	defer func(logger *zap.SugaredLogger) {
@@ -38,14 +39,17 @@ func main() {
 		common.Log.Errorf("[main]加载脚本失败: %s", err)
 	}
 	common.Log.Infof("已加载脚本:%v", util.ByteScriptFuncCache)
+
 	// 4. 启动所有发送策略
 	chDone := make(chan struct{})
 	strategy.RunStrategy(comConfig, chDone)
+
 	// 5. 启动所有注册的Connector
 	err1 := model.RunConnector(comConfig, comConfig.Connector.Type, v, chDone)
 	if err1 != nil {
 		common.Log.Fatalf("[main]启动Connector失败: %s", err1)
 	}
+
 	// 6. 监听终止信号
 	si := make(chan os.Signal, 1)
 	signal.Notify(si, os.Interrupt)
