@@ -105,7 +105,7 @@ func initSnapshotCollection(comm *common.Config, v *viper.Viper, protoFile strin
 	}
 	// 初始化发送策略
 	//for _, deviceSnapshot := range snapshotCollection {
-	//	//deviceSnapshot.InitPointPackage(comm)
+	//	//deviceSnapshot.InitDataSink(comm)
 	//	//common.Log.Debugf("初始化PointMap成功: %+v", deviceSnapshot.PointMap["influxdb"])
 	//}
 	common.Log.Debugf("初始化设备快照成功: %+v", snapshotCollection)
@@ -169,7 +169,7 @@ func (t *TcpServerConnector) HandleConnection(conn net.Conn, chunkSequence *byte
 			}
 
 			// 4.3 发射所有的快照
-			chunkSequence.SnapShotCollection.LaunchALL()
+			chunkSequence.SnapShotCollection.LaunchALL(t.comm)
 			// 4.4 打印原始报文
 			hexString := ""
 			for _, b := range frame {

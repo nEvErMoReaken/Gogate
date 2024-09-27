@@ -111,7 +111,7 @@ func (m *MqttConnector) messagePubHandler(_ mqtt.Client, msg mqtt.Message) {
 	jsonType.ConversionToSnapshot(js, m.conversion, m.snapshotCollection, m.comm)
 
 	// 3. 发射所有快照
-	m.snapshotCollection.LaunchALL()
+	m.snapshotCollection.LaunchALL(m.comm)
 }
 
 // 连接成功回调

@@ -12,12 +12,12 @@ import (
 
 // DeviceSnapshot 代表一个设备的物模型在某时刻的快照
 type DeviceSnapshot struct {
-	id         uuid.UUID               // 设备 ID
-	DeviceName string                  // 设备名称，例如 "vobc0001.abc"
-	DeviceType string                  // 设备类型，例如 "vobc.info"
-	Fields     map[string]*interface{} // 字段存储，key 为字段名称，value 为字段值
-	PointMap   map[string]Point        // 数据点映射，key 为策略名称，value 为数据点，仅为了方便查找
-	Ts         time.Time               // 时间戳
+	Id         uuid.UUID              `json:"id"`          // 设备 ID
+	DeviceName string                 `json:"device_name"` // 设备名称，例如 "vobc0001.abc"
+	DeviceType string                 `json:"device_type"` // 设备类型，例如 "vobc.info"
+	Fields     map[string]interface{} `json:"fields"`      // 字段存储，key 为字段名称，value 为字段值
+	DataSink   map[string][]string    `json:"sink_map"`    // 指示策略-字段名的映射关系
+	Ts         time.Time              `json:"timestamp"`   // 时间戳
 }
 
 // Clear 清空设备快照信息
@@ -26,15 +26,12 @@ func (dm *DeviceSnapshot) Clear() {
 	for _, value := range dm.Fields {
 		if value != nil {
 			// 重置为零值，确保引用保留，但内容清空
-			*value = nil
+			value = nil
 		}
 	}
 	// 清空Ts
 	dm.Ts = time.Time{}
 }
-
-// FrameContext 每一帧中, 也就是多Chunks共享的上下文
-type FrameContext map[string]*interface{}
 
 // SnapshotCollection 代表设备快照的集合
 type SnapshotCollection map[string]*DeviceSnapshot
@@ -72,46 +69,19 @@ func NewSnapshot(deviceName string, deviceType string) *DeviceSnapshot {
 		return nil
 	}
 	return &DeviceSnapshot{
-		id:         newID,
+		Id:         newID,
 		DeviceType: deviceType,
 		DeviceName: deviceName,
-		Fields:     make(map[string]*interface{}),
-		PointMap:   make(map[string]Point),
+		Fields:     make(map[string]interface{}),
+		DataSink:   make(map[string][]string),
 	}
 }
 
 // toJSON 将 DeviceSnapshot 转换为 JSON 格式的字符串
 func (dm *DeviceSnapshot) toJSON() string {
-	// 创建一个临时结构体，用来序列化成 JSON
-	type jsonSnapshot struct {
-		ID         uuid.UUID                          `json:"id"`
-		DeviceName string                             `json:"device_name"`
-		DeviceType string                             `json:"device_type"`
-		Fields     map[string]*interface{}            `json:"fields"`
-		PointMap   map[string]map[string]*interface{} `json:"point_map"` // 用来存储数据点和策略映射
-		Timestamp  string                             `json:"timestamp"`
-	}
-
-	// 将 PointMap 转换为简单的形式
-	pointMap := make(map[string]map[string]*interface{})
-	for key, value := range dm.PointMap {
-		pointMap[key] = make(map[string]*interface{})
-		pointMap[key] = value.Field
-	}
-
-	// 创建序列化时使用的快照结构体
-	jsonStruct := jsonSnapshot{
-		ID: dm.id,
-
-		DeviceName: dm.DeviceName,
-		DeviceType: dm.DeviceType,
-		Fields:     dm.Fields,
-		PointMap:   pointMap,
-		Timestamp:  dm.Ts.Format(time.RFC3339),
-	}
 
 	// 序列化为 JSON 字符串
-	jsonBytes, err := json.MarshalIndent(jsonStruct, "", "  ")
+	jsonBytes, err := json.MarshalIndent(dm, "", "  ")
 	if err != nil {
 		return fmt.Sprintf("error serializing DeviceSnapshot to JSON: %v", err)
 	}
@@ -119,30 +89,20 @@ func (dm *DeviceSnapshot) toJSON() string {
 	return string(jsonBytes)
 }
 
-// InitPointPackage 初始化设备快照的数据点映射结构
-// 前提：DeviceSnapshot的DeviceName, DeviceType, Fields字段已经初始化
-func (dm *DeviceSnapshot) InitPointPackage(fieldKey string, common *common.Config) {
+// InitDataSink 初始化设备快照的数据点映射结构
+// 前提：DeviceSnapshot的DeviceName, DeviceType, Fields字段已经全部初始化
+func (dm *DeviceSnapshot) InitDataSink(fieldKey string, common *common.Config) {
 	for _, strategy := range common.Strategy {
 		for _, filter := range strategy.Filter {
 			// 遍历字段，判断是否符合策略过滤条件
 			if checkFilter(dm.DeviceType, dm.DeviceName, fieldKey, filter) {
-				// 检查 PointMap 是否已经存在该策略对应的 Point
-				if _, exists := dm.PointMap[strategy.Type]; !exists {
-					// 创建新的 Point，并使用指针引用字段
-					dm.PointMap[strategy.Type] = Point{
-						DeviceName: dm.DeviceName,
-						DeviceType: dm.DeviceType,
-						Field:      map[string]*interface{}{fieldKey: dm.Fields[fieldKey]}, // 引用字段
-						Ts:         &dm.Ts,                                                 // 使用快照的时间戳引用
-					}
+				// 检查 DataSink 是否已经存在该策略对应的 Point
+				if _, exists := dm.DataSink[strategy.Type]; !exists {
+					// 不存在则初始化数组并添加
+					dm.DataSink[strategy.Type] = []string{fieldKey}
 				} else {
-					// 如果 Point 已存在，更新其字段引用
-					point := dm.PointMap[strategy.Type]
-					if point.Field == nil {
-						point.Field = make(map[string]*interface{})
-					}
-					// 更新 point 中的字段引用
-					point.Field[fieldKey] = dm.Fields[fieldKey]
+					// 如果 Sink 已存在，更新其字段引用
+					dm.DataSink[strategy.Type] = append(dm.DataSink[strategy.Type], fieldKey)
 				}
 			}
 
@@ -186,20 +146,14 @@ func (dm *DeviceSnapshot) SetField(fieldName string, value interface{}, config *
 	if fieldName == "nil" {
 		return
 	}
-	// 如果fileds中已经存在该字段，则更新字段值，不创建新的指针
-	if _, exists := dm.Fields[fieldName]; exists {
-		*dm.Fields[fieldName] = value
-		return
-	} else {
-		// 将传入的值转换为指针
-		ptr := new(interface{})
-		*ptr = value
-		// 将指针存入 Fields
-		dm.Fields[fieldName] = ptr
-		// 更新PointMap中的字段引用
-		dm.InitPointPackage(fieldName, config)
-	}
+	// 如果fileds中已经存在该字段，则更新字段值
+	dm.Fields[fieldName] = value
+	if _, exists := dm.Fields[fieldName]; !exists {
 
+		dm.Fields[fieldName] = value
+		// 初始化该字段的DataSink
+		dm.InitDataSink(fieldName, config)
+	}
 }
 
 // GetField 获取字段值
@@ -221,12 +175,32 @@ func (dm *DeviceSnapshot) Equal(other *DeviceSnapshot) bool {
 
 // launch 发射所有数据点
 func (dm *DeviceSnapshot) launch() {
-	common.Log.Info(dm.toJSON())
-	for st, pp := range dm.PointMap {
-		GetStrategy(st).GetChan() <- DeepCopyPoint(pp) // 深拷贝，避免后续clear带给后面发送流程的不良影响。
+	common.Log.Infof("launching device %+v ", dm.toJSON())
+	for st := range dm.DataSink {
+		select {
+		case GetStrategy(st).GetChan() <- dm.makePoint(st):
+			// 成功发送
+		default:
+			// 打印通道堵塞警告，避免影响其他通道
+			common.Log.Errorf("Failed to send data to strategy %s, current channel lenth: %d", st, len(GetStrategy(st).GetChan()))
+		}
 	}
 	// 清空设备快照
 	dm.Clear()
+}
+
+// makePoint 生成Point
+func (dm *DeviceSnapshot) makePoint(st string) Point {
+	point := Point{
+		DeviceName: dm.DeviceName,
+		DeviceType: dm.DeviceType,
+		Field:      make(map[string]interface{}),
+		Ts:         dm.Ts,
+	}
+	for _, fieldName := range dm.DataSink[st] {
+		point.Field[fieldName] = dm.Fields[fieldName]
+	}
+	return point
 }
 
 // LaunchALL 发射所有数据点
