@@ -103,7 +103,7 @@ func (b *InfluxDbStrategy) Publish(point model.Point) {
 			continue // 如果值为 nil，直接跳过
 		}
 
-		value := *valuePtr
+		value := valuePtr
 		// 判断 key 是否在 tags 中
 		if _, isTag := tagsSet[key]; isTag {
 			// 如果是 tags 中的字段，处理类型转换
@@ -133,9 +133,9 @@ func (b *InfluxDbStrategy) Publish(point model.Point) {
 		point.DeviceType, // measurement
 		tagsMap,          // tags
 		decodedFields,    // fields (converted)
-		*point.Ts,        // timestamp
+		point.Ts,         // timestamp
 	)
-	common.Log.Debugf("正在发送:\n , %+v, %+v, %+v, %+v", point.DeviceType, point.DeviceName, decodedFields, *point.Ts)
+	common.Log.Debugf("正在发送:\n , %+v, %+v, %+v, %+v", point.DeviceType, point.DeviceName, decodedFields, point.Ts)
 	// 写入到 InfluxDB
 	b.writeAPI.WritePoint(p)
 

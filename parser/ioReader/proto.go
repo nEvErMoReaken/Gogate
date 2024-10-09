@@ -1,4 +1,4 @@
-package byteType
+package ioReader
 
 type FixedChunkConfig struct {
 	Type     string          `mapstructure:"type"`

@@ -4,20 +4,21 @@ import (
 	"encoding/json"
 	"fmt"
 	"gateway/common"
-	"github.com/google/uuid"
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // DeviceSnapshot 代表一个设备的物模型在某时刻的快照
 type DeviceSnapshot struct {
-	Id         uuid.UUID              `json:"id"`          // 设备 ID
-	DeviceName string                 `json:"device_name"` // 设备名称，例如 "vobc0001.abc"
-	DeviceType string                 `json:"device_type"` // 设备类型，例如 "vobc.info"
-	Fields     map[string]interface{} `json:"fields"`      // 字段存储，key 为字段名称，value 为字段值
-	DataSink   map[string][]string    `json:"sink_map"`    // 指示策略-字段名的映射关系
-	Ts         time.Time              `json:"timestamp"`   // 时间戳
+	Id         uuid.UUID           `json:"id"`          // 设备 ID
+	DeviceName string              `json:"device_name"` // 设备名称，例如 "vobc0001.abc"
+	DeviceType string              `json:"device_type"` // 设备类型，例如 "vobc.info"
+	Fields     map[string]any      `json:"fields"`      // 字段存储，key 为字段名称，value 为字段值
+	DataSink   map[string][]string `json:"sink_map"`    // 指示策略-字段名的映射关系
+	Ts         time.Time           `json:"timestamp"`   // 时间戳
 }
 
 // Clear 清空设备快照信息

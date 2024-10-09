@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"gateway/common"
 	"gateway/model"
-	"gateway/parser/byteType"
+	"gateway/parser/ioReader"
 	"github.com/spf13/viper"
 	"io"
 	"log"
@@ -62,7 +62,7 @@ func (t *TcpServerConnector) Listen() error {
 		}
 		// 3. 使用 goroutine 处理连接，一个连接对应一个协程
 		common.Log.Infof("与 %s 建立连接", conn.RemoteAddr().String())
-		chunks, err := byteType.InitChunks(t.v, t.TcpServerConfig.ProtoFile)
+		chunks, err := ioReader.InitChunks(t.v, t.TcpServerConfig.ProtoFile)
 		go t.HandleConnection(conn, &chunks)
 	}
 }
@@ -113,7 +113,7 @@ func initSnapshotCollection(comm *common.Config, v *viper.Viper, protoFile strin
 }
 
 // HandleConnection 处理连接, 一个连接对应一个协程
-func (t *TcpServerConnector) HandleConnection(conn net.Conn, chunkSequence *byteType.ChunkSequence) {
+func (t *TcpServerConnector) HandleConnection(conn net.Conn, chunkSequence *ioReader.ChunkSequence) {
 	defer func(conn net.Conn) {
 		err := conn.Close()
 		if err != nil {
@@ -169,7 +169,7 @@ func (t *TcpServerConnector) HandleConnection(conn net.Conn, chunkSequence *byte
 			}
 
 			// 4.3 发射所有的快照
-			chunkSequence.SnapShotCollection.LaunchALL(t.comm)
+			chunkSequence.SnapShotCollection.LaunchALL()
 			// 4.4 打印原始报文
 			hexString := ""
 			for _, b := range frame {

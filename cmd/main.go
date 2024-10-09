@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"gateway/common"
 	"gateway/model"
-	_ "gateway/parser/byteType"
+	_ "gateway/parser/ioReader"
 	"gateway/strategy"
 	"gateway/util"
 	"go.uber.org/zap"

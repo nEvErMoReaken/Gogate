@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"gateway/common"
 	"gateway/model"
+	"time"
+
 	MQTT "github.com/eclipse/paho.mqtt.golang"
 	"github.com/mitchellh/mapstructure"
-	"time"
 )
 
 // 初始化函数，注册 IoTDB 策略
@@ -63,7 +64,7 @@ func (m *MqttStrategy) Publish(point model.Point) {
 			continue // 跳过 nil 值
 		}
 
-		decodedFields[key] = *valuePtr
+		decodedFields[key] = valuePtr
 	}
 	// 将 map 序列化为 JSON
 	jsonData, err := json.Marshal(decodedFields)

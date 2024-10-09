@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"gateway/common"
 	"gateway/model"
-	"gateway/parser/jsonType"
+	"gateway/parser/json"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/spf13/viper"
 )
@@ -16,7 +16,7 @@ type MqttConnector struct {
 	v                  *viper.Viper              // 配置文件
 	comm               *common.Config            // 全局配置
 	client             *mqtt.Client              // MQTT 客户端
-	conversion         *jsonType.JsonParseConfig // 转换配置
+	conversion         *json.JsonParseConfig     // 转换配置
 	snapshotCollection *model.SnapshotCollection // 快照集合
 }
 
@@ -60,7 +60,7 @@ func NewMqttConnector(comm *common.Config, v *viper.Viper, stopChan chan struct{
 		common.Log.Fatalf("初始化MQTT配置失败: %v", err)
 	}
 	// 2. 初始化转换配置
-	conversion, err := jsonType.UnmarshalJsonParseConfig(v)
+	conversion, err := json.UnmarshalJsonParseConfig(v)
 	if err != nil {
 		common.Log.Fatalf("初始化转换配置失败: %v", err)
 	}
@@ -108,10 +108,10 @@ func (m *MqttConnector) messagePubHandler(_ mqtt.Client, msg mqtt.Message) {
 	js := string(msg.Payload())
 
 	// 2. 调用 ConversionToSnapshot 并传入必要的参数
-	jsonType.ConversionToSnapshot(js, m.conversion, m.snapshotCollection, m.comm)
+	json.ConversionToSnapshot(js, m.conversion, m.snapshotCollection, m.comm)
 
 	// 3. 发射所有快照
-	m.snapshotCollection.LaunchALL(m.comm)
+	m.snapshotCollection.LaunchALL()
 }
 
 // 连接成功回调

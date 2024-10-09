@@ -1,4 +1,4 @@
-package byteType
+package ioReader
 
 import (
 	"fmt"

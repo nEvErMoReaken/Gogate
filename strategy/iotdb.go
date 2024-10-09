@@ -4,10 +4,11 @@ import (
 	"fmt"
 	"gateway/common"
 	"gateway/model"
+	"strings"
+
 	"github.com/apache/iotdb-client-go/client"
 	"github.com/apache/iotdb-client-go/rpc"
 	"github.com/mitchellh/mapstructure"
-	"strings"
 )
 
 // 初始化函数，注册 IoTDB 策略
@@ -122,7 +123,7 @@ func (b *IoTDBStrategy) Publish(point model.Point) {
 			continue // 跳过 nil 值
 		}
 
-		value := *valuePtr
+		value := valuePtr
 
 		// 添加到测量和值列表
 		measurements[0] = append(measurements[0], key)
