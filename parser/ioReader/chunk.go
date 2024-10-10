@@ -2,7 +2,8 @@ package ioReader
 
 import (
 	"fmt"
-	"gateway/common"
+	"gateway/internal/pkg"
+	"gateway/logger"
 	"gateway/model"
 	"gateway/util"
 	"github.com/mitchellh/mapstructure"
@@ -16,7 +17,7 @@ import (
 
 // Chunk 处理器接口
 type Chunk interface {
-	Process(reader io.Reader, frame *[]byte, collection *model.SnapshotCollection, config *common.Config) error
+	Process(reader io.Reader, frame *[]byte, collection *model.SnapshotCollection, config *pkg.Config) error
 	String() string // 添加 String 方法
 }
 
@@ -30,10 +31,11 @@ type ChunkSequence struct {
 }
 
 // ProcessAll 方法：处理整个 ChunkSequence
-func (c *ChunkSequence) ProcessAll(deviceId string, reader io.Reader, frame *[]byte, config *common.Config) error {
+func (c *ChunkSequence) ProcessAll(deviceId string, reader io.Reader, frame *[]byte, config *pkg.Config) error {
 	// 初始化一些变量
 	// deviceId
 	c.VarPointer["deviceId"] = deviceId
+
 	// ts
 	c.VarPointer["ts"] = time.Now()
 	// 处理每一个 Chunk
@@ -126,7 +128,7 @@ func (f *FixedLengthChunk) String() string {
 	return fmt.Sprintf("FixedLengthChunk:\n  Length=%s\n  Sections:\n%s", lengthVal, sectionsStr)
 }
 
-func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte, collection *model.SnapshotCollection, config *common.Config) error {
+func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte, collection *model.SnapshotCollection, config *pkg.Config) error {
 	// ～～～ 定长块的处理逻辑 ～～～
 	chunkLen := f.CalLength()
 	// 1. 读取固定长度数据
@@ -141,12 +143,12 @@ func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte, collection *
 	}
 	// 处理部分读取
 	if n < f.CalLength() {
-		common.Log.Warnf("只读取了 %d 字节，而不是期望的 %d 字节", n, chunkLen)
+		logger.Log.Warnf("只读取了 %d 字节，而不是期望的 %d 字节", n, chunkLen)
 	}
 	// 定长Chunk可以直接追加到frame中
 	*frame = append(*frame, data...)
 	// 2. 解析数据
-	common.Log.Debugf("Processing FixedLengthChunk")
+	logger.Log.Debugf("Processing FixedLengthChunk")
 	byteCursor := 0
 	for index, sec := range f.Sections {
 		var parsedToDeviceName string
@@ -155,7 +157,7 @@ func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte, collection *
 		for i := 0; i < sec.CalRepeat(f.VarPool); i++ {
 			// 2.1. 根据Sec的length解码
 			if sec.Decoding == nil {
-				common.Log.Debugf("Step.%+v: Loop.%+v: Jump For %+v Byte", index+1, i+1, sec.Length)
+				logger.Log.Debugf("Step.%+v: Loop.%+v: Jump For %+v Byte", index+1, i+1, sec.Length)
 				// 如果没有解码函数，直接跳过
 				byteCursor += sec.Length
 				continue
@@ -172,7 +174,7 @@ func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte, collection *
 				decoded, err1 = sec.Decoding(data[byteCursor : byteCursor+sec.Length])
 			}
 
-			common.Log.Debugf("Step.%+v: Loop.%+v: Decoded: %v Byte to %+v", index+1, i+1, sec.Length, decoded)
+			logger.Log.Debugf("Step.%+v: Loop.%+v: Decoded: %v Byte to %+v", index+1, i+1, sec.Length, decoded)
 			if err1 != nil {
 				return err1
 			}
@@ -231,7 +233,7 @@ type ConditionalChunk struct {
 	Sections       []Section
 }
 
-func (c *ConditionalChunk) Process(reader io.Reader, frame *[]byte, collection *model.SnapshotCollection, config *common.Config) error {
+func (c *ConditionalChunk) Process(reader io.Reader, frame *[]byte, collection *model.SnapshotCollection, config *pkg.Config) error {
 	fmt.Println("Processing ConditionalChunk")
 	// 动态选择下一个 Chunk 解析逻辑
 	return nil
@@ -286,7 +288,7 @@ func (s *Section) parseToDeviceName(context *FrameContext) string {
 				result = strings.Replace(result, "${"+templateVar+"}", contextVar.(string), -1)
 			} else {
 				// 如果没有找到变量，可以考虑报错或使用默认值
-				common.Log.Errorf("模板变量 %s 未找到", templateVar)
+				logger.Log.Errorf("模板变量 %s 未找到", templateVar)
 			}
 		}
 	}
@@ -296,7 +298,7 @@ func (s *Section) parseToDeviceName(context *FrameContext) string {
 
 // InitChunks 从配置文件初始化 Chunk
 func InitChunks(v *viper.Viper, protoFile string) (ChunkSequence, error) {
-	common.Log.Infof("当前启用的协议文件: %s", protoFile)
+	logger.Log.Infof("当前启用的协议文件: %s", protoFile)
 	// 初始化 SnapshotCollection
 	snapshotCollection := make(model.SnapshotCollection)
 	var chunkSequence = ChunkSequence{
@@ -314,7 +316,7 @@ func InitChunks(v *viper.Viper, protoFile string) (ChunkSequence, error) {
 
 		chunkSequence.Chunks = append(chunkSequence.Chunks, tmpChunk)
 	}
-	common.Log.Infof("ChunkSequence 初始化成功:\n %+v", chunkSequence)
+	logger.Log.Infof("ChunkSequence 初始化成功:\n %+v", chunkSequence)
 	return chunkSequence, nil
 }
 

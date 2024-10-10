@@ -1,8 +1,8 @@
-package model
+package connector
 
 import (
 	"fmt"
-	"gateway/common"
+	"gateway/internal/pkg"
 	"github.com/spf13/viper"
 )
 
@@ -13,7 +13,7 @@ type Connector interface {
 }
 
 // ConnFactoryFunc 代表一个数据源的工厂函数
-type ConnFactoryFunc func(*common.Config, *viper.Viper, chan struct{}) Connector
+type ConnFactoryFunc func(*pkg.Config, *viper.Viper, chan struct{}) Connector
 
 // ConnFactories 全局工厂映射，用于注册不同数据源类型的构造函数
 var ConnFactories = make(map[string]ConnFactoryFunc)
@@ -24,7 +24,7 @@ func RegisterConn(connType string, factory ConnFactoryFunc) {
 }
 
 // RunConnector 运行指定类型的数据源
-func RunConnector(common *common.Config, connType string, v *viper.Viper, chDone chan struct{}) error {
+func RunConnector(common *pkg.Config, connType string, v *viper.Viper, chDone chan struct{}) error {
 	factory, ok := ConnFactories[connType]
 	if !ok {
 		return fmt.Errorf("未找到数据源类型: %s", connType)

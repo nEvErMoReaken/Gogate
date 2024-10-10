@@ -1,10 +1,11 @@
-package common
+package pkg
 
 import (
 	"fmt"
 	"github.com/spf13/viper"
 	"io/fs"
 	"path/filepath"
+	"time"
 )
 
 type StrategyConfig struct {
@@ -36,6 +37,55 @@ type Config struct {
 
 type ConnectorConfig struct {
 	Type string `mapstructure:"type"`
+}
+
+// MqttConfig 包含 MQTT 配置信息
+type MqttConfig struct {
+	Broker               string          `mapstructure:"broker"`
+	ClientID             string          `mapstructure:"clientID"`
+	Username             string          `mapstructure:"username"`
+	Password             string          `mapstructure:"password"`
+	MaxReconnectInterval time.Duration   `mapstructure:"maxReconnectInterval"`
+	Topics               map[string]byte `mapstructure:"topics"` // 主题和 QoS 的 map
+}
+
+type ServerConfig struct {
+	WhiteList bool              `mapstructure:"whiteList"`
+	IPAlias   map[string]string `mapstructure:"ipAlias"`
+	Port      string            `mapstructure:"port"`
+	Timeout   time.Duration     `mapstructure:"timeout"`
+}
+
+type TcpServer struct {
+	ProtoFile string       `mapstructure:"protoFile"`
+	CheckCRC  bool         `mapstructure:"check_crc"`
+	TCPServer ServerConfig `mapstructure:"tcpServer"`
+}
+
+type Setting struct {
+	Type   string `mapstructure:"type"`
+	Length int    `mapstructure:"length"`
+	End    []byte `mapstructure:"end"`
+}
+
+func UnmarshalTCPConfig(v *viper.Viper) (*TcpServer, error) {
+	// 反序列化到结构体
+	var tcpServer TcpServer
+	if err := v.Unmarshal(&tcpServer); err != nil {
+		return nil, fmt.Errorf("反序列化配置失败: %w", err)
+	}
+
+	return &tcpServer, nil
+}
+
+// UnmarshalMqttConfig 是解析配置文件的通用方法
+func UnmarshalMqttConfig(v *viper.Viper) (*MqttConfig, error) {
+	// 反序列化到结构体
+	var config MqttConfig
+	if err := v.Unmarshal(&config); err != nil {
+		return nil, fmt.Errorf("反序列化配置失败: %w", err)
+	}
+	return &config, nil
 }
 
 // InitCommon 用于初始化全局配置

@@ -1,3 +1,4 @@
+#  日志
 log:
   log_path: ./logs
   # MaxSize：在进行切割之前，日志文件的最大大小（以MB为单位）
@@ -10,39 +11,104 @@ log:
   compress: true
   level: debug
 
-script:
-  dir: ./script
 
 
-
+# 连接器相关配置
 connector:
-  type: mqtt
+  type: mqtt  # mqtt|tcpserver
+  config:
+    broker: "tcp://broker.hivemq.com:1883"
+    topics:
+      test/topic1: 0  # 主题1, QoS = 0
+      test/topic2: 1  # 主题2, QoS = 1
+      test/topic3: 2  # 主题3, QoS = 2
+      #    QoS 级别
+      #    0：最多一次交付（At most once）。消息可能丢失，不会有重试。
+      #    1：至少一次交付（At least once）。消息会至少发送一次，可能会有重复消息。
+      #    2：仅一次交付（Exactly once）。消息保证只会到达一次，最安全的 QoS。
+      #    发布端和订阅端的 QoS 可以是不同的。消息的实际传递 QoS 取决于 发布者设置的 QoS 和 订阅者设置的 QoS 中的 最小值。
+    clientID: "gateway"
+    username:
+    password:
+    maxReconnectInterval: 10s
 
+#  tcpServer配置.ex：
+#
+#    check_crc: true
+#    timeout: 5m
+#    port: 8080
+#    whiteList: false
+#    ipAlias: # 给收到的ip起一个别名
+#      "172.25.3.108": ER2_1_1_1
+#      "172.25.3.109": ER2_1_5_1
+#      "172.25.5.108": ER2_2_1_1
+#      "172.25.5.109": ER2_2_5_1
+#      "172.25.7.108": ER2_3_1_1
+#      "172.25.7.109": ER2_3_5_1
+#      "172.25.9.108": ER2_4_1_1
+#      "172.25.9.109": ER2_4_5_1
+#      "172.25.11.108": ER2_5_1_1
+#      "172.25.11.109": ER2_5_5_1
+#      "172.25.13.108": ER2_6_1_1
+#      "172.25.13.109": ER2_6_5_1
+#      "172.25.15.108": ER2_7_1_1
+#      "172.25.15.109": ER2_7_5_1
+#      "172.25.17.108": ER2_8_1_1
+#      "172.25.17.109": ER2_8_5_1
+#      "172.25.19.108": ER2_9_1_1
+#      "172.25.19.109": ER2_9_5_1
+#      "172.25.21.108": ER2_10_1_1
+#      "172.25.21.109": ER2_10_5_1
+#      "172.25.23.108": ER2_11_1_1
+#      "172.25.23.109": ER2_11_5_1
+#      "172.25.25.108": ER2_12_1_1
+#      "172.25.25.109": ER2_12_5_1
+#      "172.25.27.108": ER2_13_1_1
+#      "172.25.27.109": ER2_13_5_1
+#      "172.25.29.108": ER2_14_1_1
+#      "172.25.29.109": ER2_14_5_1
+#      "127.0.0.1": TEST
+
+
+# 解析器相关配置
+parser:
+  type: ioReader # ioReader|json
+  config:
+    dir: ./script
+    protoFile: test
+#    method: "ConvertOldGatewayTelemetry"
+
+
+# 后处理策略相关配置 可以有多个
 strategy:
   - type: influxdb
     enable: true
-    url: http://10.17.191.107:8086
-    token: mK_0NkLVPW8THIYkn52eqr7enL6IinGp8d5xbXizO1mVxAEk_EuOFxZ9OKWYcwVgi2XmogD6iPcO9KQ8ToVvtQ==
-    org: "byd"
-    bucket: "test"
-    batch_size: 2000
-    filter: # 格式<设备类型>:<设备名称>:<遥测名称>
-       - ".*:.*:.*"
-#       - "vobc\\.info:vobc.*:RIOM_sta_3"
-    tags:
-      - "data_source"
+    config:
+  #    以下是自定义配置项
+      url: http://10.17.191.107:8086
+      token: mK_0NkLVPW8THIYkn52eqr7enL6IinGp8d5xbXizO1mVxAEk_EuOFxZ9OKWYcwVgi2XmogD6iPcO9KQ8ToVvtQ==
+      org: "byd"
+      bucket: "test"
+      batch_size: 2000
+      filter: # 格式<设备类型>:<设备名称>:<遥测名称>
+         - ".*:.*:.*"
+  #       - "vobc\\.info:vobc.*:RIOM_sta_3"
+      tags:
+        - "data_source"
   - type: iotdb
     enable: false
-    url: "127.0.0.1:6667,127.0.0.1:6668,127.0.0.1:6669"
-    username:
-    password:
-    batch_size:
+    config:
+      url: "127.0.0.1:6667,127.0.0.1:6668,127.0.0.1:6669"
+      username:
+      password:
+      batch_size:
   - type: mqtt
     enable: false
-    url: tcp://
-    clientID:
-    username:
-    password:
-    willTopic: "status/gateway"
-    filter: # 格式<设备类型>:<设备名称>:<遥测名称>
-      - ".*:.*:.*"
+    config:
+      url: tcp://
+      clientID:
+      username:
+      password:
+      willTopic: "status/gateway"
+      filter: # 格式<设备类型>:<设备名称>:<遥测名称>
+        - ".*:.*:.*"

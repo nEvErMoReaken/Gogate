@@ -1,2 +1,0 @@
-jsonParseConfig:
-  method: "ConvertOldGatewayTelemetry"  # simple, 或者具体的方法名

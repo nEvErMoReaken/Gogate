@@ -3,7 +3,8 @@ package strategy
 import (
 	"encoding/json"
 	"fmt"
-	"gateway/common"
+	"gateway/internal/pkg"
+	"gateway/logger"
 	"gateway/model"
 	"time"
 
@@ -42,7 +43,7 @@ func (m *MqttStrategy) GetChan() chan model.Point {
 // Start Step.3
 func (m *MqttStrategy) Start() {
 	defer m.client.Disconnect(250)
-	common.Log.Info("MqttStrategy started")
+	logger.Log.Info("MqttStrategy started")
 	// 发布网关上线的状态
 	m.client.Publish(m.info.WillTopic, 1, true, "online")
 	for {
@@ -69,18 +70,18 @@ func (m *MqttStrategy) Publish(point model.Point) {
 	// 将 map 序列化为 JSON
 	jsonData, err := json.Marshal(decodedFields)
 	if err != nil {
-		common.Log.Errorf("序列化 JSON 失败: %+v", err)
+		logger.Log.Errorf("序列化 JSON 失败: %+v", err)
 		return
 	}
 	topic := fmt.Sprintf("gateway/%s/%s/fields", point.DeviceType, point.DeviceName)
 	m.client.Publish(topic, 0, true, jsonData)
-	common.Log.Infof("[MqttStrategy]发布消息到 %s: %s", topic, string(jsonData))
+	logger.Log.Infof("[MqttStrategy]发布消息到 %s: %s", topic, string(jsonData))
 }
-func NewMqttStrategy(dbConfig *common.StrategyConfig, stopChan chan struct{}) model.SendStrategy {
+func NewMqttStrategy(dbConfig *pkg.StrategyConfig, stopChan chan struct{}) model.SendStrategy {
 	var info MQTTInfo
 	// 将 map 转换为结构体
 	if err := mapstructure.Decode(dbConfig.Config, &info); err != nil {
-		common.Log.Fatalf("[NewInfluxDbStrategy] Error decoding map to struct: %v", err)
+		logger.Log.Fatalf("[NewInfluxDbStrategy] Error decoding map to struct: %v", err)
 	}
 
 	// 定义 MQTT 客户端的选项
@@ -98,7 +99,7 @@ func NewMqttStrategy(dbConfig *common.StrategyConfig, stopChan chan struct{}) mo
 
 	// 连接到 MQTT Broker
 	if token := mqCLi.Connect(); token.Wait() && token.Error() != nil {
-		common.Log.Errorf("连接到 MQTT Broker 失败:%+v", token.Error())
+		logger.Log.Errorf("连接到 MQTT Broker 失败:%+v", token.Error())
 
 	}
 	return &MqttStrategy{

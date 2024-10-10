@@ -1,6 +1,7 @@
-package common
+package logger
 
 import (
+	"gateway/internal/pkg"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"gopkg.in/natefinch/lumberjack.v2"
@@ -10,7 +11,7 @@ import (
 var Log *zap.SugaredLogger
 
 // InitLogger initializes the common
-func InitLogger(logConfig *LogConfig) {
+func InitLogger(logConfig *pkg.LogConfig) {
 	lumberJackLogger := &lumberjack.Logger{
 		Filename:   logConfig.LogPath,    // 日志文件路径
 		MaxSize:    logConfig.MaxSize,    // megabytes

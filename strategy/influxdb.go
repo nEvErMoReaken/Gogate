@@ -1,7 +1,8 @@
 package strategy
 
 import (
-	"gateway/common"
+	"gateway/internal/pkg"
+	"gateway/logger"
 	"gateway/model"
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/influxdata/influxdb-client-go/v2/api"
@@ -24,7 +25,7 @@ func (b *InfluxDbStrategy) GetChan() chan model.Point {
 // Start Step.3
 func (b *InfluxDbStrategy) Start() {
 	defer b.client.Close()
-	common.Log.Info("InfluxDBStrategy started")
+	logger.Log.Info("InfluxDBStrategy started")
 	for {
 		select {
 		case <-b.stopChan:
@@ -56,11 +57,11 @@ type InfluxDbInfo struct {
 }
 
 // NewInfluxDbStrategy 构造函数
-func NewInfluxDbStrategy(dbConfig *common.StrategyConfig, stopChan chan struct{}) model.SendStrategy {
+func NewInfluxDbStrategy(dbConfig *pkg.StrategyConfig, stopChan chan struct{}) model.SendStrategy {
 	var info InfluxDbInfo
 	// 将 map 转换为结构体
 	if err := mapstructure.Decode(dbConfig.Config, &info); err != nil {
-		common.Log.Fatalf("[NewInfluxDbStrategy] Error decoding map to struct: %v", err)
+		logger.Log.Fatalf("[NewInfluxDbStrategy] Error decoding map to struct: %v", err)
 	}
 
 	client := influxdb2.NewClientWithOptions(info.URL, info.Token, influxdb2.DefaultOptions().SetBatchSize(info.BatchSize))
@@ -71,7 +72,7 @@ func NewInfluxDbStrategy(dbConfig *common.StrategyConfig, stopChan chan struct{}
 	// Create go proc for reading and logging errors
 	go func() {
 		for err := range errorsCh {
-			common.Log.Errorf("write error: %s\n", err.Error())
+			logger.Log.Errorf("write error: %s\n", err.Error())
 		}
 	}()
 	return &InfluxDbStrategy{
@@ -85,7 +86,7 @@ func NewInfluxDbStrategy(dbConfig *common.StrategyConfig, stopChan chan struct{}
 
 func (b *InfluxDbStrategy) Publish(point model.Point) {
 	// ～～～将数据发布到 InfluxDB 的逻辑～～～
-	common.Log.Debugf("正在发送 %+v", point)
+	logger.Log.Debugf("正在发送 %+v", point)
 
 	// 创建一个新的 map[string]interface{} 来存储解引用的字段
 	decodedFields := make(map[string]interface{})
@@ -119,7 +120,7 @@ func (b *InfluxDbStrategy) Publish(point model.Point) {
 			case bool:
 				tagsMap[key] = strconv.FormatBool(v)
 			default:
-				common.Log.Warnf("Unexpected type for key %s in tagsMap", key)
+				logger.Log.Warnf("Unexpected type for key %s in tagsMap", key)
 			}
 		} else {
 			// 如果不是 tags 中的字段，直接放入 decodedFields
@@ -135,7 +136,7 @@ func (b *InfluxDbStrategy) Publish(point model.Point) {
 		decodedFields,    // fields (converted)
 		point.Ts,         // timestamp
 	)
-	common.Log.Debugf("正在发送:\n , %+v, %+v, %+v, %+v", point.DeviceType, point.DeviceName, decodedFields, point.Ts)
+	logger.Log.Debugf("正在发送:\n , %+v, %+v, %+v, %+v", point.DeviceType, point.DeviceName, decodedFields, point.Ts)
 	// 写入到 InfluxDB
 	b.writeAPI.WritePoint(p)
 

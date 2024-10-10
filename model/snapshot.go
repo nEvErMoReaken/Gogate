@@ -3,7 +3,8 @@ package model
 import (
 	"encoding/json"
 	"fmt"
-	"gateway/common"
+	"gateway/internal/pkg"
+	"gateway/logger"
 	"regexp"
 	"strings"
 	"time"
@@ -51,7 +52,7 @@ func (sc *SnapshotCollection) GetDeviceSnapshot(deviceName string, deviceType st
 	return newSnapshot
 }
 
-func (sc *SnapshotCollection) SetDeviceSnapshot(deviceName string, deviceType string, key string, value interface{}, config *common.Config) {
+func (sc *SnapshotCollection) SetDeviceSnapshot(deviceName string, deviceType string, key string, value interface{}, config *pkg.Config) {
 	if snapshot, exists := (*sc)[deviceName+":"+deviceType]; exists {
 		snapshot.SetField(key, value, config)
 	} else {
@@ -66,7 +67,7 @@ func NewSnapshot(deviceName string, deviceType string) *DeviceSnapshot {
 	// 生成一个新的 UUID
 	newID, err := uuid.NewUUID()
 	if err != nil {
-		common.Log.Errorf("failed to generate UUID: %s", err.Error())
+		logger.Log.Errorf("failed to generate UUID: %s", err.Error())
 		return nil
 	}
 	return &DeviceSnapshot{
@@ -92,7 +93,7 @@ func (dm *DeviceSnapshot) toJSON() string {
 
 // InitDataSink 初始化设备快照的数据点映射结构
 // 前提：DeviceSnapshot的DeviceName, DeviceType, Fields字段已经全部初始化
-func (dm *DeviceSnapshot) InitDataSink(fieldKey string, common *common.Config) {
+func (dm *DeviceSnapshot) InitDataSink(fieldKey string, common *pkg.Config) {
 	for _, strategy := range common.Strategy {
 		for _, filter := range strategy.Filter {
 			// 遍历字段，判断是否符合策略过滤条件
@@ -118,7 +119,7 @@ func checkFilter(deviceType, deviceName, telemetryName, filter string) bool {
 	parts := strings.Split(filter, ":")
 	if len(parts) != 3 {
 		// 如果过滤条件不符合预期语法
-		common.Log.Errorf("过滤条件格式不正确")
+		logger.Log.Errorf("过滤条件格式不正确")
 		return false
 	}
 
@@ -129,12 +130,12 @@ func checkFilter(deviceType, deviceName, telemetryName, filter string) bool {
 
 	// 检查正则表达式编译错误
 	if err1 != nil || err2 != nil || err3 != nil {
-		common.Log.Errorf("Error compiling regex: %v, %v, %v\n", err1, err2, err3)
+		logger.Log.Errorf("Error compiling regex: %v, %v, %v\n", err1, err2, err3)
 		return false
 	}
-	common.Log.Debugf("deviceType: %s, DeviceName: %s, telemetryName: %s", deviceType, deviceName, telemetryName)
+	logger.Log.Debugf("deviceType: %s, DeviceName: %s, telemetryName: %s", deviceType, deviceName, telemetryName)
 	// 打印匹配结果
-	common.Log.Debugf("deviceType: %v, deviceName: %v, telemetryName: %v\n", deviceTypeRe.MatchString(deviceType), deviceNameRe.MatchString(deviceName), telemetryRe.MatchString(telemetryName))
+	logger.Log.Debugf("deviceType: %v, deviceName: %v, telemetryName: %v\n", deviceTypeRe.MatchString(deviceType), deviceNameRe.MatchString(deviceName), telemetryRe.MatchString(telemetryName))
 	// 分别匹配设备类型、设备名称和遥测名称
 	return deviceTypeRe.MatchString(deviceType) &&
 		deviceNameRe.MatchString(deviceName) &&
@@ -142,7 +143,7 @@ func checkFilter(deviceType, deviceName, telemetryName, filter string) bool {
 }
 
 // SetField 设置或更新字段值，支持将值存储为指针
-func (dm *DeviceSnapshot) SetField(fieldName string, value interface{}, config *common.Config) {
+func (dm *DeviceSnapshot) SetField(fieldName string, value interface{}, config *pkg.Config) {
 	// 如果字段值为“nil”，代表是需要丢弃的值，则不进行任何操作
 	if fieldName == "nil" {
 		return
@@ -176,14 +177,14 @@ func (dm *DeviceSnapshot) Equal(other *DeviceSnapshot) bool {
 
 // launch 发射所有数据点
 func (dm *DeviceSnapshot) launch() {
-	common.Log.Infof("launching device %+v ", dm.toJSON())
+	logger.Log.Infof("launching device %+v ", dm.toJSON())
 	for st := range dm.DataSink {
 		select {
 		case GetStrategy(st).GetChan() <- dm.makePoint(st):
 			// 成功发送
 		default:
 			// 打印通道堵塞警告，避免影响其他通道
-			common.Log.Errorf("Failed to send data to strategy %s, current channel lenth: %d", st, len(GetStrategy(st).GetChan()))
+			logger.Log.Errorf("Failed to send data to strategy %s, current channel lenth: %d", st, len(GetStrategy(st).GetChan()))
 		}
 	}
 	// 清空设备快照

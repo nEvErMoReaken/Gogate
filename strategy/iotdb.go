@@ -2,7 +2,8 @@ package strategy
 
 import (
 	"fmt"
-	"gateway/common"
+	"gateway/internal/pkg"
+	"gateway/logger"
 	"gateway/model"
 	"strings"
 
@@ -37,11 +38,11 @@ type IotDBInfo struct {
 }
 
 // NewIoTDBStrategy 构造函数
-func NewIoTDBStrategy(dbConfig *common.StrategyConfig, stopChan chan struct{}) model.SendStrategy {
+func NewIoTDBStrategy(dbConfig *pkg.StrategyConfig, stopChan chan struct{}) model.SendStrategy {
 	var info IotDBInfo
 	// 将 map 转换为结构体
 	if err := mapstructure.Decode(dbConfig.Config, &info); err != nil {
-		common.Log.Fatalf("[NewIoTDBStrategy] Error decoding map to struct: %v", err)
+		logger.Log.Fatalf("[NewIoTDBStrategy] Error decoding map to struct: %v", err)
 	}
 	var sessionPool client.SessionPool
 	if info.mode == "cluster" {
@@ -87,7 +88,7 @@ func (b *IoTDBStrategy) GetChan() chan model.Point {
 // Start 启动策略
 func (b *IoTDBStrategy) Start() {
 
-	common.Log.Info("IoTDBStrategy started")
+	logger.Log.Info("IoTDBStrategy started")
 	for {
 		select {
 		case <-b.stopChan:
@@ -102,11 +103,11 @@ func (b *IoTDBStrategy) Start() {
 // Publish 将数据发布到 IoTDB
 func (b *IoTDBStrategy) Publish(point model.Point) {
 	// 日志记录
-	common.Log.Debugf("正在发送 %+v", point)
+	logger.Log.Debugf("正在发送 %+v", point)
 	session, err := b.sessionPool.GetSession()
 	defer b.sessionPool.PutBack(session)
 	if err == nil {
-		common.Log.Error(err)
+		logger.Log.Error(err)
 		return
 	}
 
@@ -143,7 +144,7 @@ func (b *IoTDBStrategy) Publish(point model.Point) {
 		case string:
 			dataTypes[0] = append(dataTypes[0], client.TEXT)
 		default:
-			common.Log.Warnf("Unsupported data type for key %s: %T", key, v)
+			logger.Log.Warnf("Unsupported data type for key %s: %T", key, v)
 			// 可以选择跳过该值，或者返回错误
 			// 此处选择跳过
 			continue
@@ -167,7 +168,7 @@ func (b *IoTDBStrategy) Publish(point model.Point) {
 // Stop 停止策略
 func (b *IoTDBStrategy) Stop() {
 	b.sessionPool.Close()
-	common.Log.Infof("IoTDBStrategy stopped")
+	logger.Log.Infof("IoTDBStrategy stopped")
 	//if err := b.sessionPool.Close(); err != nil {
 	//	common.Log.Errorf("Failed to close IoTDB session: %v", err)
 	//}
@@ -175,11 +176,11 @@ func (b *IoTDBStrategy) Stop() {
 
 func checkError(status *rpc.TSStatus, err error) {
 	if err != nil {
-		common.Log.Fatal(err)
+		logger.Log.Fatal(err)
 	}
 	if status != nil {
 		if err = client.VerifySuccess(status); err != nil {
-			common.Log.Fatal(err)
+			logger.Log.Fatal(err)
 		}
 	}
 }

@@ -2,7 +2,7 @@ package util
 
 import (
 	"fmt"
-	"gateway/common"
+	"gateway/logger"
 	"github.com/traefik/yaegi/interp"
 	"github.com/traefik/yaegi/stdlib"
 	"go/ast"
@@ -52,26 +52,26 @@ func extractAndCacheFunctions(i *interp.Interpreter, path string, scriptContent 
 			// 从解释器中获取该函数
 			v, err := i.Eval("script." + funcName)
 			if err != nil {
-				common.Log.Errorf("[Warning]: 在已读取脚本中未找到 %s 方法 %v\n", funcName, err)
+				logger.Log.Errorf("[Warning]: 在已读取脚本中未找到 %s 方法 %v\n", funcName, err)
 				continue
 			}
 
 			// 尝试将函数解析为 ByteScriptFunc
 			if fnFunc, ok := v.Interface().(ByteScriptFunc); ok {
 				ByteScriptFuncCache[funcName] = fnFunc // 缓存 ByteScriptFunc 类型函数
-				common.Log.Infof("[Info]: %s 方法已缓存为 ByteScriptFunc", funcName)
+				logger.Log.Infof("[Info]: %s 方法已缓存为 ByteScriptFunc", funcName)
 				continue
 			}
 
 			// 尝试将函数解析为 JsonScriptFunc
 			if fnFunc, ok := v.Interface().(JsonScriptFunc); ok {
 				JsonScriptFuncCache[funcName] = fnFunc // 缓存 JsonScriptFunc 类型函数
-				common.Log.Infof("[Info]: %s 方法已缓存为 JsonScriptFunc", funcName)
+				logger.Log.Infof("[Info]: %s 方法已缓存为 JsonScriptFunc", funcName)
 				continue
 			}
 
 			// 如果不匹配任何已知函数签名，输出警告
-			common.Log.Errorf("[Warning]: %s 方法的签名与预期的 ByteScriptFunc 或 JsonScriptFunc 类型不匹配\n", funcName)
+			logger.Log.Errorf("[Warning]: %s 方法的签名与预期的 ByteScriptFunc 或 JsonScriptFunc 类型不匹配\n", funcName)
 		}
 	}
 
