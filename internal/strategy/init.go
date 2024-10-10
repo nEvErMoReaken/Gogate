@@ -7,7 +7,7 @@ import (
 // RunStrategy 因为需要等待配置文件加载完毕，所以选择手动初始化
 func RunStrategy(comm *pkg.Config, stopChan chan struct{}) {
 	// 0. 区分注册和启用。方便测试配置时候开多个数据源又不用删除已有配置
-	pkg.Log.Infof("已注册的策略有：%+v", StrategyFactories)
+	pkg.Log.Infof("已注册的策略有：%+v", Factories)
 	// 1. 创建数据源集：执行了这一步后，所有配置中启用了的数据源都已经初始化完成并放入了 mapSendStrategy 中
 	InitMapSendStrategy(comm, stopChan)
 	pkg.Log.Infof("已启用的策略有：%+v", SendStrategyMap)

@@ -16,8 +16,8 @@ import (
 )
 
 func main() {
-	// 1. 初始化common config
-	comConfig, v, err := pkg.InitCommon("config")
+	// 1. 初始化common yaml
+	comConfig, v, err := pkg.InitCommon("yaml")
 	if err != nil {
 		log.Fatalf("[main] 加载配置失败: %s", err)
 		return

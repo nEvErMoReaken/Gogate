@@ -4,12 +4,6 @@ import (
 	"time"
 )
 
-// SendStrategy 定义了所有发送策略的通用接口
-type SendStrategy interface {
-	Start()
-	GetChan() chan Point // 提供访问 chan 的方法
-}
-
 // Point 代表发送到数据源的一个数据点
 type Point struct {
 	DeviceName string                 // 设备名称
