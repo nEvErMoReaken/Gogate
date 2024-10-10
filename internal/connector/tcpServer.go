@@ -4,10 +4,9 @@ import (
 	"bufio"
 	"fmt"
 	"gateway/internal/connector/tcpServer"
+	"gateway/internal/parser/ioReader"
 	"gateway/internal/pkg"
 	"gateway/logger"
-	"gateway/model"
-	"gateway/parser/ioReader"
 	"github.com/spf13/viper"
 	"io"
 	"log"
@@ -78,8 +77,8 @@ func (t *TcpServerConnector) Close() error {
 }
 
 // @Deprecated initSnapshotCollection 初始化设备快照的数据点映射
-func initSnapshotCollection(comm *pkg.Config, v *viper.Viper, protoFile string) *model.SnapshotCollection {
-	snapshotCollection := make(model.SnapshotCollection)
+func initSnapshotCollection(comm *pkg.Config, v *viper.Viper, protoFile string) *pkg.SnapshotCollection {
+	snapshotCollection := make(pkg.SnapshotCollection)
 	// 遍历所有的 PreParsing 和 Parsing 步骤，初始化设备快照
 	chunks := v.Sub(protoFile).Get("chunks").([]interface{})
 	for _, chunk := range chunks {

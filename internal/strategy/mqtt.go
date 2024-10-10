@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"gateway/internal/pkg"
 	"gateway/logger"
-	"gateway/model"
 	"time"
 
 	MQTT "github.com/eclipse/paho.mqtt.golang"
@@ -15,13 +14,13 @@ import (
 // 初始化函数，注册 IoTDB 策略
 func init() {
 	// 注册发送策略
-	model.RegisterStrategy("mqtt", NewMqttStrategy)
+	RegisterStrategy("mqtt", NewMqttStrategy)
 }
 
 // MqttStrategy 实现将数据发布到 MQTT 的逻辑
 type MqttStrategy struct {
 	client    MQTT.Client
-	pointChan chan model.Point
+	pointChan chan pkg.Point
 	stopChan  chan struct{}
 	info      MQTTInfo
 }
@@ -36,7 +35,7 @@ type MQTTInfo struct {
 }
 
 // GetChan Step.2
-func (m *MqttStrategy) GetChan() chan model.Point {
+func (m *MqttStrategy) GetChan() chan pkg.Point {
 	return m.pointChan
 }
 
@@ -57,7 +56,7 @@ func (m *MqttStrategy) Start() {
 	}
 }
 
-func (m *MqttStrategy) Publish(point model.Point) {
+func (m *MqttStrategy) Publish(point pkg.Point) {
 	// 创建一个新的 map[string]interface{} 来存储解引用的字段
 	decodedFields := make(map[string]interface{})
 	for key, valuePtr := range point.Field {
@@ -77,7 +76,7 @@ func (m *MqttStrategy) Publish(point model.Point) {
 	m.client.Publish(topic, 0, true, jsonData)
 	logger.Log.Infof("[MqttStrategy]发布消息到 %s: %s", topic, string(jsonData))
 }
-func NewMqttStrategy(dbConfig *pkg.StrategyConfig, stopChan chan struct{}) model.SendStrategy {
+func NewMqttStrategy(dbConfig *pkg.StrategyConfig, stopChan chan struct{}) pkg.SendStrategy {
 	var info MQTTInfo
 	// 将 map 转换为结构体
 	if err := mapstructure.Decode(dbConfig.Config, &info); err != nil {
@@ -104,7 +103,7 @@ func NewMqttStrategy(dbConfig *pkg.StrategyConfig, stopChan chan struct{}) model
 	}
 	return &MqttStrategy{
 		client:    mqCLi,
-		pointChan: make(chan model.Point, 200),
+		pointChan: make(chan pkg.Point, 200),
 		stopChan:  stopChan,
 		info:      info,
 	}

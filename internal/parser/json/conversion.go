@@ -4,11 +4,10 @@ import (
 	"encoding/json"
 	"gateway/internal/pkg"
 	"gateway/logger"
-	"gateway/model"
 	"gateway/util"
 )
 
-func ConversionToSnapshot(js string, config *JsonParseConfig, collection *model.SnapshotCollection, comm *pkg.Config) {
+func ConversionToSnapshot(js string, config *JsonParseConfig, collection *pkg.SnapshotCollection, comm *pkg.Config) {
 	// 1. 拿到解析函数
 	convertFunc := util.JsonScriptFuncCache[config.rules.Method]
 	// 2. 将 JSON 字符串解析为 map

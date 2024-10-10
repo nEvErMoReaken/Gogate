@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"gateway/internal/pkg"
 	"gateway/logger"
-	"gateway/model"
 	"gateway/util"
 	"github.com/mitchellh/mapstructure"
 	"github.com/spf13/viper"
@@ -17,7 +16,7 @@ import (
 
 // Chunk 处理器接口
 type Chunk interface {
-	Process(reader io.Reader, frame *[]byte, collection *model.SnapshotCollection, config *pkg.Config) error
+	Process(reader io.Reader, frame *[]byte, collection *pkg.SnapshotCollection, config *pkg.Config) error
 	String() string // 添加 String 方法
 }
 
@@ -27,7 +26,7 @@ type FrameContext map[string]interface{}
 type ChunkSequence struct {
 	Chunks             []Chunk `mapstructure:"chunks"`
 	VarPointer         FrameContext
-	SnapShotCollection *model.SnapshotCollection // 快照集合
+	SnapShotCollection *pkg.SnapshotCollection // 快照集合
 }
 
 // ProcessAll 方法：处理整个 ChunkSequence
@@ -128,7 +127,7 @@ func (f *FixedLengthChunk) String() string {
 	return fmt.Sprintf("FixedLengthChunk:\n  Length=%s\n  Sections:\n%s", lengthVal, sectionsStr)
 }
 
-func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte, collection *model.SnapshotCollection, config *pkg.Config) error {
+func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte, collection *pkg.SnapshotCollection, config *pkg.Config) error {
 	// ～～～ 定长块的处理逻辑 ～～～
 	chunkLen := f.CalLength()
 	// 1. 读取固定长度数据
@@ -152,7 +151,7 @@ func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte, collection *
 	byteCursor := 0
 	for index, sec := range f.Sections {
 		var parsedToDeviceName string
-		var tarSnapshot *model.DeviceSnapshot
+		var tarSnapshot *pkg.DeviceSnapshot
 
 		for i := 0; i < sec.CalRepeat(f.VarPool); i++ {
 			// 2.1. 根据Sec的length解码
@@ -233,7 +232,7 @@ type ConditionalChunk struct {
 	Sections       []Section
 }
 
-func (c *ConditionalChunk) Process(reader io.Reader, frame *[]byte, collection *model.SnapshotCollection, config *pkg.Config) error {
+func (c *ConditionalChunk) Process(reader io.Reader, frame *[]byte, collection *pkg.SnapshotCollection, config *pkg.Config) error {
 	fmt.Println("Processing ConditionalChunk")
 	// 动态选择下一个 Chunk 解析逻辑
 	return nil
@@ -300,7 +299,7 @@ func (s *Section) parseToDeviceName(context *FrameContext) string {
 func InitChunks(v *viper.Viper, protoFile string) (ChunkSequence, error) {
 	logger.Log.Infof("当前启用的协议文件: %s", protoFile)
 	// 初始化 SnapshotCollection
-	snapshotCollection := make(model.SnapshotCollection)
+	snapshotCollection := make(pkg.SnapshotCollection)
 	var chunkSequence = ChunkSequence{
 		make([]Chunk, 0),
 		make(FrameContext),

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"gateway/internal/pkg"
 	"gateway/logger"
-	"gateway/model"
 	"strings"
 
 	"github.com/apache/iotdb-client-go/client"
@@ -15,13 +14,13 @@ import (
 // 初始化函数，注册 IoTDB 策略
 func init() {
 	// 注册发送策略
-	model.RegisterStrategy("iotdb", NewIoTDBStrategy)
+	RegisterStrategy("iotdb", NewIoTDBStrategy)
 }
 
 // IoTDBStrategy 实现将数据发布到 IoTDB 的逻辑
 type IoTDBStrategy struct {
 	sessionPool *client.SessionPool
-	pointChan   chan model.Point
+	pointChan   chan pkg.Point
 	stopChan    chan struct{}
 	info        IotDBInfo
 }
@@ -38,7 +37,7 @@ type IotDBInfo struct {
 }
 
 // NewIoTDBStrategy 构造函数
-func NewIoTDBStrategy(dbConfig *pkg.StrategyConfig, stopChan chan struct{}) model.SendStrategy {
+func NewIoTDBStrategy(dbConfig *pkg.StrategyConfig, stopChan chan struct{}) pkg.SendStrategy {
 	var info IotDBInfo
 	// 将 map 转换为结构体
 	if err := mapstructure.Decode(dbConfig.Config, &info); err != nil {
@@ -73,7 +72,7 @@ func NewIoTDBStrategy(dbConfig *pkg.StrategyConfig, stopChan chan struct{}) mode
 	}
 
 	return &IoTDBStrategy{
-		pointChan:   make(chan model.Point, 200), // 容量为 200 的通道
+		pointChan:   make(chan pkg.Point, 200), // 容量为 200 的通道
 		stopChan:    stopChan,
 		sessionPool: &sessionPool,
 		info:        info,
@@ -81,7 +80,7 @@ func NewIoTDBStrategy(dbConfig *pkg.StrategyConfig, stopChan chan struct{}) mode
 }
 
 // GetChan 返回通道
-func (b *IoTDBStrategy) GetChan() chan model.Point {
+func (b *IoTDBStrategy) GetChan() chan pkg.Point {
 	return b.pointChan
 }
 
@@ -101,7 +100,7 @@ func (b *IoTDBStrategy) Start() {
 }
 
 // Publish 将数据发布到 IoTDB
-func (b *IoTDBStrategy) Publish(point model.Point) {
+func (b *IoTDBStrategy) Publish(point pkg.Point) {
 	// 日志记录
 	logger.Log.Debugf("正在发送 %+v", point)
 	session, err := b.sessionPool.GetSession()

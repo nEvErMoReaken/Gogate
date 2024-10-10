@@ -6,11 +6,11 @@ ENV GOPROXY=https://goproxy.cn,direct
 WORKDIR /app
 
 # 复制go.mod和go.sum文件并下载依赖信息
-COPY ../gateway/go.mod go.sum ./
+COPY ../go.mod go.sum ./
 RUN go mod download
 
 # 复制源代码
-COPY . .
+COPY .. .
 # 编译Go程序
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main ./cmd
 

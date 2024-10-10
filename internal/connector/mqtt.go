@@ -2,9 +2,9 @@ package connector
 
 import (
 	"fmt"
+	json2 "gateway/internal/parser/json"
 	"gateway/internal/pkg"
 	"gateway/logger"
-	"gateway/model"
 	"gateway/parser/json"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/spf13/viper"
@@ -12,13 +12,13 @@ import (
 
 // MqttConnector Connector的TcpServer版本实现
 type MqttConnector struct {
-	MqttConfig         *MqttConfig               // 配置
-	ChDone             chan struct{}             // 停止通道
-	v                  *viper.Viper              // 配置文件
-	comm               *pkg.Config               // 全局配置
-	client             *mqtt.Client              // MQTT 客户端
-	conversion         *json.JsonParseConfig     // 转换配置
-	snapshotCollection *model.SnapshotCollection // 快照集合
+	MqttConfig         *MqttConfig             // 配置
+	ChDone             chan struct{}           // 停止通道
+	v                  *viper.Viper            // 配置文件
+	comm               *pkg.Config             // 全局配置
+	client             *mqtt.Client            // MQTT 客户端
+	conversion         *json.JsonParseConfig   // 转换配置
+	snapshotCollection *pkg.SnapshotCollection // 快照集合
 }
 
 func init() {
@@ -66,7 +66,7 @@ func NewMqttConnector(comm *pkg.Config, v *viper.Viper, stopChan chan struct{}) 
 		logger.Log.Fatalf("初始化转换配置失败: %v", err)
 	}
 	// 3. 创建一个新的快照集合
-	snapshotCollection := make(model.SnapshotCollection)
+	snapshotCollection := make(pkg.SnapshotCollection)
 	// 4. 创建一个新的 MQTT 客户端
 	opts := mqtt.NewClientOptions()
 	opts.AddBroker(mqttConfig.Broker)
@@ -109,7 +109,7 @@ func (m *MqttConnector) messagePubHandler(_ mqtt.Client, msg mqtt.Message) {
 	js := string(msg.Payload())
 
 	// 2. 调用 ConversionToSnapshot 并传入必要的参数
-	json.ConversionToSnapshot(js, m.conversion, m.snapshotCollection, m.comm)
+	json2.ConversionToSnapshot(js, m.conversion, m.snapshotCollection, m.comm)
 
 	// 3. 发射所有快照
 	m.snapshotCollection.LaunchALL()

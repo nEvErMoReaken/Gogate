@@ -3,7 +3,6 @@ package strategy
 import (
 	"gateway/internal/pkg"
 	"gateway/logger"
-	"gateway/model"
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/influxdata/influxdb-client-go/v2/api"
 	"github.com/mitchellh/mapstructure"
@@ -14,11 +13,11 @@ import (
 // init Step.1
 func init() {
 	// 注册发送策略
-	model.RegisterStrategy("influxdb", NewInfluxDbStrategy)
+	RegisterStrategy("influxdb", NewInfluxDbStrategy)
 }
 
 // GetChan Step.2
-func (b *InfluxDbStrategy) GetChan() chan model.Point {
+func (b *InfluxDbStrategy) GetChan() chan pkg.Point {
 	return b.pointChan
 }
 
@@ -40,7 +39,7 @@ func (b *InfluxDbStrategy) Start() {
 // InfluxDbStrategy 实现将数据发布到 InfluxDB 的逻辑
 type InfluxDbStrategy struct {
 	client    influxdb2.Client
-	pointChan chan model.Point
+	pointChan chan pkg.Point
 	stopChan  chan struct{}
 	writeAPI  api.WriteAPI
 	info      InfluxDbInfo
@@ -57,7 +56,7 @@ type InfluxDbInfo struct {
 }
 
 // NewInfluxDbStrategy 构造函数
-func NewInfluxDbStrategy(dbConfig *pkg.StrategyConfig, stopChan chan struct{}) model.SendStrategy {
+func NewInfluxDbStrategy(dbConfig *pkg.StrategyConfig, stopChan chan struct{}) pkg.SendStrategy {
 	var info InfluxDbInfo
 	// 将 map 转换为结构体
 	if err := mapstructure.Decode(dbConfig.Config, &info); err != nil {
@@ -76,7 +75,7 @@ func NewInfluxDbStrategy(dbConfig *pkg.StrategyConfig, stopChan chan struct{}) m
 		}
 	}()
 	return &InfluxDbStrategy{
-		pointChan: make(chan model.Point, 200), // 容量为200的通道
+		pointChan: make(chan pkg.Point, 200), // 容量为200的通道
 		stopChan:  stopChan,
 		client:    client,
 		writeAPI:  writeAPI,
@@ -84,7 +83,7 @@ func NewInfluxDbStrategy(dbConfig *pkg.StrategyConfig, stopChan chan struct{}) m
 	}
 }
 
-func (b *InfluxDbStrategy) Publish(point model.Point) {
+func (b *InfluxDbStrategy) Publish(point pkg.Point) {
 	// ～～～将数据发布到 InfluxDB 的逻辑～～～
 	logger.Log.Debugf("正在发送 %+v", point)
 

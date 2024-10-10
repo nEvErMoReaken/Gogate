@@ -1,4 +1,4 @@
-package model
+package strategy
 
 import (
 	"gateway/internal/pkg"
@@ -6,7 +6,7 @@ import (
 )
 
 // StFactoryFunc 代表一个发送策略的工厂函数
-type StFactoryFunc func(*pkg.StrategyConfig, chan struct{}) SendStrategy
+type StFactoryFunc func(*pkg.StrategyConfig, chan struct{}) pkg.SendStrategy
 
 // StrategyFactories 全局工厂映射，用于注册不同策略类型的构造函数
 var StrategyFactories = make(map[string]StFactoryFunc)
@@ -17,7 +17,7 @@ func RegisterStrategy(strategyType string, factory StFactoryFunc) {
 }
 
 // MapSendStrategy 代表发送策略集
-type MapSendStrategy map[string]SendStrategy
+type MapSendStrategy map[string]pkg.SendStrategy
 
 var SendStrategyMap MapSendStrategy
 
@@ -35,7 +35,7 @@ func InitMapSendStrategy(common *pkg.Config, stopChan chan struct{}) {
 }
 
 // GetStrategy 获取一个发送策略
-func GetStrategy(strategyType string) SendStrategy {
+func GetStrategy(strategyType string) pkg.SendStrategy {
 	return SendStrategyMap[strategyType]
 }
 

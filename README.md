@@ -4,7 +4,7 @@
 
 示意图：
 
-![img.png](img.png)
+![img.png](asset/img.png)
 
 ## DataSource 数据源
 

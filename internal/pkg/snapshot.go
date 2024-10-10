@@ -1,9 +1,9 @@
-package model
+package pkg
 
 import (
 	"encoding/json"
 	"fmt"
-	"gateway/internal/pkg"
+	"gateway/internal/strategy"
 	"gateway/logger"
 	"regexp"
 	"strings"
@@ -52,7 +52,7 @@ func (sc *SnapshotCollection) GetDeviceSnapshot(deviceName string, deviceType st
 	return newSnapshot
 }
 
-func (sc *SnapshotCollection) SetDeviceSnapshot(deviceName string, deviceType string, key string, value interface{}, config *pkg.Config) {
+func (sc *SnapshotCollection) SetDeviceSnapshot(deviceName string, deviceType string, key string, value interface{}, config *Config) {
 	if snapshot, exists := (*sc)[deviceName+":"+deviceType]; exists {
 		snapshot.SetField(key, value, config)
 	} else {
@@ -93,7 +93,7 @@ func (dm *DeviceSnapshot) toJSON() string {
 
 // InitDataSink 初始化设备快照的数据点映射结构
 // 前提：DeviceSnapshot的DeviceName, DeviceType, Fields字段已经全部初始化
-func (dm *DeviceSnapshot) InitDataSink(fieldKey string, common *pkg.Config) {
+func (dm *DeviceSnapshot) InitDataSink(fieldKey string, common *Config) {
 	for _, strategy := range common.Strategy {
 		for _, filter := range strategy.Filter {
 			// 遍历字段，判断是否符合策略过滤条件
@@ -143,7 +143,7 @@ func checkFilter(deviceType, deviceName, telemetryName, filter string) bool {
 }
 
 // SetField 设置或更新字段值，支持将值存储为指针
-func (dm *DeviceSnapshot) SetField(fieldName string, value interface{}, config *pkg.Config) {
+func (dm *DeviceSnapshot) SetField(fieldName string, value interface{}, config *Config) {
 	// 如果字段值为“nil”，代表是需要丢弃的值，则不进行任何操作
 	if fieldName == "nil" {
 		return
@@ -180,11 +180,11 @@ func (dm *DeviceSnapshot) launch() {
 	logger.Log.Infof("launching device %+v ", dm.toJSON())
 	for st := range dm.DataSink {
 		select {
-		case GetStrategy(st).GetChan() <- dm.makePoint(st):
+		case strategy.GetStrategy(st).GetChan() <- dm.makePoint(st):
 			// 成功发送
 		default:
 			// 打印通道堵塞警告，避免影响其他通道
-			logger.Log.Errorf("Failed to send data to strategy %s, current channel lenth: %d", st, len(GetStrategy(st).GetChan()))
+			logger.Log.Errorf("Failed to send data to strategy %s, current channel lenth: %d", st, len(strategy.GetStrategy(st).GetChan()))
 		}
 	}
 	// 清空设备快照
