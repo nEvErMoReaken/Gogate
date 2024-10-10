@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"gateway/internal/strategy"
-	"gateway/logger"
 	"regexp"
 	"strings"
 	"time"
@@ -67,7 +66,7 @@ func NewSnapshot(deviceName string, deviceType string) *DeviceSnapshot {
 	// 生成一个新的 UUID
 	newID, err := uuid.NewUUID()
 	if err != nil {
-		logger.Log.Errorf("failed to generate UUID: %s", err.Error())
+		Log.Errorf("failed to generate UUID: %s", err.Error())
 		return nil
 	}
 	return &DeviceSnapshot{
@@ -119,7 +118,7 @@ func checkFilter(deviceType, deviceName, telemetryName, filter string) bool {
 	parts := strings.Split(filter, ":")
 	if len(parts) != 3 {
 		// 如果过滤条件不符合预期语法
-		logger.Log.Errorf("过滤条件格式不正确")
+		Log.Errorf("过滤条件格式不正确")
 		return false
 	}
 
@@ -130,12 +129,12 @@ func checkFilter(deviceType, deviceName, telemetryName, filter string) bool {
 
 	// 检查正则表达式编译错误
 	if err1 != nil || err2 != nil || err3 != nil {
-		logger.Log.Errorf("Error compiling regex: %v, %v, %v\n", err1, err2, err3)
+		Log.Errorf("Error compiling regex: %v, %v, %v\n", err1, err2, err3)
 		return false
 	}
-	logger.Log.Debugf("deviceType: %s, DeviceName: %s, telemetryName: %s", deviceType, deviceName, telemetryName)
+	Log.Debugf("deviceType: %s, DeviceName: %s, telemetryName: %s", deviceType, deviceName, telemetryName)
 	// 打印匹配结果
-	logger.Log.Debugf("deviceType: %v, deviceName: %v, telemetryName: %v\n", deviceTypeRe.MatchString(deviceType), deviceNameRe.MatchString(deviceName), telemetryRe.MatchString(telemetryName))
+	Log.Debugf("deviceType: %v, deviceName: %v, telemetryName: %v\n", deviceTypeRe.MatchString(deviceType), deviceNameRe.MatchString(deviceName), telemetryRe.MatchString(telemetryName))
 	// 分别匹配设备类型、设备名称和遥测名称
 	return deviceTypeRe.MatchString(deviceType) &&
 		deviceNameRe.MatchString(deviceName) &&
@@ -177,14 +176,14 @@ func (dm *DeviceSnapshot) Equal(other *DeviceSnapshot) bool {
 
 // launch 发射所有数据点
 func (dm *DeviceSnapshot) launch() {
-	logger.Log.Infof("launching device %+v ", dm.toJSON())
+	Log.Infof("launching device %+v ", dm.toJSON())
 	for st := range dm.DataSink {
 		select {
 		case strategy.GetStrategy(st).GetChan() <- dm.makePoint(st):
 			// 成功发送
 		default:
 			// 打印通道堵塞警告，避免影响其他通道
-			logger.Log.Errorf("Failed to send data to strategy %s, current channel lenth: %d", st, len(strategy.GetStrategy(st).GetChan()))
+			Log.Errorf("Failed to send data to strategy %s, current channel lenth: %d", st, len(strategy.GetStrategy(st).GetChan()))
 		}
 	}
 	// 清空设备快照

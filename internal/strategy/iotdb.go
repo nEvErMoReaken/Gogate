@@ -3,7 +3,6 @@ package strategy
 import (
 	"fmt"
 	"gateway/internal/pkg"
-	"gateway/logger"
 	"strings"
 
 	"github.com/apache/iotdb-client-go/client"
@@ -41,7 +40,7 @@ func NewIoTDBStrategy(dbConfig *pkg.StrategyConfig, stopChan chan struct{}) pkg.
 	var info IotDBInfo
 	// 将 map 转换为结构体
 	if err := mapstructure.Decode(dbConfig.Config, &info); err != nil {
-		logger.Log.Fatalf("[NewIoTDBStrategy] Error decoding map to struct: %v", err)
+		pkg.Log.Fatalf("[NewIoTDBStrategy] Error decoding map to struct: %v", err)
 	}
 	var sessionPool client.SessionPool
 	if info.mode == "cluster" {
@@ -87,7 +86,7 @@ func (b *IoTDBStrategy) GetChan() chan pkg.Point {
 // Start 启动策略
 func (b *IoTDBStrategy) Start() {
 
-	logger.Log.Info("IoTDBStrategy started")
+	pkg.Log.Info("IoTDBStrategy started")
 	for {
 		select {
 		case <-b.stopChan:
@@ -102,11 +101,11 @@ func (b *IoTDBStrategy) Start() {
 // Publish 将数据发布到 IoTDB
 func (b *IoTDBStrategy) Publish(point pkg.Point) {
 	// 日志记录
-	logger.Log.Debugf("正在发送 %+v", point)
+	pkg.Log.Debugf("正在发送 %+v", point)
 	session, err := b.sessionPool.GetSession()
 	defer b.sessionPool.PutBack(session)
 	if err == nil {
-		logger.Log.Error(err)
+		pkg.Log.Error(err)
 		return
 	}
 
@@ -143,7 +142,7 @@ func (b *IoTDBStrategy) Publish(point pkg.Point) {
 		case string:
 			dataTypes[0] = append(dataTypes[0], client.TEXT)
 		default:
-			logger.Log.Warnf("Unsupported data type for key %s: %T", key, v)
+			pkg.Log.Warnf("Unsupported data type for key %s: %T", key, v)
 			// 可以选择跳过该值，或者返回错误
 			// 此处选择跳过
 			continue
@@ -167,7 +166,7 @@ func (b *IoTDBStrategy) Publish(point pkg.Point) {
 // Stop 停止策略
 func (b *IoTDBStrategy) Stop() {
 	b.sessionPool.Close()
-	logger.Log.Infof("IoTDBStrategy stopped")
+	pkg.Log.Infof("IoTDBStrategy stopped")
 	//if err := b.sessionPool.Close(); err != nil {
 	//	common.Log.Errorf("Failed to close IoTDB session: %v", err)
 	//}
@@ -175,11 +174,11 @@ func (b *IoTDBStrategy) Stop() {
 
 func checkError(status *rpc.TSStatus, err error) {
 	if err != nil {
-		logger.Log.Fatal(err)
+		pkg.Log.Fatal(err)
 	}
 	if status != nil {
 		if err = client.VerifySuccess(status); err != nil {
-			logger.Log.Fatal(err)
+			pkg.Log.Fatal(err)
 		}
 	}
 }

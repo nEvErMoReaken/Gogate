@@ -2,7 +2,6 @@ package strategy
 
 import (
 	"gateway/internal/pkg"
-	"gateway/logger"
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/influxdata/influxdb-client-go/v2/api"
 	"github.com/mitchellh/mapstructure"
@@ -24,7 +23,7 @@ func (b *InfluxDbStrategy) GetChan() chan pkg.Point {
 // Start Step.3
 func (b *InfluxDbStrategy) Start() {
 	defer b.client.Close()
-	logger.Log.Info("InfluxDBStrategy started")
+	pkg.Log.Info("InfluxDBStrategy started")
 	for {
 		select {
 		case <-b.stopChan:
@@ -60,7 +59,7 @@ func NewInfluxDbStrategy(dbConfig *pkg.StrategyConfig, stopChan chan struct{}) p
 	var info InfluxDbInfo
 	// 将 map 转换为结构体
 	if err := mapstructure.Decode(dbConfig.Config, &info); err != nil {
-		logger.Log.Fatalf("[NewInfluxDbStrategy] Error decoding map to struct: %v", err)
+		pkg.Log.Fatalf("[NewInfluxDbStrategy] Error decoding map to struct: %v", err)
 	}
 
 	client := influxdb2.NewClientWithOptions(info.URL, info.Token, influxdb2.DefaultOptions().SetBatchSize(info.BatchSize))
@@ -71,7 +70,7 @@ func NewInfluxDbStrategy(dbConfig *pkg.StrategyConfig, stopChan chan struct{}) p
 	// Create go proc for reading and logging errors
 	go func() {
 		for err := range errorsCh {
-			logger.Log.Errorf("write error: %s\n", err.Error())
+			pkg.Log.Errorf("write error: %s\n", err.Error())
 		}
 	}()
 	return &InfluxDbStrategy{
@@ -85,7 +84,7 @@ func NewInfluxDbStrategy(dbConfig *pkg.StrategyConfig, stopChan chan struct{}) p
 
 func (b *InfluxDbStrategy) Publish(point pkg.Point) {
 	// ～～～将数据发布到 InfluxDB 的逻辑～～～
-	logger.Log.Debugf("正在发送 %+v", point)
+	pkg.Log.Debugf("正在发送 %+v", point)
 
 	// 创建一个新的 map[string]interface{} 来存储解引用的字段
 	decodedFields := make(map[string]interface{})
@@ -119,7 +118,7 @@ func (b *InfluxDbStrategy) Publish(point pkg.Point) {
 			case bool:
 				tagsMap[key] = strconv.FormatBool(v)
 			default:
-				logger.Log.Warnf("Unexpected type for key %s in tagsMap", key)
+				pkg.Log.Warnf("Unexpected type for key %s in tagsMap", key)
 			}
 		} else {
 			// 如果不是 tags 中的字段，直接放入 decodedFields
@@ -135,7 +134,7 @@ func (b *InfluxDbStrategy) Publish(point pkg.Point) {
 		decodedFields,    // fields (converted)
 		point.Ts,         // timestamp
 	)
-	logger.Log.Debugf("正在发送:\n , %+v, %+v, %+v, %+v", point.DeviceType, point.DeviceName, decodedFields, point.Ts)
+	pkg.Log.Debugf("正在发送:\n , %+v, %+v, %+v, %+v", point.DeviceType, point.DeviceName, decodedFields, point.Ts)
 	// 写入到 InfluxDB
 	b.writeAPI.WritePoint(p)
 

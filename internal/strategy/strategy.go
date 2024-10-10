@@ -2,7 +2,6 @@ package strategy
 
 import (
 	"gateway/internal/pkg"
-	"gateway/logger"
 )
 
 // StFactoryFunc 代表一个发送策略的工厂函数
@@ -42,7 +41,7 @@ func GetStrategy(strategyType string) pkg.SendStrategy {
 // StartALL 启动所有发送策略
 func (m MapSendStrategy) StartALL() {
 	for name, strategy := range m {
-		logger.Log.Info("-----正在启动策略：", name)
+		pkg.Log.Info("-----正在启动策略：", name)
 		go strategy.Start()
 	}
 }

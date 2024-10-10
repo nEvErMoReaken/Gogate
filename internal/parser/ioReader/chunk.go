@@ -3,7 +3,6 @@ package ioReader
 import (
 	"fmt"
 	"gateway/internal/pkg"
-	"gateway/logger"
 	"gateway/util"
 	"github.com/mitchellh/mapstructure"
 	"github.com/spf13/viper"
@@ -142,12 +141,12 @@ func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte, collection *
 	}
 	// 处理部分读取
 	if n < f.CalLength() {
-		logger.Log.Warnf("只读取了 %d 字节，而不是期望的 %d 字节", n, chunkLen)
+		pkg.Log.Warnf("只读取了 %d 字节，而不是期望的 %d 字节", n, chunkLen)
 	}
 	// 定长Chunk可以直接追加到frame中
 	*frame = append(*frame, data...)
 	// 2. 解析数据
-	logger.Log.Debugf("Processing FixedLengthChunk")
+	pkg.Log.Debugf("Processing FixedLengthChunk")
 	byteCursor := 0
 	for index, sec := range f.Sections {
 		var parsedToDeviceName string
@@ -156,7 +155,7 @@ func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte, collection *
 		for i := 0; i < sec.CalRepeat(f.VarPool); i++ {
 			// 2.1. 根据Sec的length解码
 			if sec.Decoding == nil {
-				logger.Log.Debugf("Step.%+v: Loop.%+v: Jump For %+v Byte", index+1, i+1, sec.Length)
+				pkg.Log.Debugf("Step.%+v: Loop.%+v: Jump For %+v Byte", index+1, i+1, sec.Length)
 				// 如果没有解码函数，直接跳过
 				byteCursor += sec.Length
 				continue
@@ -173,7 +172,7 @@ func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte, collection *
 				decoded, err1 = sec.Decoding(data[byteCursor : byteCursor+sec.Length])
 			}
 
-			logger.Log.Debugf("Step.%+v: Loop.%+v: Decoded: %v Byte to %+v", index+1, i+1, sec.Length, decoded)
+			pkg.Log.Debugf("Step.%+v: Loop.%+v: Decoded: %v Byte to %+v", index+1, i+1, sec.Length, decoded)
 			if err1 != nil {
 				return err1
 			}
@@ -287,7 +286,7 @@ func (s *Section) parseToDeviceName(context *FrameContext) string {
 				result = strings.Replace(result, "${"+templateVar+"}", contextVar.(string), -1)
 			} else {
 				// 如果没有找到变量，可以考虑报错或使用默认值
-				logger.Log.Errorf("模板变量 %s 未找到", templateVar)
+				pkg.Log.Errorf("模板变量 %s 未找到", templateVar)
 			}
 		}
 	}
@@ -297,7 +296,7 @@ func (s *Section) parseToDeviceName(context *FrameContext) string {
 
 // InitChunks 从配置文件初始化 Chunk
 func InitChunks(v *viper.Viper, protoFile string) (ChunkSequence, error) {
-	logger.Log.Infof("当前启用的协议文件: %s", protoFile)
+	pkg.Log.Infof("当前启用的协议文件: %s", protoFile)
 	// 初始化 SnapshotCollection
 	snapshotCollection := make(pkg.SnapshotCollection)
 	var chunkSequence = ChunkSequence{
@@ -315,7 +314,7 @@ func InitChunks(v *viper.Viper, protoFile string) (ChunkSequence, error) {
 
 		chunkSequence.Chunks = append(chunkSequence.Chunks, tmpChunk)
 	}
-	logger.Log.Infof("ChunkSequence 初始化成功:\n %+v", chunkSequence)
+	pkg.Log.Infof("ChunkSequence 初始化成功:\n %+v", chunkSequence)
 	return chunkSequence, nil
 }
 

@@ -1,6 +1,6 @@
 module gateway
 
-go 1.21.3
+go 1.23.2
 
 require (
 	github.com/apache/iotdb-client-go v1.3.2

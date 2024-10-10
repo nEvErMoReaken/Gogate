@@ -6,7 +6,6 @@ import (
 	"gateway/internal/connector/tcpServer"
 	"gateway/internal/parser/ioReader"
 	"gateway/internal/pkg"
-	"gateway/logger"
 	"github.com/spf13/viper"
 	"io"
 	"log"
@@ -54,7 +53,7 @@ func NewTcpServer(comm *pkg.Config, v *viper.Viper, chDone chan struct{}) Connec
 
 func (t *TcpServerConnector) Listen() error {
 	// 1. 监听指定的端口
-	logger.Log.Infof("TCPServer listening on port %s", t.TcpServerConfig.TCPServer.Port)
+	pkg.Log.Infof("TCPServer listening on port %s", t.TcpServerConfig.TCPServer.Port)
 	for {
 		// 2. 等待客户端连接
 		conn, err := t.listener.Accept()
@@ -62,7 +61,7 @@ func (t *TcpServerConnector) Listen() error {
 			return fmt.Errorf("[tcpServer]与客户端建立连接时发生错误: %s\n", err)
 		}
 		// 3. 使用 goroutine 处理连接，一个连接对应一个协程
-		logger.Log.Infof("与 %s 建立连接", conn.RemoteAddr().String())
+		pkg.Log.Infof("与 %s 建立连接", conn.RemoteAddr().String())
 		chunks, err := ioReader.InitChunks(t.v, t.TcpServerConfig.ProtoFile)
 		go t.HandleConnection(conn, &chunks)
 	}
@@ -87,7 +86,7 @@ func initSnapshotCollection(comm *pkg.Config, v *viper.Viper, protoFile string) 
 		sections := chunkMap["sections"].([]interface{})
 		for _, section := range sections {
 			sectionMap := section.(map[string]interface{})
-			logger.Log.Infof("sectionMap: %+v", sectionMap) // sectionMap: map[decoding:map[method:Decode8BToInt] desc:帧长度 长度由字节69开始计算 from:map[byte:1] to:map[device:vobc fields:[RIOM_sta_1 RIOM_sta_2 RIOM_sta_3 RIOM_sta_4 RIOM_sta_5 RIOM_sta_6 RIOM_sta_7 RIOM_sta_8] type:vobc.info]]
+			pkg.Log.Infof("sectionMap: %+v", sectionMap) // sectionMap: map[decoding:map[method:Decode8BToInt] desc:帧长度 长度由字节69开始计算 from:map[byte:1] to:map[device:vobc fields:[RIOM_sta_1 RIOM_sta_2 RIOM_sta_3 RIOM_sta_4 RIOM_sta_5 RIOM_sta_6 RIOM_sta_7 RIOM_sta_8] type:vobc.info]]
 			// 如果没有设备或者类型或者字段，直接跳过
 			if sectionMap["to"] == nil {
 				continue
@@ -97,11 +96,11 @@ func initSnapshotCollection(comm *pkg.Config, v *viper.Viper, protoFile string) 
 				continue
 			}
 			deviceSnapshot := snapshotCollection.GetDeviceSnapshot(toMap["device"].(string), toMap["type"].(string))
-			logger.Log.Debugf("snapshotCollection: %+v", snapshotCollection)
+			pkg.Log.Debugf("snapshotCollection: %+v", snapshotCollection)
 			//for _, field := range toMap["fields"].([]interface{}) {
 			//	//deviceSnapshot.SetField(field.(string), nil)
 			//}
-			logger.Log.Debugf("deviceSnapshot: %+v", deviceSnapshot)
+			pkg.Log.Debugf("deviceSnapshot: %+v", deviceSnapshot)
 		}
 	}
 	// 初始化发送策略
@@ -109,7 +108,7 @@ func initSnapshotCollection(comm *pkg.Config, v *viper.Viper, protoFile string) 
 	//	//deviceSnapshot.InitDataSink(comm)
 	//	//common.Log.Debugf("初始化PointMap成功: %+v", deviceSnapshot.PointMap["influxdb"])
 	//}
-	logger.Log.Debugf("初始化设备快照成功: %+v", snapshotCollection)
+	pkg.Log.Debugf("初始化设备快照成功: %+v", snapshotCollection)
 	return &snapshotCollection
 }
 
@@ -118,7 +117,7 @@ func (t *TcpServerConnector) HandleConnection(conn net.Conn, chunkSequence *ioRe
 	defer func(conn net.Conn) {
 		err := conn.Close()
 		if err != nil {
-			logger.Log.Infof("与 %s 的连接已关闭", conn.RemoteAddr().String())
+			pkg.Log.Infof("与 %s 的连接已关闭", conn.RemoteAddr().String())
 		}
 	}(conn)
 	// 1. 首先识别远端ip是哪个设备
@@ -127,7 +126,7 @@ func (t *TcpServerConnector) HandleConnection(conn net.Conn, chunkSequence *ioRe
 	// 2. 连接花名作为变量（如果有）
 	if t.TcpServerConfig.TCPServer.IPAlias == nil {
 		// 2.1 如果IPAlias为空，则不需要进行识别
-		logger.Log.Infof("IPAlias为空")
+		pkg.Log.Infof("IPAlias为空")
 	} else {
 		// 2.2 如果IPAlias不为空，放入变量中
 		// remoteAddr 是 ip:port 的形式，需要去掉端口
@@ -135,7 +134,7 @@ func (t *TcpServerConnector) HandleConnection(conn net.Conn, chunkSequence *ioRe
 		var exists bool
 		deviceId, exists = t.TcpServerConfig.TCPServer.IPAlias[remoteAddr]
 		if !exists {
-			logger.Log.Errorf("未在配置清单中找到地址: %s", remoteAddr)
+			pkg.Log.Errorf("未在配置清单中找到地址: %s", remoteAddr)
 			return
 		}
 		// deviceId 是string 转 *interface{}
@@ -146,7 +145,7 @@ func (t *TcpServerConnector) HandleConnection(conn net.Conn, chunkSequence *ioRe
 	// 3. 设置超时时间
 	err := conn.SetReadDeadline(time.Now().Add(t.TcpServerConfig.TCPServer.Timeout))
 	if err != nil {
-		logger.Log.Infof("超时时间设置失败，关闭连接: %s", conn.RemoteAddr().String())
+		pkg.Log.Infof("超时时间设置失败，关闭连接: %s", conn.RemoteAddr().String())
 		return
 	}
 	// 4. 初始化reader开始读数据
@@ -162,10 +161,10 @@ func (t *TcpServerConnector) HandleConnection(conn net.Conn, chunkSequence *ioRe
 			err = chunkSequence.ProcessAll(deviceId, reader, &frame, t.comm)
 			if err != nil {
 				if err == io.EOF {
-					logger.Log.Infof("[%s] 客户端断开连接: %s", deviceId, err)
+					pkg.Log.Infof("[%s] 客户端断开连接: %s", deviceId, err)
 					return // 客户端断开连接，优雅地结束
 				}
-				logger.Log.Error(err)
+				pkg.Log.Error(err)
 				return
 			}
 
@@ -176,7 +175,7 @@ func (t *TcpServerConnector) HandleConnection(conn net.Conn, chunkSequence *ioRe
 			for _, b := range frame {
 				hexString += fmt.Sprintf("%02X", b)
 			}
-			logger.Log.Infof("[%s] %s", deviceId, fmt.Sprintf("%s", hexString))
+			pkg.Log.Infof("[%s] %s", deviceId, fmt.Sprintf("%s", hexString))
 		}
 	}
 }
