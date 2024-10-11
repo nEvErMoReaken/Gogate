@@ -11,12 +11,12 @@ import (
 
 // MqttConnector Connector的TcpServer版本实现
 type MqttConnector struct {
-	MqttConfig         *MqttConfig             // 配置
+	MqttConfig         *pkg.MqttConfig         // 配置
 	ChDone             chan struct{}           // 停止通道
 	v                  *viper.Viper            // 配置文件
 	comm               *pkg.Config             // 全局配置
 	client             *mqtt.Client            // MQTT 客户端
-	conversion         *json.JsonParseConfig   // 转换配置
+	conversion         *pkg.JsonParseConfig    // 转换配置
 	snapshotCollection *pkg.SnapshotCollection // 快照集合
 }
 
@@ -53,7 +53,7 @@ func (m *MqttConnector) Close() error {
 	return fmt.Errorf("MQTT客户端未连接")
 }
 
-func NewMqttConnector(comm *pkg.Config, v *viper.Viper, stopChan chan struct{}) Connector {
+func NewMqttConnector(comm *pkg.Config, stopChan chan struct{}) Connector {
 	// 1. 初始化mqtt配置
 	mqttConfig, err := UnmarshalMqttConfig(v)
 	if err != nil {

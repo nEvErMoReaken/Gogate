@@ -4,12 +4,21 @@ import (
 	"encoding/json"
 	"fmt"
 	"gateway/internal/strategy"
+
 	"regexp"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 )
+
+// Point 代表发送到数据源的一个数据点
+type Point struct {
+	DeviceName string                 // 设备名称
+	DeviceType string                 // 设备类型
+	Field      map[string]interface{} // 字段名称 考虑到point一旦放入chan后状态就会失控，没必要为了一点性能做危险操作
+	Ts         time.Time              // 时间戳
+}
 
 // DeviceSnapshot 代表一个设备的物模型在某时刻的快照
 type DeviceSnapshot struct {

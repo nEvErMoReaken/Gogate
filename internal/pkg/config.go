@@ -15,24 +15,15 @@ type StrategyConfig struct {
 	Config map[string]interface{} `mapstructure:",remain"` // 自定义配置项
 }
 
-type LogConfig struct {
-	LogPath    string `mapstructure:"log_path"`
-	MaxSize    int    `mapstructure:"max_size"`
-	MaxBackups int    `mapstructure:"max_backups"`
-	MaxAge     int    `mapstructure:"max_age"`
-	Compress   bool   `mapstructure:"compress"`
-	Level      string `mapstructure:"level"`
-}
-
 type ScriptConfig struct {
 	ScriptDir string `mapstructure:"dir"`
 }
 
 type Config struct {
-	LogConfig LogConfig        `mapstructure:"log"`
 	Script    ScriptConfig     `mapstructure:"script"`
 	Connector ConnectorConfig  `mapstructure:"connector"`
 	Strategy  []StrategyConfig `mapstructure:"strategy"`
+	Version   string           `mapstructure:"version"`
 }
 
 type ConnectorConfig struct {
