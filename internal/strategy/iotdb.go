@@ -22,9 +22,9 @@ func init() {
 // IoTDBStrategy 实现将数据发布到 IoTDB 的逻辑
 type IoTDBStrategy struct {
 	sessionPool *client.SessionPool
-	pointChan   chan pkg.Point
 	info        IotDBInfo
-	ctx         context.Context
+	core        Core
+	logger      *zap.Logger
 }
 
 // IotDBInfo IoTDB 的专属配置
@@ -38,7 +38,7 @@ type IotDBInfo struct {
 	BatchSize int32  `mapstructure:"batch_size"`
 }
 
-// NewIoTDBStrategy 构造函数
+// NewIoTDBStrategy Step.0 构造函数
 func NewIoTDBStrategy(ctx context.Context) (Strategy, error) {
 	config := pkg.ConfigFromContext(ctx)
 	var info IotDBInfo
@@ -80,31 +80,39 @@ func NewIoTDBStrategy(ctx context.Context) (Strategy, error) {
 	}
 
 	return &IoTDBStrategy{
-		pointChan:   make(chan pkg.Point, 200), // 容量为 200 的通道
+		logger:      pkg.LoggerFromContext(ctx),
 		sessionPool: &sessionPool,
 		info:        info,
-		ctx:         context.WithValue(ctx, "strategy", "iotdb"),
+		core: Core{
+			StrategyType: "iotdb",
+			pointChan:    make(chan pkg.Point, 200),
+			ctx:          context.WithValue(ctx, "strategy", "iotdb"),
+		},
 	}, nil
 }
 
-// GetChan 返回通道
-func (b *IoTDBStrategy) GetChan() chan pkg.Point {
-	return b.pointChan
+// Put Step.1
+func (b *IoTDBStrategy) Put(point pkg.Point) {
+	b.core.pointChan <- point
 }
 
-// Start 启动策略
-func (b *IoTDBStrategy) Start(ctx context.Context) {
-	pkg.LoggerFromContext(ctx).Info("===IoTDBStrategy started===")
+// GetCore Step.2
+func (b *IoTDBStrategy) GetCore() Core {
+	return b.core
+}
 
+// Start Step.3 启动策略
+func (b *IoTDBStrategy) Start() {
+	b.logger.Info("===IoTDBStrategy started===")
 	for {
 		select {
-		case <-ctx.Done():
+		case <-b.core.ctx.Done():
 			b.Stop()
-			pkg.LoggerFromContext(ctx).Info("===IoTDBStrategy stopped===")
-		case point := <-b.pointChan:
+			b.logger.Info("===IoTDBStrategy stopped===")
+		case point := <-b.core.pointChan:
 			err := b.Publish(point)
 			if err != nil {
-				util.ErrChanFromContext(b.ctx) <- fmt.Errorf("IoTDBStrategy error occurred: %w", err)
+				util.ErrChanFromContext(b.core.ctx) <- fmt.Errorf("IoTDBStrategy error occurred: %w", err)
 			}
 		}
 	}
@@ -112,7 +120,7 @@ func (b *IoTDBStrategy) Start(ctx context.Context) {
 
 // Publish 将数据发布到 IoTDB
 func (b *IoTDBStrategy) Publish(point pkg.Point) error {
-	log := pkg.LoggerFromContext(b.ctx)
+	log := b.logger // 避免每次都要强转一次
 	// 日志记录
 	log.Debug("正在发送 %+v", zap.Any("point", point))
 	session, err := b.sessionPool.GetSession()

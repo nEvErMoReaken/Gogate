@@ -1,6 +1,7 @@
 package strategy
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"gateway/internal/pkg"
@@ -75,7 +76,7 @@ func (m *MqttStrategy) Publish(point pkg.Point) {
 	m.client.Publish(topic, 0, true, jsonData)
 	pkg.Log.Infof("[MqttStrategy]发布消息到 %s: %s", topic, string(jsonData))
 }
-func NewMqttStrategy(dbConfig *pkg.StrategyConfig, stopChan chan struct{}) pkg.SendStrategy {
+func NewMqttStrategy(ctx context.Context) pkg.SendStrategy {
 	var info MQTTInfo
 	// 将 map 转换为结构体
 	if err := mapstructure.Decode(dbConfig.Config, &info); err != nil {

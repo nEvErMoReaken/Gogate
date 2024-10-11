@@ -9,8 +9,16 @@ import (
 
 // Strategy 定义了所有发送策略的通用接口
 type Strategy interface {
-	Start(ctx context.Context)
-	GetChan() chan pkg.Point // 提供访问 chan 的方法
+	GetCore() Core       // Step:1 强制要求所有策略都有一个核心结构
+	Put(point pkg.Point) // Step:2 强制要求所有策略都有一个数据通道和放入方法
+	Start()              // Step:3 强制要求所有策略都有一个启动方法
+}
+
+// Core 代表一个发送策略的核心结构, 其他策略必须组合它
+type Core struct {
+	StrategyType string
+	pointChan    chan pkg.Point
+	ctx          context.Context
 }
 
 // RunStrategy 因为需要等待配置文件加载完毕，所以选择手动初始化
@@ -25,7 +33,7 @@ func RunStrategy(ctx context.Context) error {
 	}
 	log.Info("已启用的策略有", zap.Any("SendStrategyMap", SendStrategyMap))
 	// 2. 启动所有发送策略
-	go SendStrategyMap.StartALL(ctx)
+	go SendStrategyMap.StartALL()
 	return nil
 }
 
@@ -68,10 +76,10 @@ func GetStrategy(strategyType string) Strategy {
 }
 
 // StartALL 启动所有发送策略，它仅用于启动，并不关心错误处理
-func (m MapSendStrategy) StartALL(ctx context.Context) {
+func (m MapSendStrategy) StartALL() {
 	for _, strategy := range m {
 		go func() {
-			strategy.Start(ctx)
+			strategy.Start()
 		}()
 	}
 }

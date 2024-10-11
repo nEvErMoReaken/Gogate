@@ -1,47 +1,99 @@
 package strategy
 
 import (
+	"context"
+	"fmt"
 	"gateway/internal/pkg"
+	"gateway/util"
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/influxdata/influxdb-client-go/v2/api"
 	"github.com/mitchellh/mapstructure"
+	"go.uber.org/zap"
 	"strconv"
 )
 
 // 拓展数据源步骤
-// init Step.1
 func init() {
 	// 注册发送策略
 	RegisterStrategy("influxdb", NewInfluxDbStrategy)
 }
 
-// GetChan Step.2
-func (b *InfluxDbStrategy) GetChan() chan pkg.Point {
-	return b.pointChan
+// InfluxDbStrategy 实现将数据发布到 InfluxDB 的逻辑
+type InfluxDbStrategy struct {
+	client   influxdb2.Client
+	writeAPI api.WriteAPI
+	info     InfluxDbInfo
+	core     Core
+	logger   *zap.Logger
+}
+
+// NewInfluxDbStrategy Step.0 构造函数
+func NewInfluxDbStrategy(ctx context.Context) (Strategy, error) {
+	config := pkg.ConfigFromContext(ctx)
+	var info InfluxDbInfo
+	for _, strategyConfig := range config.Strategy {
+		if strategyConfig.Enable && strategyConfig.Type == "influxDB" {
+			// 将 map 转换为结构体
+			if err := mapstructure.Decode(strategyConfig.Config, &info); err != nil {
+				return nil, fmt.Errorf("[NewInfluxDbStrategy] Error decoding map to struct: %v", err)
+			}
+		}
+	}
+	client := influxdb2.NewClientWithOptions(info.URL, info.Token, influxdb2.DefaultOptions().SetBatchSize(info.BatchSize))
+	// 获取写入 API
+	writeAPI := client.WriteAPI(info.Org, info.Bucket)
+	// Get errors channel
+	errorsCh := writeAPI.Errors()
+	// Create go proc for reading and logging errors
+	go func() {
+		for err := range errorsCh {
+			pkg.LoggerFromContext(ctx).Error("write error: %s\n", zap.Error(err))
+			// 不清楚Influxdb通道内的错误是否会导致程序退出，所以这里不直接返回错误
+		}
+	}()
+	return &InfluxDbStrategy{
+		logger:   pkg.LoggerFromContext(ctx),
+		client:   client,
+		writeAPI: writeAPI,
+		info:     info,
+		core:     Core{StrategyType: "influxDB", pointChan: make(chan pkg.Point), ctx: ctx},
+	}, nil
+}
+
+// GetCore Step.1
+func (b *InfluxDbStrategy) GetCore() Core {
+	return b.core
+}
+func (b *InfluxDbStrategy) Put(point pkg.Point) {
+	b.core.pointChan <- point
+
 }
 
 // Start Step.3
 func (b *InfluxDbStrategy) Start() {
 	defer b.client.Close()
-	pkg.Log.Info("InfluxDBStrategy started")
+	pkg.LoggerFromContext(b.core.ctx).Info("===InfluxDbStrategy started===")
+	//for {
+	//	select {
+	//	case <-b.core.ctx.Done():
+	//		b.writeAPI.Flush() // 在停止时强制刷新所有数据
+	//		return
+	//	case point := <-b.pointChan:
+	//		b.Publish(point)
+	//	}
+	//}
 	for {
 		select {
-		case <-b.stopChan:
-			b.writeAPI.Flush() // 在停止时强制刷新所有数据
-			return
-		case point := <-b.pointChan:
-			b.Publish(point)
+		case <-b.core.ctx.Done():
+			b.Stop()
+			pkg.LoggerFromContext(b.core.ctx).Info("===IoTDBStrategy stopped===")
+		case point := <-b.core.pointChan:
+			err := b.Publish(point)
+			if err != nil {
+				util.ErrChanFromContext(b.core.ctx) <- fmt.Errorf("IoTDBStrategy error occurred: %w", err)
+			}
 		}
 	}
-}
-
-// InfluxDbStrategy 实现将数据发布到 InfluxDB 的逻辑
-type InfluxDbStrategy struct {
-	client    influxdb2.Client
-	pointChan chan pkg.Point
-	stopChan  chan struct{}
-	writeAPI  api.WriteAPI
-	info      InfluxDbInfo
 }
 
 // InfluxDbInfo InfluxDB的专属配置
@@ -54,37 +106,9 @@ type InfluxDbInfo struct {
 	Tags      []string `mapstructure:"tags"`
 }
 
-// NewInfluxDbStrategy 构造函数
-func NewInfluxDbStrategy(dbConfig *pkg.StrategyConfig, stopChan chan struct{}) pkg.SendStrategy {
-	var info InfluxDbInfo
-	// 将 map 转换为结构体
-	if err := mapstructure.Decode(dbConfig.Config, &info); err != nil {
-		pkg.Log.Fatalf("[NewInfluxDbStrategy] Error decoding map to struct: %v", err)
-	}
-
-	client := influxdb2.NewClientWithOptions(info.URL, info.Token, influxdb2.DefaultOptions().SetBatchSize(info.BatchSize))
-	// 获取写入 API
-	writeAPI := client.WriteAPI(info.Org, info.Bucket)
-	// Get errors channel
-	errorsCh := writeAPI.Errors()
-	// Create go proc for reading and logging errors
-	go func() {
-		for err := range errorsCh {
-			pkg.Log.Errorf("write error: %s\n", err.Error())
-		}
-	}()
-	return &InfluxDbStrategy{
-		pointChan: make(chan pkg.Point, 200), // 容量为200的通道
-		stopChan:  stopChan,
-		client:    client,
-		writeAPI:  writeAPI,
-		info:      info,
-	}
-}
-
-func (b *InfluxDbStrategy) Publish(point pkg.Point) {
+func (b *InfluxDbStrategy) Publish(point pkg.Point) error {
 	// ～～～将数据发布到 InfluxDB 的逻辑～～～
-	pkg.Log.Debugf("正在发送 %+v", point)
+	b.logger.Debug("正在发送 %+v", zap.Any("point", point))
 
 	// 创建一个新的 map[string]interface{} 来存储解引用的字段
 	decodedFields := make(map[string]interface{})
@@ -118,7 +142,7 @@ func (b *InfluxDbStrategy) Publish(point pkg.Point) {
 			case bool:
 				tagsMap[key] = strconv.FormatBool(v)
 			default:
-				pkg.Log.Warnf("Unexpected type for key %s in tagsMap", key)
+				b.logger.Warn("Unexpected type for key %s in tagsMap", zap.Any("key", key))
 			}
 		} else {
 			// 如果不是 tags 中的字段，直接放入 decodedFields
@@ -134,10 +158,10 @@ func (b *InfluxDbStrategy) Publish(point pkg.Point) {
 		decodedFields,    // fields (converted)
 		point.Ts,         // timestamp
 	)
-	pkg.Log.Debugf("正在发送:\n , %+v, %+v, %+v, %+v", point.DeviceType, point.DeviceName, decodedFields, point.Ts)
 	// 写入到 InfluxDB
 	b.writeAPI.WritePoint(p)
-
+	b.logger.Debug("InfluxDBStrategy published", zap.Any("point", point))
+	return nil
 }
 
 // Stop 停止 InfluxDBStrategy
