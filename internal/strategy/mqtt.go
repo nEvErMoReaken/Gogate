@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"gateway/internal/pkg"
+	"gateway/util"
+	"go.uber.org/zap"
 	"time"
 
 	MQTT "github.com/eclipse/paho.mqtt.golang"
@@ -19,11 +21,14 @@ func init() {
 
 // MqttStrategy 实现将数据发布到 MQTT 的逻辑
 type MqttStrategy struct {
-	client    MQTT.Client
-	pointChan chan pkg.Point
-	stopChan  chan struct{}
-	info      MQTTInfo
+	client MQTT.Client
+	info   MQTTInfo
+	core   Core
+	logger *zap.Logger
 }
+
+// maxReconnectAttempts 最大重连次数
+const maxReconnectAttempts = 5
 
 // MQTTInfo MQTT的专属配置
 type MQTTInfo struct {
@@ -34,29 +39,106 @@ type MQTTInfo struct {
 	WillTopic string `mapstructure:"willTopic"`
 }
 
-// GetChan Step.2
-func (m *MqttStrategy) GetChan() chan pkg.Point {
-	return m.pointChan
+// NewMqttStrategy Step.0 构造函数
+func NewMqttStrategy(ctx context.Context) (Strategy, error) {
+	logger := pkg.LoggerFromContext(ctx)
+	config := pkg.ConfigFromContext(ctx)
+	var info MQTTInfo
+	for _, strategyConfig := range config.Strategy {
+		if strategyConfig.Enable && strategyConfig.Type == "influxDB" {
+			// 将 map 转换为结构体
+			if err := mapstructure.Decode(strategyConfig.Config, &info); err != nil {
+				return nil, fmt.Errorf("[NewMqttStrategy] Error decoding map to struct: %v", err)
+			}
+		}
+	}
+
+	// 定义 MQTT 客户端的选项
+	opts := MQTT.NewClientOptions().AddBroker(info.URL)
+	opts.SetClientID(info.ClientID) // 设置客户端 ID
+	opts.SetUsername(info.UserName) // 可选：如果 Broker 需要认证
+	opts.SetPassword(info.Password) // 可选：如果 Broker 需要认证
+	opts.SetWill(info.WillTopic, "offline", 1, true)
+	opts.SetAutoReconnect(true)
+	opts.SetMaxReconnectInterval(5 * time.Minute)
+	opts.SetConnectRetryInterval(10 * time.Second)
+	// 添加连接丢失的回调函数，打印连接丢失日志
+	opts.SetConnectionLostHandler(func(client MQTT.Client, err error) {
+		logger.Error("MQTT connection lost", zap.Error(err))
+	})
+
+	reconnectAttempts := 0 // 重连尝试计数器
+
+	// 重连中的回调函数
+	opts.SetReconnectingHandler(func(client MQTT.Client, opts *MQTT.ClientOptions) {
+		reconnectAttempts++
+		logger.Info("Attempting to reconnect...", zap.Int("attempt", reconnectAttempts))
+
+		// 如果超过最大重连次数
+		if reconnectAttempts >= maxReconnectAttempts {
+			// 断开连接
+			client.Disconnect(250)
+			// 将错误传递到错误通道，通知上层程序
+			errChan := util.ErrChanFromContext(ctx)
+			if errChan != nil {
+				errChan <- fmt.Errorf("[MqttStrategy]MQTT reached max reconnect attempts, stopping client")
+			}
+		}
+	})
+
+	// 成功连接时重置计数器
+	opts.SetOnConnectHandler(func(client MQTT.Client) {
+		reconnectAttempts = 0
+		logger.Info("Successfully connected to MQTT Broker.")
+	})
+
+	// 创建 MQTT 客户端
+	mqCLi := MQTT.NewClient(opts)
+	// 连接到 MQTT Broker
+	if token := mqCLi.Connect(); token.Wait() && token.Error() != nil {
+		return nil, fmt.Errorf("连接到 MQTT Broker 失败:%+v", token.Error())
+	}
+
+	return &MqttStrategy{
+		client: mqCLi,
+		info:   info,
+		core:   Core{StrategyType: "mqtt", pointChan: make(chan pkg.Point, 200), ctx: ctx},
+		logger: logger,
+	}, nil
+}
+
+// GetCore Step.1
+func (m *MqttStrategy) GetCore() Core {
+	return m.core
+}
+
+// Put Step.2
+func (m *MqttStrategy) Put(point pkg.Point) {
+	m.core.pointChan <- point
+
 }
 
 // Start Step.3
 func (m *MqttStrategy) Start() {
 	defer m.client.Disconnect(250)
-	pkg.Log.Info("MqttStrategy started")
+	m.logger.Info("===MqttStrategy started===")
 	// 发布网关上线的状态
 	m.client.Publish(m.info.WillTopic, 1, true, "online")
 	for {
 		select {
-		case <-m.stopChan:
+		case <-m.core.ctx.Done():
 			m.Stop()
-			return
-		case point := <-m.pointChan:
-			m.Publish(point)
+			pkg.LoggerFromContext(m.core.ctx).Info("===MqttStrategy stopped===")
+		case point := <-m.core.pointChan:
+			err := m.Publish(point)
+			if err != nil {
+				util.ErrChanFromContext(m.core.ctx) <- fmt.Errorf("MqttStrategy error occurred: %w", err)
+			}
 		}
 	}
 }
 
-func (m *MqttStrategy) Publish(point pkg.Point) {
+func (m *MqttStrategy) Publish(point pkg.Point) error {
 	// 创建一个新的 map[string]interface{} 来存储解引用的字段
 	decodedFields := make(map[string]interface{})
 	for key, valuePtr := range point.Field {
@@ -69,47 +151,16 @@ func (m *MqttStrategy) Publish(point pkg.Point) {
 	// 将 map 序列化为 JSON
 	jsonData, err := json.Marshal(decodedFields)
 	if err != nil {
-		pkg.Log.Errorf("序列化 JSON 失败: %+v", err)
-		return
+		return fmt.Errorf("序列化 JSON 失败: %+v", err)
 	}
 	topic := fmt.Sprintf("gateway/%s/%s/fields", point.DeviceType, point.DeviceName)
 	m.client.Publish(topic, 0, true, jsonData)
-	pkg.Log.Infof("[MqttStrategy]发布消息到 %s: %s", topic, string(jsonData))
-}
-func NewMqttStrategy(ctx context.Context) pkg.SendStrategy {
-	var info MQTTInfo
-	// 将 map 转换为结构体
-	if err := mapstructure.Decode(dbConfig.Config, &info); err != nil {
-		pkg.Log.Fatalf("[NewInfluxDbStrategy] Error decoding map to struct: %v", err)
-	}
-
-	// 定义 MQTT 客户端的选项
-	opts := MQTT.NewClientOptions().AddBroker(info.URL)
-	opts.SetClientID(info.ClientID) // 设置客户端 ID
-	opts.SetUsername(info.UserName) // 可选：如果 Broker 需要认证
-	opts.SetPassword(info.Password) // 可选：如果 Broker 需要认证
-	opts.SetWill(info.WillTopic, "offline", 1, true)
-	opts.SetAutoReconnect(true)
-	opts.SetMaxReconnectInterval(5 * time.Minute)
-	opts.SetConnectRetryInterval(10 * time.Second)
-
-	// 创建 MQTT 客户端
-	mqCLi := MQTT.NewClient(opts)
-
-	// 连接到 MQTT Broker
-	if token := mqCLi.Connect(); token.Wait() && token.Error() != nil {
-		pkg.Log.Errorf("连接到 MQTT Broker 失败:%+v", token.Error())
-
-	}
-	return &MqttStrategy{
-		client:    mqCLi,
-		pointChan: make(chan pkg.Point, 200),
-		stopChan:  stopChan,
-		info:      info,
-	}
+	m.logger.Debug("[MqttStrategy]发布消息到 %s: %s", zap.String("topic", topic), zap.String("data", string(jsonData)))
+	return nil
 }
 
 // Stop 停止 MQTTStrategy
 func (m *MqttStrategy) Stop() {
 	m.client.Publish(m.info.WillTopic, 1, true, "offline")
+	m.client.Disconnect(250)
 }

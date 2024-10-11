@@ -56,7 +56,7 @@ func NewInfluxDbStrategy(ctx context.Context) (Strategy, error) {
 		client:   client,
 		writeAPI: writeAPI,
 		info:     info,
-		core:     Core{StrategyType: "influxDB", pointChan: make(chan pkg.Point), ctx: ctx},
+		core:     Core{StrategyType: "influxDB", pointChan: make(chan pkg.Point, 200), ctx: ctx},
 	}, nil
 }
 
@@ -64,6 +64,8 @@ func NewInfluxDbStrategy(ctx context.Context) (Strategy, error) {
 func (b *InfluxDbStrategy) GetCore() Core {
 	return b.core
 }
+
+// Put Step.2
 func (b *InfluxDbStrategy) Put(point pkg.Point) {
 	b.core.pointChan <- point
 
@@ -73,15 +75,6 @@ func (b *InfluxDbStrategy) Put(point pkg.Point) {
 func (b *InfluxDbStrategy) Start() {
 	defer b.client.Close()
 	pkg.LoggerFromContext(b.core.ctx).Info("===InfluxDbStrategy started===")
-	//for {
-	//	select {
-	//	case <-b.core.ctx.Done():
-	//		b.writeAPI.Flush() // 在停止时强制刷新所有数据
-	//		return
-	//	case point := <-b.pointChan:
-	//		b.Publish(point)
-	//	}
-	//}
 	for {
 		select {
 		case <-b.core.ctx.Done():
