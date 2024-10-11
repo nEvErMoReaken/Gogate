@@ -1,12 +1,29 @@
 package pkg
 
 import (
+	"context"
 	"fmt"
 	"github.com/spf13/viper"
 	"io/fs"
 	"path/filepath"
 	"time"
 )
+
+// 定义一个不导出的 key 类型，避免 context key 冲突
+type configKey struct{}
+
+// WithConfig 将配置指针存入 context 中
+func WithConfig(ctx context.Context, config *Config) context.Context {
+	return context.WithValue(ctx, configKey{}, config)
+}
+
+// ConfigFromContext 从 context 中提取配置指针
+func ConfigFromContext(ctx context.Context) *Config {
+	if config, ok := ctx.Value(configKey{}).(*Config); ok {
+		return config
+	}
+	return &Config{}
+}
 
 type StrategyConfig struct {
 	Type   string                 `mapstructure:"type"`    // 策略类型
@@ -98,6 +115,7 @@ func UnmarshalMqttConfig(v *viper.Viper) (*MqttConfig, error) {
 
 // InitCommon 用于初始化全局配置
 func InitCommon(configDir string) (*Config, *viper.Viper, error) {
+
 	v := viper.NewWithOptions(viper.KeyDelimiter("::")) // 设置 key 分隔符为 ::，因为默认的 . 会和 IP 地址冲突
 	v.AddConfigPath(configDir)
 	v.AutomaticEnv() // 读取环境变量

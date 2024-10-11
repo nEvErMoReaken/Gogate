@@ -1,6 +1,7 @@
 package pkg
 
 import (
+	"context"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -18,6 +19,24 @@ type config struct {
 		Compress   bool   `mapstructure:"compress"`
 		Level      string `mapstructure:"level"`
 	} `mapstructure:"log"`
+}
+
+// 定义一个不导出的 key 类型，避免 context key 冲突
+type loggerKey struct{}
+
+// WithLogger 将带有模块信息的 zap.Logger 存入 context 中
+func WithLogger(ctx context.Context, logger *zap.Logger, module string) context.Context {
+	loggerWithModule := logger.With(zap.String("module", module))
+	return context.WithValue(ctx, loggerKey{}, loggerWithModule)
+}
+
+// LoggerFromContext 从 context 中提取 zap.Logger
+func LoggerFromContext(ctx context.Context) *zap.Logger {
+	// 尝试从 context 中获取 logger，如果没有则返回一个默认的 logger
+	if logger, ok := ctx.Value(loggerKey{}).(*zap.Logger); ok {
+		return logger
+	}
+	return zap.NewNop() // 返回一个 no-op logger，避免 nil pointer 错误
 }
 
 // NewLogger initializes the common
