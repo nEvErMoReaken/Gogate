@@ -23,7 +23,7 @@ func RegisterConn(connType string, factory ConnFactoryFunc) {
 }
 
 // RunConnector 运行指定类型的数据源
-func RunConnector(common *pkg.Config, connType string, chDone chan struct{}) error {
+func RunConnector(ctx) error {
 	factory, ok := ConnFactories[connType]
 	if !ok {
 		return fmt.Errorf("未找到数据源类型: %s", connType)

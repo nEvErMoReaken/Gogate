@@ -85,6 +85,9 @@ parser:
 strategy:
   - type: influxdb
     enable: true
+    filter: # 格式<设备类型>:<设备名称>:<遥测名称>
+       - ".*:.*:.*"
+#       - "vobc\\.info:vobc.*:RIOM_sta_3"
     config:
   #    以下是自定义配置项
       url: http://10.17.191.107:8086
@@ -92,9 +95,6 @@ strategy:
       org: "byd"
       bucket: "test"
       batch_size: 2000
-      filter: # 格式<设备类型>:<设备名称>:<遥测名称>
-         - ".*:.*:.*"
-  #       - "vobc\\.info:vobc.*:RIOM_sta_3"
       tags:
         - "data_source"
   - type: iotdb
@@ -106,11 +106,11 @@ strategy:
       batch_size:
   - type: mqtt
     enable: false
+    filter: # 格式<设备类型>:<设备名称>:<遥测名称>
+      - ".*:.*:.*"
     config:
       url: tcp://
       clientID:
       username:
       password:
       willTopic: "status/gateway"
-      filter: # 格式<设备类型>:<设备名称>:<遥测名称>
-        - ".*:.*:.*"

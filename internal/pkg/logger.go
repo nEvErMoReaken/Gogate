@@ -25,7 +25,12 @@ type config struct {
 type loggerKey struct{}
 
 // WithLogger 将带有模块信息的 zap.Logger 存入 context 中
-func WithLogger(ctx context.Context, logger *zap.Logger, module string) context.Context {
+func WithLogger(ctx context.Context, logger *zap.Logger) context.Context {
+	return context.WithValue(ctx, loggerKey{}, logger)
+}
+
+// WithLoggerAndModule 将带有模块信息的 zap.Logger 存入 context 中
+func WithLoggerAndModule(ctx context.Context, logger *zap.Logger, module string) context.Context {
 	loggerWithModule := logger.With(zap.String("module", module))
 	return context.WithValue(ctx, loggerKey{}, loggerWithModule)
 }

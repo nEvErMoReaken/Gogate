@@ -1,8 +1,11 @@
 package strategy
 
 import (
+	"context"
 	"fmt"
 	"gateway/internal/pkg"
+	"gateway/util"
+	"go.uber.org/zap"
 	"strings"
 
 	"github.com/apache/iotdb-client-go/client"
@@ -20,8 +23,8 @@ func init() {
 type IoTDBStrategy struct {
 	sessionPool *client.SessionPool
 	pointChan   chan pkg.Point
-	stopChan    chan struct{}
 	info        IotDBInfo
+	ctx         context.Context
 }
 
 // IotDBInfo IoTDB 的专属配置
@@ -36,12 +39,18 @@ type IotDBInfo struct {
 }
 
 // NewIoTDBStrategy 构造函数
-func NewIoTDBStrategy(dbConfig *pkg.StrategyConfig, stopChan chan struct{}) pkg.SendStrategy {
+func NewIoTDBStrategy(ctx context.Context) (Strategy, error) {
+	config := pkg.ConfigFromContext(ctx)
 	var info IotDBInfo
-	// 将 map 转换为结构体
-	if err := mapstructure.Decode(dbConfig.Config, &info); err != nil {
-		pkg.Log.Fatalf("[NewIoTDBStrategy] Error decoding map to struct: %v", err)
+	for _, strategyConfig := range config.Strategy {
+		if strategyConfig.Enable && strategyConfig.Type == "iotdb" {
+			// 将 map 转换为结构体
+			if err := mapstructure.Decode(strategyConfig.Config, &info); err != nil {
+				return nil, fmt.Errorf("[NewIoTDBStrategy] Error decoding map to struct: %v", err)
+			}
+		}
 	}
+
 	var sessionPool client.SessionPool
 	if info.mode == "cluster" {
 		// 集群模式
@@ -72,10 +81,10 @@ func NewIoTDBStrategy(dbConfig *pkg.StrategyConfig, stopChan chan struct{}) pkg.
 
 	return &IoTDBStrategy{
 		pointChan:   make(chan pkg.Point, 200), // 容量为 200 的通道
-		stopChan:    stopChan,
 		sessionPool: &sessionPool,
 		info:        info,
-	}
+		ctx:         context.WithValue(ctx, "strategy", "iotdb"),
+	}, nil
 }
 
 // GetChan 返回通道
@@ -84,29 +93,32 @@ func (b *IoTDBStrategy) GetChan() chan pkg.Point {
 }
 
 // Start 启动策略
-func (b *IoTDBStrategy) Start() {
+func (b *IoTDBStrategy) Start(ctx context.Context) {
+	pkg.LoggerFromContext(ctx).Info("===IoTDBStrategy started===")
 
-	pkg.Log.Info("IoTDBStrategy started")
 	for {
 		select {
-		case <-b.stopChan:
-			// 在停止时处理必要的清理
-			return
+		case <-ctx.Done():
+			b.Stop()
+			pkg.LoggerFromContext(ctx).Info("===IoTDBStrategy stopped===")
 		case point := <-b.pointChan:
-			b.Publish(point)
+			err := b.Publish(point)
+			if err != nil {
+				util.ErrChanFromContext(b.ctx) <- fmt.Errorf("IoTDBStrategy error occurred: %w", err)
+			}
 		}
 	}
 }
 
 // Publish 将数据发布到 IoTDB
-func (b *IoTDBStrategy) Publish(point pkg.Point) {
+func (b *IoTDBStrategy) Publish(point pkg.Point) error {
+	log := pkg.LoggerFromContext(b.ctx)
 	// 日志记录
-	pkg.Log.Debugf("正在发送 %+v", point)
+	log.Debug("正在发送 %+v", zap.Any("point", point))
 	session, err := b.sessionPool.GetSession()
 	defer b.sessionPool.PutBack(session)
 	if err == nil {
-		pkg.Log.Error(err)
-		return
+		return fmt.Errorf("failed to get session %+v", err)
 	}
 
 	var (
@@ -142,7 +154,10 @@ func (b *IoTDBStrategy) Publish(point pkg.Point) {
 		case string:
 			dataTypes[0] = append(dataTypes[0], client.TEXT)
 		default:
-			pkg.Log.Warnf("Unsupported data type for key %s: %T", key, v)
+			log.Warn("Unsupported data type",
+				zap.String("key", key), // key 的值可以根据实际情况调整类型
+				zap.Any("value", v),    // v 的值可以是任意类型
+			)
 			// 可以选择跳过该值，或者返回错误
 			// 此处选择跳过
 			continue
@@ -159,26 +174,26 @@ func (b *IoTDBStrategy) Publish(point pkg.Point) {
 	timestamp := []int64{point.Ts.UnixNano() / 1e6}
 
 	// 插入记录
-	checkError(session.InsertAlignedRecordsOfOneDevice(deviceId, timestamp, measurements, dataTypes, values, false))
-
+	err = checkError(session.InsertAlignedRecordsOfOneDevice(deviceId, timestamp, measurements, dataTypes, values, false))
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // Stop 停止策略
 func (b *IoTDBStrategy) Stop() {
 	b.sessionPool.Close()
-	pkg.Log.Infof("IoTDBStrategy stopped")
-	//if err := b.sessionPool.Close(); err != nil {
-	//	common.Log.Errorf("Failed to close IoTDB session: %v", err)
-	//}
 }
 
-func checkError(status *rpc.TSStatus, err error) {
+func checkError(status *rpc.TSStatus, err error) error {
 	if err != nil {
-		pkg.Log.Fatal(err)
+		return err
 	}
 	if status != nil {
 		if err = client.VerifySuccess(status); err != nil {
-			pkg.Log.Fatal(err)
+			return err
 		}
 	}
+	return nil
 }
