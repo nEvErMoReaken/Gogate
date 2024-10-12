@@ -330,7 +330,7 @@ func (s *Section) parseToDeviceName(context *FrameContext) string {
 // InitChunks 从配置文件初始化 Chunk
 func InitChunks(v *viper.Viper, protoFile string) (ChunkSequence, error) {
 	pkg.Log.Infof("当前启用的协议文件: %s", protoFile)
-	// 初始化 SnapshotCollection
+	// 初始化 SnapshotHandler
 	snapshotCollection := make(pkg.SnapshotCollection)
 	var chunkSequence = ChunkSequence{
 		make([]Chunk, 0),

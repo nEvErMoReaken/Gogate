@@ -112,10 +112,9 @@ func (m *MqttStrategy) GetCore() Core {
 	return m.core
 }
 
-// Put Step.2
-func (m *MqttStrategy) Put(point pkg.Point) {
-	m.core.pointChan <- point
-
+// GetChan Step.2
+func (m *MqttStrategy) GetChan() chan pkg.Point {
+	return m.core.pointChan
 }
 
 // Start Step.3

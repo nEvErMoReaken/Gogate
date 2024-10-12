@@ -65,10 +65,9 @@ func (b *InfluxDbStrategy) GetCore() Core {
 	return b.core
 }
 
-// Put Step.2
-func (b *InfluxDbStrategy) Put(point pkg.Point) {
-	b.core.pointChan <- point
-
+// GetChan Step.2
+func (b *InfluxDbStrategy) GetChan() chan pkg.Point {
+	return b.core.pointChan
 }
 
 // Start Step.3

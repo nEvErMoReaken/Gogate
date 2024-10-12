@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"gateway/internal/parser"
 	"gateway/internal/pkg"
+	"gateway/util"
 	"github.com/spf13/viper"
+	"go.uber.org/zap"
 	"io"
 	"log"
 	"net"
@@ -15,21 +17,18 @@ import (
 
 // TcpServerConnector Connector的TcpServer版本实现
 type TcpServerConnector struct {
-	listener        net.Listener  // 监听器
-	TcpServerConfig pkg.TcpServer // 配置
 	ctx context.Context
+	listener net.Listener
 }
 
 func init() {
 	Register("tcpServer", NewTcpServer)
 }
 
-func NewTcpServer(ctx context.Context) Connector {
+func NewTcpServer(ctx context.Context) ([]Connector,error) {
 	// 0. 创建一个新的 TcpServerConnector
 	tcpServer := &TcpServerConnector{
-		ChDone: chDone,
-		v:      v,
-		comm:   comm,
+		ctx: ctx,
 	}
 
 	// 1. 读取配置文件
@@ -43,7 +42,7 @@ func NewTcpServer(ctx context.Context) Connector {
 	if err != nil {
 		log.Fatalf("[tcpServer]监听程序启动失败: %s\n", err)
 	}
-	tcpServer.listener = listener
+
 
 	return tcpServer
 }
@@ -52,17 +51,17 @@ func (t *TcpServerConnector) GetDataSource() (interface{}, error) {
 }
 func (t *TcpServerConnector) Start()  {
 	// 1. 监听指定的端口
-	pkg.Log.Infof("TCPServer listening on port %s", t.TcpServerConfig.TCPServer.Port)
+	pkg.LoggerFromContext(t.ctx).Info("TCPServer listening on port: " + zap.String("port", t.TcpServerConfig.TCPServer.Port))
 	for {
 		// 2. 等待客户端连接
 		conn, err := t.listener.Accept()
 		if err != nil {
-			return fmt.Errorf("[tcpServer]与客户端建立连接时发生错误: %s\n", err)
+			util.ErrChanFromContext(t.ctx) <- fmt.Errorf("[tcpServer]接受连接失败: %s\n", err)
 		}
 		// 3. 使用 goroutine 处理连接，一个连接对应一个协程
-		pkg.Log.Infof("与 %s 建立连接", conn.RemoteAddr().String())
+		pkg.LoggerFromContext(t.ctx).Info("与 %s 建立连接", zap.String("remote", conn.RemoteAddr().String()))
 		chunks, err := parser.InitChunks(t.v, t.TcpServerConfig.ProtoFile)
-		go t.HandleConnection(conn, &chunks)
+		t.HandleConnection(conn, &chunks)
 	}
 }
 

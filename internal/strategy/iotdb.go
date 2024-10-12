@@ -91,9 +91,9 @@ func NewIoTDBStrategy(ctx context.Context) (Strategy, error) {
 	}, nil
 }
 
-// Put Step.1
-func (b *IoTDBStrategy) Put(point pkg.Point) {
-	b.core.pointChan <- point
+// GetChan Step.1
+func (b *IoTDBStrategy) GetChan() chan pkg.Point {
+	return b.core.pointChan
 }
 
 // GetCore Step.2
