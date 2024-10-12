@@ -11,41 +11,11 @@ import (
 	"go.uber.org/zap"
 )
 
-type Pipeline struct {
-	Connector connector.Connector
-	ctx       context.Context
-}
-
-type PipeLines []Pipeline
-
-func (pls PipeLines) StartAll() {
-	for _, pipeline := range pls {
-		pipeline.Start()
-	}
-}
-
-func NewPipelines(ctx context.Context) (PipeLines, error) {
-	var pipelineGroup = make([]Pipeline, 0)
-	// 1. 初始化连接器
-	c, err := connector.New(pkg.WithLogger(ctx, pkg.LoggerFromContext(ctx).With(zap.String("module", "Connector"))))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create connector: %w", err)
-	}
-
-	pipelineGroup = append(pipelineGroup, Pipeline{
-		Connector: c,
-		ctx:       ctx,
-	})
-
-	return pipelineGroup, nil
-
-}
-
 // StartParser 启动解析器和策略处理数据
-func (pl *Pipeline) StartParser(dataSource interface{}) (strategy.MapSendStrategy, error) {
+func StartParser(ctx context.Context, dataSource interface{}) (strategy.MapSendStrategy, error) {
 	// 1. 初始化策略
 	mapChan := make(map[string]chan pkg.Point)
-	s, err := strategy.New(pkg.WithLogger(pl.ctx, pkg.LoggerFromContext(pl.ctx).With(zap.String("module", "Strategy"))))
+	s, err := strategy.New(pkg.WithLogger(ctx, pkg.LoggerFromContext(ctx).With(zap.String("module", "Strategy"))))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create strategy: %w", err)
 	}
@@ -54,7 +24,7 @@ func (pl *Pipeline) StartParser(dataSource interface{}) (strategy.MapSendStrateg
 	}
 
 	// 2. 初始化解析器
-	p, err := parser.New(dataSource, mapChan, pkg.WithLogger(pl.ctx, pkg.LoggerFromContext(pl.ctx).With(zap.String("module", "Parser"))))
+	p, err := parser.New(dataSource, mapChan, pkg.WithLogger(ctx, pkg.LoggerFromContext(ctx).With(zap.String("module", "Parser"))))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create parser: %w", err)
 	}
@@ -66,21 +36,15 @@ func (pl *Pipeline) StartParser(dataSource interface{}) (strategy.MapSendStrateg
 }
 
 // handleLazyConnector 处理懒创建连接器的逻辑
-func (pl *Pipeline) handleLazyConnector(readyChan <-chan struct{}) {
+func handleLazyConnector(ctx context.Context, readyChan <-chan interface{}) {
 	for {
 		select {
-		case <-pl.ctx.Done():
+		case <-ctx.Done():
 			return // 退出上下文时停止 Pipeline
-		case <-readyChan:
-			// 新连接到达，获取数据源并启动处理流程
-			dataSource, err := pl.Connector.GetDataSource()
+		case dataSource := <-readyChan:
+			s, err := StartParser(ctx, dataSource)
 			if err != nil {
-				util.ErrChanFromContext(pl.ctx) <- fmt.Errorf("failed to get data source: %w", err)
-				return
-			}
-			s, err := pl.StartParser(dataSource)
-			if err != nil {
-				util.ErrChanFromContext(pl.ctx) <- fmt.Errorf("failed to start parser: %w", err)
+				util.ErrChanFromContext(ctx) <- fmt.Errorf("failed to start parser: %w", err)
 				return
 			}
 			for _, sl := range s {
@@ -91,32 +55,40 @@ func (pl *Pipeline) handleLazyConnector(readyChan <-chan struct{}) {
 }
 
 // handleEagerConnector 处理主动启动型连接器的逻辑
-func (pl *Pipeline) handleEagerConnector() {
-	dataSource, err := pl.Connector.GetDataSource()
+func handleEagerConnector(c connector.Connector, ctx context.Context) {
+	dataSource, err := c.GetDataSource()
 	if err != nil {
-		util.ErrChanFromContext(pl.ctx) <- fmt.Errorf("failed to get data source: %w", err)
+		util.ErrChanFromContext(ctx) <- fmt.Errorf("failed to get data source: %w", err)
 		return
 	}
-	s, err := pl.StartParser(dataSource)
+	s, err := StartParser(ctx, dataSource)
 	if err != nil {
-		util.ErrChanFromContext(pl.ctx) <- fmt.Errorf("failed to start parser: %w", err)
+		util.ErrChanFromContext(ctx) <- fmt.Errorf("failed to start parser: %w", err)
 		return
 	}
 	for _, sl := range s {
 		sl.Start()
 	}
 }
-func (pl *Pipeline) Start() {
+
+func Start(ctx context.Context) {
+	// 0. 初始化连接器
+	c, err := connector.New(pkg.WithLogger(ctx, pkg.LoggerFromContext(ctx).With(zap.String("module", "Connector"))))
+	if err != nil {
+		util.ErrChanFromContext(ctx) <- fmt.Errorf("failed to create connector: %w", err)
+		return
+	}
+
 	// 1. 启动连接器，启动 Connector 后，数据源由 Parser 处理
-	pl.Connector.Start()
-	readyChan := pl.Connector.Ready()
+	c.Start()
+	readyChan := c.Ready()
 
 	// 2. 处理懒连接器（有 readyChan）或主动连接器（无 readyChan）
 	if readyChan != nil {
 		// 懒创建型连接器
-		go pl.handleLazyConnector(readyChan)
+		go handleLazyConnector(ctx, readyChan)
 	} else {
 		// 主动启动型连接器
-		pl.handleEagerConnector()
+		handleEagerConnector(c, ctx)
 	}
 }
