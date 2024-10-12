@@ -2,8 +2,8 @@ package connector
 
 import (
 	"fmt"
+	json2 "gateway/internal/parser"
 	"gateway/internal/parser/json"
-	json2 "gateway/internal/parser/json"
 	"gateway/internal/pkg"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/spf13/viper"
@@ -21,7 +21,7 @@ type MqttConnector struct {
 }
 
 func init() {
-	RegisterConn("mqtt", NewMqttConnector)
+	Register("mqtt", NewMqttConnector)
 }
 
 func (m *MqttConnector) Listen() error {

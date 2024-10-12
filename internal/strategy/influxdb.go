@@ -15,7 +15,7 @@ import (
 // 拓展数据源步骤
 func init() {
 	// 注册发送策略
-	RegisterStrategy("influxdb", NewInfluxDbStrategy)
+	Register("influxdb", NewInfluxDbStrategy)
 }
 
 // InfluxDbStrategy 实现将数据发布到 InfluxDB 的逻辑

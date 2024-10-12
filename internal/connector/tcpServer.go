@@ -2,9 +2,9 @@ package connector
 
 import (
 	"bufio"
+	"context"
 	"fmt"
-	"gateway/internal/connector/tcpServer"
-	"gateway/internal/parser/ioReader"
+	"gateway/internal/parser"
 	"gateway/internal/pkg"
 	"github.com/spf13/viper"
 	"io"
@@ -15,19 +15,16 @@ import (
 
 // TcpServerConnector Connector的TcpServer版本实现
 type TcpServerConnector struct {
-	listener        net.Listener         // 监听器
-	TcpServerConfig *tcpServer.TcpServer // 配置
-	//ChunkSequence   *ChunkSequence // 解析序列
-	ChDone chan struct{} // 停止通道
-	v      *viper.Viper
-	comm   *pkg.Config
+	listener        net.Listener  // 监听器
+	TcpServerConfig pkg.TcpServer // 配置
+	ctx context.Context
 }
 
 func init() {
-	RegisterConn("tcpServer", NewTcpServer)
+	Register("tcpServer", NewTcpServer)
 }
 
-func NewTcpServer(comm *pkg.Config, v *viper.Viper, chDone chan struct{}) Connector {
+func NewTcpServer(ctx context.Context) Connector {
 	// 0. 创建一个新的 TcpServerConnector
 	tcpServer := &TcpServerConnector{
 		ChDone: chDone,
@@ -36,11 +33,11 @@ func NewTcpServer(comm *pkg.Config, v *viper.Viper, chDone chan struct{}) Connec
 	}
 
 	// 1. 读取配置文件
-	TcpServerConfig, err := tcpServer.UnmarshalTCPConfig(v)
-	if TcpServerConfig == nil || err != nil {
-		log.Fatalf("[tcpServer]加载配置失败: %s\n", err)
-	}
-	tcpServer.TcpServerConfig = TcpServerConfig
+	TcpServerConfig, err := pkg.UnmarshalTCPConfig(v)
+	//if TcpServerConfig == nil || err != nil {
+	//	log.Fatalf("[tcpServer]加载配置失败: %s\n", err)
+	//}
+	//tcpServer.TcpServerConfig = TcpServerConfig
 	// 2. 初始化listener
 	listener, err := net.Listen("tcp", ":"+TcpServerConfig.TCPServer.Port)
 	if err != nil {
@@ -50,8 +47,10 @@ func NewTcpServer(comm *pkg.Config, v *viper.Viper, chDone chan struct{}) Connec
 
 	return tcpServer
 }
-
-func (t *TcpServerConnector) Listen() error {
+func (t *TcpServerConnector) GetDataSource() (interface{}, error) {
+	return t.
+}
+func (t *TcpServerConnector) Start()  {
 	// 1. 监听指定的端口
 	pkg.Log.Infof("TCPServer listening on port %s", t.TcpServerConfig.TCPServer.Port)
 	for {
@@ -62,7 +61,7 @@ func (t *TcpServerConnector) Listen() error {
 		}
 		// 3. 使用 goroutine 处理连接，一个连接对应一个协程
 		pkg.Log.Infof("与 %s 建立连接", conn.RemoteAddr().String())
-		chunks, err := ioReader.InitChunks(t.v, t.TcpServerConfig.ProtoFile)
+		chunks, err := parser.InitChunks(t.v, t.TcpServerConfig.ProtoFile)
 		go t.HandleConnection(conn, &chunks)
 	}
 }
@@ -113,7 +112,7 @@ func initSnapshotCollection(comm *pkg.Config, v *viper.Viper, protoFile string) 
 }
 
 // HandleConnection 处理连接, 一个连接对应一个协程
-func (t *TcpServerConnector) HandleConnection(conn net.Conn, chunkSequence *ioReader.ChunkSequence) {
+func (t *TcpServerConnector) HandleConnection(conn net.Conn, chunkSequence *parser.ChunkSequence) {
 	defer func(conn net.Conn) {
 		err := conn.Close()
 		if err != nil {

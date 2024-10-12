@@ -35,7 +35,8 @@ connector:
     maxReconnectInterval: 10s
 
 #  tcpServer配置.ex：
-#
+#  type: tcpserver
+#  config:
 #    check_crc: true
 #    timeout: 5m
 #    port: 8080

@@ -16,7 +16,7 @@ import (
 // 初始化函数，注册 IoTDB 策略
 func init() {
 	// 注册发送策略
-	RegisterStrategy("iotdb", NewIoTDBStrategy)
+	Register("iotdb", NewIoTDBStrategy)
 }
 
 // IoTDBStrategy 实现将数据发布到 IoTDB 的逻辑

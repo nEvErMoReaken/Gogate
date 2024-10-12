@@ -27,7 +27,7 @@ Connector.go中为主接口，负责建立连接、监听数据源中的变化�
 	// 实现 Connector 接口
 	type MyConnector struct{}
 
-	func (c *MyConnector) Listen() error {
+	func (c *MyConnector) Start() error {
 	    // 连接逻辑
 	}
 
@@ -37,7 +37,7 @@ Connector.go中为主接口，负责建立连接、监听数据源中的变化�
 
 	// 使用工厂函数将连接器注册
 	func init() {
-		RegisterConn("MyConnector", NewMyConnector)
+		Register("MyConnector", NewMyConnector)
 	}
 */
 package connector

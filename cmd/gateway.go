@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"gateway/internal"
-	_ "gateway/internal/parser/ioReader"
 	"gateway/internal/pkg"
 	"go.uber.org/zap"
 	"os"
@@ -44,10 +43,14 @@ func main() {
 	// 将logger挂载到ctx上
 	ctxWithConfigAndLogger := pkg.WithLogger(ctxWithConfig, log)
 
-	flowHandler := internal.Handler{Ctx: ctxWithConfigAndLogger}
-	flowHandler.Start()
+	pipeLineList, err := internal.NewPipelines(ctxWithConfigAndLogger)
+	if err != nil {
+		errChan <- fmt.Errorf("初始化Pipelines失败: %w", err)
+	}
+	// 5. 启动所有管道
+	pipeLineList.StartAll()
 
-	// 5. 监听终止信号
+	// 6. 主线程监听终止信号
 	si := make(chan os.Signal, 1)
 	signal.Notify(si, os.Interrupt, syscall.SIGTERM)
 	for {

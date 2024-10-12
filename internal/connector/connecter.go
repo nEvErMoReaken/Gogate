@@ -1,37 +1,40 @@
 package connector
 
 import (
+	"context"
 	"fmt"
 	"gateway/internal/pkg"
 )
 
 // Connector 是所有数据源的通用接口
 type Connector interface {
-	Listen() error // 建立连接或等待连接
+	Start()
 	Close() error
+	GetDataSource() (interface{}, error)
 }
 
-// ConnFactoryFunc 代表一个数据源的工厂函数
-type ConnFactoryFunc func(*pkg.Config, chan struct{}) Connector
+// FactoryFunc 代表一个数据源的工厂函数, 返回数据源和连接器实例
+type FactoryFunc func(ctx context.Context) (connector []Connector, err error)
 
-// ConnFactories 全局工厂映射，用于注册不同数据源类型的构造函数
-var ConnFactories = make(map[string]ConnFactoryFunc)
+// Factories 全局工厂映射，用于注册不同数据源类型的构造函数
+var Factories = make(map[string]FactoryFunc)
 
-// RegisterConn 注册一个数据源
-func RegisterConn(connType string, factory ConnFactoryFunc) {
-	ConnFactories[connType] = factory
+// Register 注册一个数据源
+func Register(connType string, factory FactoryFunc) {
+	Factories[connType] = factory
 }
 
-// RunConnector 运行指定类型的数据源
-func RunConnector(ctx) error {
-	factory, ok := ConnFactories[connType]
+// New 运行指定类型的数据源
+func New(ctx context.Context) (connector []Connector, err error) {
+	config := pkg.ConfigFromContext(ctx)
+	factory, ok := Factories[config.Connector.Type]
 	if !ok {
-		return fmt.Errorf("未找到数据源类型: %s", connType)
+		return nil, fmt.Errorf("未找到数据源类型: %s", config.Connector.Type)
 	}
 	// 直接调用工厂函数
-	err := factory(common, chDone).Listen()
+	connector, err = factory(ctx)
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("初始化数据源失败: %v", err)
 	}
-	return nil
+	return connector, nil
 }

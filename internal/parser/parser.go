@@ -1,23 +1,44 @@
-package pkg
+package parser
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"gateway/internal/strategy"
-
+	"gateway/internal/pkg"
+	"github.com/google/uuid"
 	"regexp"
 	"strings"
 	"time"
-
-	"github.com/google/uuid"
 )
 
-// Point 代表发送到数据源的一个数据点
-type Point struct {
-	DeviceName string                 // 设备名称
-	DeviceType string                 // 设备类型
-	Field      map[string]interface{} // 字段名称 考虑到point一旦放入chan后状态就会失控，没必要为了一点性能做危险操作
-	Ts         time.Time              // 时间戳
+// Parser 定义一个通用的接口，用于处理各种数据源，并持续维护一个快照集合
+type Parser interface {
+	Start(chan pkg.Point)
+}
+
+// FactoryFunc 代表一个发送策略的工厂函数
+type FactoryFunc func(dataSource interface{}, ctx context.Context) (Parser, error)
+
+// Factories 全局工厂映射，用于注册不同策略类型的构造函数  这里面可能包含了没有启用的数据源
+var Factories = make(map[string]FactoryFunc)
+
+// Register 注册一个发送策略
+func Register(parserType string, factory FactoryFunc) {
+	Factories[parserType] = factory
+}
+
+func New(dataSource interface{}, ctx context.Context) (Parser, error) {
+	config := pkg.ConfigFromContext(ctx)
+	factory, ok := Factories[config.Connector.Type]
+	if !ok {
+		return nil, fmt.Errorf("未找到解析器类型: %s", config.Connector.Type)
+	}
+	// 直接调用工厂函数
+	parser, err := factory(dataSource, ctx)
+	if err != nil {
+		return nil, fmt.Errorf("初始化解析器失败: %v", err)
+	}
+	return parser, nil
 }
 
 // DeviceSnapshot 代表一个设备的物模型在某时刻的快照
@@ -188,11 +209,11 @@ func (dm *DeviceSnapshot) launch() {
 	Log.Infof("launching device %+v ", dm.toJSON())
 	for st := range dm.DataSink {
 		select {
-		case strategy.GetStrategy(st).GetChan() <- dm.makePoint(st):
+		case strategy.Get(st).GetChan() <- dm.makePoint(st):
 			// 成功发送
 		default:
 			// 打印通道堵塞警告，避免影响其他通道
-			Log.Errorf("Failed to send data to strategy %s, current channel lenth: %d", st, len(strategy.GetStrategy(st).GetChan()))
+			Log.Errorf("Failed to send data to strategy %s, current channel lenth: %d", st, len(strategy.Get(st).GetChan()))
 		}
 	}
 	// 清空设备快照
