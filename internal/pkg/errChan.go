@@ -13,7 +13,7 @@ func WithErrChan(ctx context.Context, errChan chan error) context.Context {
 }
 
 // ErrChanFromContext 从 context 中提取配置指针
-func ErrChanFromContext(ctx context.Context) chan<- error {
+func ErrChanFromContext(ctx context.Context) chan error {
 	if errChan, ok := ctx.Value(errChanKey{}).(chan error); ok {
 		return errChan
 	}
