@@ -29,7 +29,7 @@ type ByteScriptFunc func([]byte) ([]interface{}, error)
 //	devType: 设备类型，字符串。
 //	fields: 设备的字段数据，类型为 map[string]interface{}。
 //	err: 如果出现错误，返回错误信息，否则为 nil。
-type JsonScriptFunc func(map[string]interface{}) (string, string, map[string]interface{}, error)
+type JsonScriptFunc func(jsonMap map[string]interface{}) (devName string, devType string, fields map[string]interface{}, err error)
 
 // ByteScriptFuncCache 脚本函数缓存
 var ByteScriptFuncCache = make(map[string]ByteScriptFunc)
@@ -41,10 +41,10 @@ var JsonScriptFuncCache = make(map[string]JsonScriptFunc)
 func extractAndCacheFunctions(ctx context.Context, i *interp.Interpreter, path string, scriptContent []byte) error {
 	log := pkg.LoggerFromContext(ctx)
 	// 使用 go/parser 和 go/ast 解析 Go 源码文件
-	fset := token.NewFileSet()
-	node, err := parser.ParseFile(fset, path, scriptContent, parser.AllErrors)
+	set := token.NewFileSet()
+	node, err := parser.ParseFile(set, path, scriptContent, parser.AllErrors)
 	if err != nil {
-		return fmt.Errorf("无法解析脚本文件 %s: %w", path, err)
+		return fmt.Errorf("无法解析脚本文件 : %w", err)
 	}
 
 	// 遍历 AST，查找函数定义
@@ -59,22 +59,22 @@ func extractAndCacheFunctions(ctx context.Context, i *interp.Interpreter, path s
 				continue
 			}
 
-			// 尝试将函数解析为 ByteScriptFunc
-			if fnFunc, ok := v.Interface().(ByteScriptFunc); ok {
-				ByteScriptFuncCache[funcName] = fnFunc // 缓存 ByteScriptFunc 类型函数
-				log.Info(" %s 方法已缓存为 ByteScriptFunc", zap.String("funcName", funcName))
+			// 尝试强制转换为 ByteScriptFunc
+			if fnFunc, ok := v.Interface().(func([]byte) ([]interface{}, error)); ok {
+				ByteScriptFuncCache[funcName] = fnFunc // 隐式转换
+				log.Info("%s 方法已缓存为 ByteScriptFunc", zap.String("funcName", funcName))
 				continue
 			}
 
-			// 尝试将函数解析为 JsonScriptFunc
-			if fnFunc, ok := v.Interface().(JsonScriptFunc); ok {
-				JsonScriptFuncCache[funcName] = fnFunc // 缓存 JsonScriptFunc 类型函数
-				log.Error("[Info]: %s 方法已缓存为 JsonScriptFunc", zap.String("funcName", funcName))
+			// 尝试强制转换为 JsonScriptFunc
+			if fnFunc, ok := v.Interface().(func(map[string]interface{}) (string, string, map[string]interface{}, error)); ok {
+				JsonScriptFuncCache[funcName] = fnFunc // 隐式转换
+				log.Info("%s 方法已缓存为 JsonScriptFunc", zap.String("funcName", funcName))
 				continue
 			}
 
 			// 如果不匹配任何已知函数签名，输出警告
-			log.Error("[Warning]: %s 方法的签名与预期的 ByteScriptFunc 或 JsonScriptFunc 类型不匹配\n", zap.String("funcName", funcName))
+			return fmt.Errorf(" %s 方法的签名与预期的 ByteScriptFunc 或 JsonScriptFunc 类型不匹配\n，错误类型为 %+v", funcName, v.Type())
 		}
 	}
 
@@ -93,7 +93,7 @@ func LoadAllScripts(ctx context.Context, scriptDir string) error {
 	// 遍历/script目录下的所有Go脚本文件
 	err = filepath.Walk(scriptDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return err
+			return fmt.Errorf("不存在的目录 %s: %w", scriptDir, err)
 		}
 		// 仅处理 .go 文件
 		if !info.IsDir() && filepath.Ext(path) == ".go" {
