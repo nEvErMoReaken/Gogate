@@ -1,12 +1,13 @@
 package connector
 
 import (
+	"context"
 	"fmt"
-	json2 "gateway/internal/parser"
-	"gateway/internal/parser/json"
 	"gateway/internal/pkg"
+	"gateway/util"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
-	"github.com/spf13/viper"
+	"github.com/mitchellh/mapstructure"
+	"go.uber.org/zap"
 	"time"
 )
 
@@ -22,62 +23,72 @@ type MqttConfig struct {
 
 // MqttConnector Connector的TcpServer版本实现
 type MqttConnector struct {
-	MqttConfig         *pkg.MqttConfig         // 配置
-	ChDone             chan struct{}           // 停止通道
-	v                  *viper.Viper            // 配置文件
-	comm               *pkg.Config             // 全局配置
-	client             *mqtt.Client            // MQTT 客户端
-	conversion         *pkg.JsonParseConfig    // 转换配置
-	snapshotCollection *pkg.SnapshotCollection // 快照集合
+	ctx      context.Context
+	config   *MqttConfig
+	client   *mqtt.Client // MQTT 客户端
+	dataChan chan string  // 数据通道
 }
 
 func init() {
 	Register("mqtt", NewMqttConnector)
 }
 
-func (m *MqttConnector) Listen() error {
+func (m *MqttConnector) Start() {
 	// 检查客户端是否已经连接
 	if token := (*m.client).Connect(); token.Wait() && token.Error() != nil {
-		return fmt.Errorf("MQTT连接失败: %v", token.Error())
+		util.ErrChanFromContext(m.ctx) <- fmt.Errorf("MQTT连接失败: %v", token.Error())
 	}
 
 	// 订阅多个话题
-	token := (*m.client).SubscribeMultiple(m.MqttConfig.Topics, m.messagePubHandler)
+	token := (*m.client).SubscribeMultiple(m.config.Topics, m.messagePubHandler)
 	token.Wait() // 等待订阅完成
 	if err := token.Error(); err != nil {
-		return fmt.Errorf("MQTT订阅失败: %v", err)
+		util.ErrChanFromContext(m.ctx) <- fmt.Errorf("MQTT订阅失败: %v", err)
 	}
 
 	// 持续运行监听消息
-	pkg.Log.Infof("MQTT订阅成功，正在监听消息")
+	pkg.LoggerFromContext(m.ctx).Info("MQTT订阅成功，正在监听消息")
+}
+
+func (m *MqttConnector) Ready() <-chan pkg.DataSource {
+	// 饿连接器可以立即返回数据源无需通道
 	return nil
+}
+
+func (m *MqttConnector) GetDataSource() (pkg.DataSource, error) {
+	return pkg.DataSource{
+		Source:   m.dataChan,
+		MetaData: nil,
+	}, nil
 }
 
 func (m *MqttConnector) Close() error {
 	// 关闭MQTT客户端，优雅关闭
 	if m.client != nil && (*m.client).IsConnected() {
 		(*m.client).Disconnect(250)
-		pkg.Log.Infof("MQTT连接已断开")
+		pkg.LoggerFromContext(m.ctx).Info("MQTT连接已断开")
 		return nil
 	}
 
 	return fmt.Errorf("MQTT客户端未连接")
 }
 
-func NewMqttConnector(comm *pkg.Config, stopChan chan struct{}) Connector {
-	// 1. 初始化mqtt配置
-	mqttConfig, err := UnmarshalMqttConfig(v)
+func NewMqttConnector(ctx context.Context) (connector Connector, err error) {
+	// 1. 初始化配置文件
+	config := pkg.ConfigFromContext(ctx)
+	var mqttConfig MqttConfig
+	err = mapstructure.Decode(config.Connector.Para, &mqttConfig)
 	if err != nil {
-		pkg.Log.Fatalf("初始化MQTT配置失败: %v", err)
+		return nil, fmt.Errorf("配置文件解析失败: %s", err)
 	}
-	// 2. 初始化转换配置
-	conversion, err := json.UnmarshalJsonParseConfig(v)
-	if err != nil {
-		pkg.Log.Fatalf("初始化转换配置失败: %v", err)
+	// 2. 创建 MQTT Connector 实例
+	mqttConnector := &MqttConnector{
+		ctx:      ctx,
+		dataChan: make(chan string, 200),
+		config:   &mqttConfig,
 	}
-	// 3. 创建一个新的快照集合
-	snapshotCollection := make(pkg.SnapshotCollection)
-	// 4. 创建一个新的 MQTT 客户端
+
+	// 3. 创建一个新的 MQTT 客户端
 	opts := mqtt.NewClientOptions()
 	opts.AddBroker(mqttConfig.Broker)
 	opts.SetClientID(mqttConfig.ClientID)
@@ -88,50 +99,32 @@ func NewMqttConnector(comm *pkg.Config, stopChan chan struct{}) Connector {
 	opts.SetAutoReconnect(true)
 	opts.SetMaxReconnectInterval(mqttConfig.MaxReconnectInterval) // 设置重连间隔时间
 
-	opts.OnConnect = connectHandler
-	opts.OnConnectionLost = connectLostHandler
+	opts.OnConnect = mqttConnector.connectHandler
+	opts.OnConnectionLost = mqttConnector.connectLostHandler
 
 	// 创建 MQTT 客户端
 	client := mqtt.NewClient(opts)
+	mqttConnector.client = &client
 
-	// 5. 创建一个新的 MqttConnector
-	mqttConnector := &MqttConnector{
-		ChDone:             stopChan,
-		v:                  v,
-		comm:               comm,
-		client:             &client,
-		MqttConfig:         mqttConfig,
-		conversion:         conversion,
-		snapshotCollection: &snapshotCollection,
-	}
-
-	// 检查客户端是否能成功创建并连接
-	if token := client.Connect(); token.Wait() && token.Error() != nil {
-		pkg.Log.Fatalf("MQTT客户端连接失败: %v", token.Error())
-	}
-	return mqttConnector
+	return mqttConnector, nil
 }
 
 func (m *MqttConnector) messagePubHandler(_ mqtt.Client, msg mqtt.Message) {
-	pkg.Log.Infof("Received message: %s from topic: %s\n", msg.Payload(), msg.Topic())
+	pkg.LoggerFromContext(m.ctx).Info("Received message: %s from topic: %s\n", zap.String("payload", string(msg.Payload())), zap.String("topic", msg.Topic()))
 
 	// 1. 将 MQTT 消息 Payload 转换为字符串
 	js := string(msg.Payload())
-
-	// 2. 调用 ConversionToSnapshot 并传入必要的参数
-	json2.ConversionToSnapshot(js, m.conversion, m.snapshotCollection, m.comm)
-
-	// 3. 发射所有快照
-	m.snapshotCollection.LaunchALL()
+	// 2. 将消息发送到数据通道
+	m.dataChan <- js
 }
 
 // 连接成功回调
-var connectHandler mqtt.OnConnectHandler = func(client mqtt.Client) {
-	pkg.Log.Infof("成功连接至MQTT broker")
+func (m *MqttConnector) connectHandler(client mqtt.Client) {
+	pkg.LoggerFromContext(m.ctx).Info("成功连接至MQTT broker")
 }
 
 // 连接丢失回调
-var connectLostHandler mqtt.ConnectionLostHandler = func(client mqtt.Client, err error) {
-	pkg.Log.Errorf("Connect lost: %v , 正在执行重连逻辑", err)
-	// 这里paho会自动重连，不需要手动重连
+func (m *MqttConnector) connectLostHandler(client mqtt.Client, err error) {
+	pkg.LoggerFromContext(m.ctx).Error("Connect lost", zap.Error(err))
+	// 这里Paho会自动重连，不需要手动重连
 }
