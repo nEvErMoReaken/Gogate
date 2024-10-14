@@ -7,7 +7,18 @@ import (
 	"gateway/internal/pkg"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/spf13/viper"
+	"time"
 )
+
+// MqttConfig 包含 MQTT 配置信息
+type MqttConfig struct {
+	Broker               string          `mapstructure:"broker"`
+	ClientID             string          `mapstructure:"clientID"`
+	Username             string          `mapstructure:"username"`
+	Password             string          `mapstructure:"password"`
+	MaxReconnectInterval time.Duration   `mapstructure:"maxReconnectInterval"`
+	Topics               map[string]byte `mapstructure:"topics"` // 主题和 QoS 的 map
+}
 
 // MqttConnector Connector的TcpServer版本实现
 type MqttConnector struct {

@@ -7,6 +7,7 @@ import (
 	"gateway/internal/parser"
 	"gateway/internal/pkg"
 	"gateway/util"
+	"github.com/mitchellh/mapstructure"
 	"go.uber.org/zap"
 	"log"
 	"net"
@@ -15,9 +16,17 @@ import (
 
 // TcpServerConnector Connector的TcpServer版本实现
 type TcpServerConnector struct {
-	ctx      context.Context
-	listener net.Listener
-	chReady  chan interface{}
+	ctx          context.Context
+	listener     net.Listener
+	chReady      chan interface{}
+	serverConfig ServerConfig
+}
+
+type ServerConfig struct {
+	WhiteList bool              `mapstructure:"whiteList"`
+	IPAlias   map[string]string `mapstructure:"ipAlias"`
+	Port      string            `mapstructure:"port"`
+	Timeout   time.Duration     `mapstructure:"timeout"`
 }
 
 func (t *TcpServerConnector) Ready() <-chan interface{} {
@@ -29,24 +38,24 @@ func init() {
 }
 
 func NewTcpServer(ctx context.Context) (Connector, error) {
-	// 0. 创建一个新的 TcpServerConnector
-
-	// 1. 读取配置文件
-	TcpServerConfig, err := pkg.UnmarshalTCPConfig(v)
-	//if TcpServerConfig == nil || err != nil {
-	//	log.Fatalf("[tcpServer]加载配置失败: %s\n", err)
-	//}
-	//tcpServer.TcpServerConfig = TcpServerConfig
+	// 1. 初始化配置文件
+	v := pkg.ConfigFromContext(ctx)
+	var serverConfig ServerConfig
+	err := mapstructure.Decode(v.Connector.Para, &serverConfig)
+	if err != nil {
+		return nil, fmt.Errorf("TCPServer配置文件解析失败: %s", err)
+	}
 	// 2. 初始化listener
-	listener, err := net.Listen("tcp", ":"+TcpServerConfig.TCPServer.Port)
+	listener, err := net.Listen("tcp", ":"+serverConfig.Port)
 	if err != nil {
 		log.Fatalf("[tcpServer]监听程序启动失败: %s\n", err)
 	}
 
 	return &TcpServerConnector{
-		ctx:      ctx,
-		chReady:  make(chan interface{}),
-		listener: listener,
+		ctx:          ctx,
+		chReady:      make(chan interface{}),
+		listener:     listener,
+		serverConfig: serverConfig,
 	}, nil
 }
 
@@ -56,7 +65,7 @@ func (t *TcpServerConnector) GetDataSource() (interface{}, error) {
 }
 func (t *TcpServerConnector) Start() {
 	// 1. 监听指定的端口
-	pkg.LoggerFromContext(t.ctx).Info("TCPServer listening on port: " + zap.String("port", t.TcpServerConfig.TCPServer.Port))
+	pkg.LoggerFromContext(t.ctx).Info("TCPServer listening on: " + t.serverConfig.Port)
 	for {
 		// 2. 等待客户端连接
 		conn, err := t.listener.Accept()
@@ -65,7 +74,7 @@ func (t *TcpServerConnector) Start() {
 		}
 		// 3. 处理连接
 		pkg.LoggerFromContext(t.ctx).Info("与 %s 建立连接", zap.String("remote", conn.RemoteAddr().String()))
-		chunks, err := parser.InitChunks(t.v, t.TcpServerConfig.ProtoFile)
+		chunks, err := parser.InitChunks(t.ctx, pkg.ConfigFromContext(t.ctx).Parser.Type)
 		t.HandleConnection(conn, &chunks)
 	}
 }

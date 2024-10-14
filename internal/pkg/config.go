@@ -6,8 +6,25 @@ import (
 	"github.com/spf13/viper"
 	"io/fs"
 	"path/filepath"
-	"time"
 )
+
+// Config 根Config
+type Config struct {
+	Parser    ParserConfig     `mapstructure:"parser"`
+	Connector ConnectorConfig  `mapstructure:"connector"`
+	Strategy  []StrategyConfig `mapstructure:"strategy"`
+	Version   string           `mapstructure:"version"`
+	Log       LogConfig        `mapstructure:"log"`
+}
+
+type LogConfig struct {
+	LogPath    string `mapstructure:"log_path"`
+	MaxSize    int    `mapstructure:"max_size"`
+	MaxBackups int    `mapstructure:"max_backups"`
+	MaxAge     int    `mapstructure:"max_age"`
+	Compress   bool   `mapstructure:"compress"`
+	Level      string `mapstructure:"level"`
+}
 
 // 定义一个不导出的 key 类型，避免 context key 冲突
 type configKey struct{}
@@ -26,91 +43,20 @@ func ConfigFromContext(ctx context.Context) *Config {
 }
 
 type StrategyConfig struct {
-	Type   string                 `mapstructure:"type"`    // 策略类型
-	Enable bool                   `mapstructure:"enable"`  // 是否启用
-	Filter []string               `mapstructure:"filter"`  // 策略过滤条件
-	Config map[string]interface{} `mapstructure:",remain"` // 自定义配置项
+	Type   string                 `mapstructure:"type"`   // 策略类型
+	Enable bool                   `mapstructure:"enable"` // 是否启用
+	Filter []string               `mapstructure:"filter"` // 策略过滤条件
+	Para   map[string]interface{} `mapstructure:"config"` // 自定义配置项
 }
 
-type ScriptConfig struct {
-	ScriptDir string `mapstructure:"dir"`
-}
-
-type Config struct {
-	Script    ScriptConfig     `mapstructure:"script"`
-	Connector ConnectorConfig  `mapstructure:"connector"`
-	Strategy  []StrategyConfig `mapstructure:"strategy"`
-	Version   string           `mapstructure:"version"`
+type ParserConfig struct {
+	Type string                 `mapstructure:"type"`
+	Para map[string]interface{} `mapstructure:"config"`
 }
 
 type ConnectorConfig struct {
-	Type string `mapstructure:"type"`
-}
-
-// MqttConfig 包含 MQTT 配置信息
-type MqttConfig struct {
-	Broker               string          `mapstructure:"broker"`
-	ClientID             string          `mapstructure:"clientID"`
-	Username             string          `mapstructure:"username"`
-	Password             string          `mapstructure:"password"`
-	MaxReconnectInterval time.Duration   `mapstructure:"maxReconnectInterval"`
-	Topics               map[string]byte `mapstructure:"topics"` // 主题和 QoS 的 map
-}
-
-type ServerConfig struct {
-	WhiteList bool              `mapstructure:"whiteList"`
-	IPAlias   map[string]string `mapstructure:"ipAlias"`
-	Port      string            `mapstructure:"port"`
-	Timeout   time.Duration     `mapstructure:"timeout"`
-}
-
-type TcpServer struct {
-	ProtoFile string       `mapstructure:"protoFile"`
-	CheckCRC  bool         `mapstructure:"check_crc"`
-	TCPServer ServerConfig `mapstructure:"tcpServer"`
-}
-
-type Setting struct {
-	Type   string `mapstructure:"type"`
-	Length int    `mapstructure:"length"`
-	End    []byte `mapstructure:"end"`
-}
-
-type JsonParseConfig struct {
-	rules JsonConfig `mapstructure:"jsonParseConfig"`
-}
-type JsonConfig struct {
-	Method string `mapstructure:"method"`
-}
-
-func UnmarshalJsonParseConfig(v *viper.Viper) (*JsonParseConfig, error) {
-	// 反序列化到结构体
-	var conversionConfig JsonParseConfig
-	if err := v.Unmarshal(&conversionConfig); err != nil {
-		return nil, fmt.Errorf("反序列化配置失败: %w", err)
-	}
-
-	return &conversionConfig, nil
-}
-
-func UnmarshalTCPConfig(v *viper.Viper) (*TcpServer, error) {
-	// 反序列化到结构体
-	var tcpServer TcpServer
-	if err := v.Unmarshal(&tcpServer); err != nil {
-		return nil, fmt.Errorf("反序列化配置失败: %w", err)
-	}
-
-	return &tcpServer, nil
-}
-
-// UnmarshalMqttConfig 是解析配置文件的通用方法
-func UnmarshalMqttConfig(v *viper.Viper) (*MqttConfig, error) {
-	// 反序列化到结构体
-	var config MqttConfig
-	if err := v.Unmarshal(&config); err != nil {
-		return nil, fmt.Errorf("反序列化配置失败: %w", err)
-	}
-	return &config, nil
+	Type string                 `mapstructure:"type"`
+	Para map[string]interface{} `mapstructure:"config"`
 }
 
 // InitCommon 用于初始化全局配置

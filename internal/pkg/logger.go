@@ -11,14 +11,6 @@ import (
 )
 
 type config struct {
-	para struct {
-		LogPath    string `mapstructure:"log_path"`
-		MaxSize    int    `mapstructure:"max_size"`
-		MaxBackups int    `mapstructure:"max_backups"`
-		MaxAge     int    `mapstructure:"max_age"`
-		Compress   bool   `mapstructure:"compress"`
-		Level      string `mapstructure:"level"`
-	} `mapstructure:"log"`
 }
 
 // 定义一个不导出的 key 类型，避免 context key 冲突
