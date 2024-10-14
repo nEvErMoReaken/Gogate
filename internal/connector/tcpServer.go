@@ -9,7 +9,7 @@ import (
 	"gateway/util"
 	"github.com/mitchellh/mapstructure"
 	"go.uber.org/zap"
-	"log"
+	"io"
 	"net"
 	"time"
 )
@@ -48,7 +48,7 @@ func NewTcpServer(ctx context.Context) (Connector, error) {
 	// 2. 初始化listener
 	listener, err := net.Listen("tcp", ":"+serverConfig.Port)
 	if err != nil {
-		log.Fatalf("[tcpServer]监听程序启动失败: %s\n", err)
+		return nil, fmt.Errorf("tcpServer监听程序启动失败: %s\n", err)
 	}
 
 	return &TcpServerConnector{
@@ -64,21 +64,68 @@ func (t *TcpServerConnector) GetDataSource() (interface{}, error) {
 	return nil, nil
 }
 func (t *TcpServerConnector) Start() {
+	log := pkg.LoggerFromContext(t.ctx)
 	// 1. 监听指定的端口
-	pkg.LoggerFromContext(t.ctx).Info("TCPServer listening on: " + t.serverConfig.Port)
+	log.Info("TCPServer listening on: " + t.serverConfig.Port)
 	for {
-		// 2. 等待客户端连接
+		// 2. 等待客户端连接，阻塞
 		conn, err := t.listener.Accept()
 		if err != nil {
 			util.ErrChanFromContext(t.ctx) <- fmt.Errorf("[tcpServer]接受连接失败: %s\n", err)
 		}
 		// 3. 处理连接
 		pkg.LoggerFromContext(t.ctx).Info("与 %s 建立连接", zap.String("remote", conn.RemoteAddr().String()))
-		chunks, err := parser.InitChunks(t.ctx, pkg.ConfigFromContext(t.ctx).Parser.Type)
-		t.HandleConnection(conn, &chunks)
+		reader, err := t.initConn(conn)
+		if err == nil {
+			t.chReady <- reader
+		} else {
+			log.Error("初始化连接失败", zap.String("remote", conn.RemoteAddr().String()), zap.Error(err))
+		}
 	}
 }
 
+func (t *TcpServerConnector) initConn(conn net.Conn) (io.Reader, error) {
+	log := pkg.LoggerFromContext(t.ctx)
+	defer func(conn net.Conn) {
+		err := conn.Close()
+		if err != nil {
+			pkg.LoggerFromContext(t.ctx).Info("与 %s 的连接已关闭", zap.String("remote", conn.RemoteAddr().String()))
+		}
+	}(conn)
+	// 1. 首先识别远端ip是哪个设备
+	remoteAddrWithPort := conn.RemoteAddr().String()
+	var deviceId = remoteAddrWithPort
+	t.ctx = context.WithValue(t.ctx, "deviceId", deviceId)
+	// 2. 连接花名作为变量（如果有）
+	if t.serverConfig.IPAlias == nil {
+		// 2.1 如果IPAlias为空，则不需要进行识别
+		log.Info("IPAlias为空, 使用默认地址")
+	} else {
+		// 2.2 如果IPAlias不为空，放入变量中
+		// remoteAddr 是 ip:port 的形式，需要去掉端口
+		remoteAddr, _, _ := net.SplitHostPort(remoteAddrWithPort)
+		var exists bool
+		deviceId, exists = t.serverConfig.IPAlias[remoteAddr]
+		if !exists && t.serverConfig.WhiteList { // 如果白名单开启，但是没有找到对应的设备id
+			return nil, fmt.Errorf("未在配置清单中找到地址: %s", remoteAddr)
+		}
+		// TODO DeviceId 传递
+		panic("TODO")
+		//var deviceIdInterface interface{} = deviceId
+		//chunkSequence.VarPointer["device_id"] = &deviceIdInterface
+	}
+	// 3. 设置超时时间
+	err := conn.SetReadDeadline(time.Now().Add(t.serverConfig.Timeout))
+	if err != nil {
+		//log.Error("超时时间设置失败，关闭连接", zap.String("remote", conn.RemoteAddr().String()))
+		return nil, fmt.Errorf("超时时间设置失败，关闭连接: %s", conn.RemoteAddr().String())
+	}
+	// 4. 初始化reader开始读数据
+	reader := bufio.NewReader(conn)
+	return reader, nil
+	//chunks, err := parser.InitChunks(t.ctx, pkg.ConfigFromContext(t.ctx).Parser.Type)
+	//t.HandleConnection(conn, &chunks)
+}
 func (t *TcpServerConnector) Close() error {
 	err := t.listener.Close()
 	if err != nil {
@@ -89,42 +136,7 @@ func (t *TcpServerConnector) Close() error {
 
 // HandleConnection 处理连接, 一个连接对应一个协程
 func (t *TcpServerConnector) HandleConnection(conn net.Conn, chunkSequence *parser.ChunkSequence) {
-	defer func(conn net.Conn) {
-		err := conn.Close()
-		if err != nil {
-			pkg.Log.Infof("与 %s 的连接已关闭", conn.RemoteAddr().String())
-		}
-	}(conn)
-	// 1. 首先识别远端ip是哪个设备
-	remoteAddrWithPort := conn.RemoteAddr().String()
-	var deviceId = remoteAddrWithPort
-	// 2. 连接花名作为变量（如果有）
-	if t.TcpServerConfig.TCPServer.IPAlias == nil {
-		// 2.1 如果IPAlias为空，则不需要进行识别
-		pkg.Log.Infof("IPAlias为空")
-	} else {
-		// 2.2 如果IPAlias不为空，放入变量中
-		// remoteAddr 是 ip:port 的形式，需要去掉端口
-		remoteAddr, _, _ := net.SplitHostPort(remoteAddrWithPort)
-		var exists bool
-		deviceId, exists = t.TcpServerConfig.TCPServer.IPAlias[remoteAddr]
-		if !exists {
-			pkg.Log.Errorf("未在配置清单中找到地址: %s", remoteAddr)
-			return
-		}
-		// deviceId 是string 转 *interface{}
-		// 将 string 转换为 interface{}，然后创建指针
-		var deviceIdInterface interface{} = deviceId
-		chunkSequence.VarPointer["device_id"] = &deviceIdInterface
-	}
-	// 3. 设置超时时间
-	err := conn.SetReadDeadline(time.Now().Add(t.TcpServerConfig.TCPServer.Timeout))
-	if err != nil {
-		pkg.Log.Infof("超时时间设置失败，关闭连接: %s", conn.RemoteAddr().String())
-		return
-	}
-	// 4. 初始化reader开始读数据
-	reader := bufio.NewReader(conn)
+
 	//for {
 	//	select {
 	//	case <-t.ChDone:
