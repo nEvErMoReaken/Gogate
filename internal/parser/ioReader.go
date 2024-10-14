@@ -2,7 +2,6 @@ package parser
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
 	"gateway/internal/pkg"
 	"gateway/util"
@@ -63,7 +62,7 @@ type ToConfig struct {
 
 // Chunk 处理器接口
 type Chunk interface {
-	Process(reader io.Reader, frame *[]byte, handler SnapshotCollection, ctx context.Context) error
+	Process(reader io.Reader, frame *[]byte, handler SnapshotCollection, ctx context.Context) (changedCtx context.Context, err error)
 	String() string // 添加 String 方法
 }
 
@@ -104,22 +103,45 @@ func NewIoReader(dataSource pkg.DataSource, mapChan map[string]chan pkg.Point, c
 
 // Start 方法用于启动 IoReader
 func (r *IoReader) Start() {
-	// ts 将当前时间戳放入context中
-	count := 0
-	frame := make([]byte, 0)
-	// ** 此处是完整的一帧的开始 **
-	for index, chunk := range r.Chunks {
-		err := chunk.Process(r.Reader, &frame, r.SnapshotCollection, r.ctx)
-		if err != nil {
-			if err == io.EOF {
-				util.ErrChanFromContext(r.ctx) <- fmt.Errorf("[HandleConnection] 读取到 EOF: %s", err)
+
+	for {
+		select {
+		case <-r.ctx.Done():
+			return
+		default:
+			// 4.1 Frame 数组，用于存储一帧原始报文
+			frame := make([]byte, 0)
+			count := 0
+			ctx := r.ctx
+			// ** 此处是完整的一帧的开始 **
+			for index, chunk := range r.Chunks {
+				var err error
+				ctx, err = chunk.Process(r.Reader, &frame, r.SnapshotCollection, ctx)
+				if err != nil {
+					if err == io.EOF {
+						util.ErrChanFromContext(r.ctx) <- fmt.Errorf("[HandleConnection] 读取到 EOF: %s", err)
+						return // 读取到 EOF 后可以退出
+					}
+					util.ErrChanFromContext(r.ctx) <- fmt.Errorf("[HandleConnection] 解析第 %d 个 Chunk 失败: %s", index+1, err) // 其他错误，终止连接
+					return                                                                                                 // 解析失败时终止处理
+				}
 			}
-			util.ErrChanFromContext(r.ctx) <- fmt.Errorf("[HandleConnection] 解析第 %d 个 Chunk 失败: %s", index+1, err) // 其他错误，终止连接
+			// ** 此处是完整的一帧的结束 **
+			count += 1
+
+			// 4.3 发射所有的快照
+			r.SnapshotCollection.LaunchALL(ctx, r.mapChan)
+			// 4.4 打印原始报文
+			hexString := ""
+			for _, b := range frame {
+				hexString += fmt.Sprintf("%02X", b)
+			}
+			pkg.LoggerFromContext(r.ctx).Info("Frame",
+				zap.String("count", fmt.Sprintf("%06X", count)), // 使用 6 位 16 进制数格式化 count
+				zap.String("frame", hexString))                  // frame 转为16进制字符串
 		}
 	}
-	count += 1
-	// ** 此处是完整的一帧的结束 **
-	pkg.LoggerFromContext(r.ctx).Info("解析完成", zap.String("count", fmt.Sprintf("%06X", count)), zap.String("frame", hex.EncodeToString(frame)))
+
 }
 
 // IoReader 的 String 方法
@@ -186,12 +208,12 @@ func (f *FixedLengthChunk) String() string {
 	return fmt.Sprintf("FixedLengthChunk:\n  Length=%s\n  Sections:\n%s", lengthVal, sectionsStr)
 }
 
-func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte, handler SnapshotCollection, ctx context.Context) error {
+func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte, handler SnapshotCollection, ctx context.Context) (changedCtx context.Context, err error) {
 	log := pkg.LoggerFromContext(ctx)
 	// ～～～ 定长块的处理逻辑 ～～～
 	chunkLen, err := getIntVar(ctx, f.length)
 	if err != nil {
-		return fmt.Errorf("获取FixedLengthChunk长度错误: %v", err)
+		return ctx, fmt.Errorf("获取FixedLengthChunk长度错误: %v", err)
 	}
 	// 1. 读取固定长度数据
 	data := make([]byte, chunkLen)
@@ -199,13 +221,13 @@ func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte, handler Snap
 	if err != nil {
 		// 处理 EOF 错误
 		if err == io.EOF {
-			return err
+			return ctx, err
 		}
-		return fmt.Errorf("读取错误: %v", err)
+		return ctx, fmt.Errorf("读取错误: %v", err)
 	}
 	// 处理部分读取
 	if n < chunkLen {
-		return fmt.Errorf("读取到的数据长度不足: %d < %d", n, chunkLen)
+		return ctx, fmt.Errorf("读取到的数据长度不足: %d < %d", n, chunkLen)
 	}
 	// 定长Chunk可以直接追加到frame中
 	*frame = append(*frame, data...)
@@ -217,7 +239,7 @@ func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte, handler Snap
 		var tarSnapshot *DeviceSnapshot
 		repeat, err := getIntVar(ctx, sec.Repeat)
 		if err != nil {
-			return err
+			return ctx, err
 		}
 		for i := 0; i < repeat; i++ {
 			// 2.1. 根据Sec的length解码
@@ -227,7 +249,7 @@ func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte, handler Snap
 				continue
 			}
 			if byteCursor+sec.Length > len(data) {
-				return fmt.Errorf("游标超出数据长度")
+				return ctx, fmt.Errorf("游标超出数据长度")
 			}
 			var decoded []interface{}
 			var err1 error
@@ -239,7 +261,7 @@ func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte, handler Snap
 			}
 
 			if err1 != nil {
-				return err1
+				return ctx, err1
 			}
 			// 2.2 移动游标
 			byteCursor += sec.Length
@@ -252,7 +274,7 @@ func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte, handler Snap
 			// v3 -> vobc_speed3
 			// 变量后续用于For(如果有的话）, 供后续Section使用
 			if len(sec.ToVarNames) != 0 && len(sec.ToVarNames) != len(decoded) {
-				return fmt.Errorf("解码后的数据长度与VarNames长度不匹配, %d != %d", len(decoded), len(sec.ToVarNames))
+				return ctx, fmt.Errorf("解码后的数据长度与VarNames长度不匹配, %d != %d", len(decoded), len(sec.ToVarNames))
 			}
 			for i, pt := range sec.ToVarNames {
 				// 解码后放入到变量池中
@@ -267,36 +289,36 @@ func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte, handler Snap
 			if parsedToDeviceName == "" {
 				parsedToDeviceName, err = sec.parseToDeviceName(ctx)
 				if err != nil {
-					return err
+					return ctx, err
 				}
 			}
 
 			tarSnapshot, err = handler.GetDeviceSnapshot(parsedToDeviceName, sec.ToDeviceType)
 			if err != nil {
-				return err
+				return ctx, err
 			}
 
 			if len(sec.ToFieldNames) != 0 && len(sec.ToFieldNames) != len(decoded) {
-				return fmt.Errorf("解码后的数据长度与FieldNames长度不匹配, %d != %d", len(decoded), len(sec.ToFieldNames))
+				return ctx, fmt.Errorf("解码后的数据长度与FieldNames长度不匹配, %d != %d", len(decoded), len(sec.ToFieldNames))
 			}
 			for ii, de := range decoded {
 				err := tarSnapshot.SetField(sec.ToFieldNames[ii], de, ctx)
 				if err != nil {
-					return err
+					return ctx, err
 				}
 			}
 			tarSnapshot.Ts = ctx.Value("ts").(time.Time)
 			// data_source对于客户端应该是常驻变量， TODO 后续考虑是否用配置文件配置
 			err := tarSnapshot.SetField("data_source", ctx.Value("data_source"), ctx)
 			if err != nil {
-				return err
+				return ctx, err
 			}
 		}
 	}
 	//if cursor != len(data) {
 	//	common.Log.Warnf("游标未到达数据末尾，有漏数据的风险。游标位置：%d，数据长度：%d", cursor, len(data))
 	//}
-	return nil
+	return ctx, nil
 }
 
 // ConditionalChunk 实现
@@ -306,10 +328,10 @@ type ConditionalChunk struct {
 	Sections       []Section
 }
 
-func (c *ConditionalChunk) Process(reader io.Reader, frame *[]byte, handler SnapshotCollection, ctx context.Context) error {
+func (c *ConditionalChunk) Process(reader io.Reader, frame *[]byte, handler SnapshotCollection, ctx context.Context) (changedCtx context.Context, err error) {
 	fmt.Println("Processing ConditionalChunk")
 	// 动态选择下一个 Chunk 解析逻辑
-	return nil
+	return ctx, nil
 }
 
 func (c *ConditionalChunk) String() string {

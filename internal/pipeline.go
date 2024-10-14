@@ -9,6 +9,7 @@ import (
 	"gateway/internal/strategy"
 	"gateway/util"
 	"go.uber.org/zap"
+	"time"
 )
 
 // StartParser 启动解析器和策略处理数据
@@ -40,7 +41,8 @@ func handleLazyConnector(ctx context.Context, readyChan <-chan pkg.DataSource) {
 	for {
 		select {
 		case <-ctx.Done():
-			return // 退出上下文时停止 Pipeline
+			time.Sleep(1 * time.Second) // 等待 1 秒，确保所有数据源都已经关闭
+			return                      // 退出上下文时停止 Pipeline
 		case dataSource := <-readyChan:
 			s, err := StartParser(ctx, dataSource)
 			if err != nil {

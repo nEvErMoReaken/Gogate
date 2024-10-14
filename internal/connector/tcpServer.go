@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"gateway/internal/parser"
 	"gateway/internal/pkg"
 	"gateway/util"
 	"github.com/mitchellh/mapstructure"
@@ -86,6 +85,7 @@ func (t *TcpServerConnector) Start() {
 func (t *TcpServerConnector) initConn(conn net.Conn) (pkg.DataSource, error) {
 	log := pkg.LoggerFromContext(t.ctx)
 	defer func(conn net.Conn) {
+		time.Sleep(1 * time.Second) // 等待 1 秒，确保所有数据源都已经关闭
 		err := conn.Close()
 		if err != nil {
 			pkg.LoggerFromContext(t.ctx).Info("与 %s 的连接已关闭", zap.String("remote", conn.RemoteAddr().String()))
@@ -135,37 +135,4 @@ func (t *TcpServerConnector) Close() error {
 		return fmt.Errorf("[tcpServer]关闭监听程序失败: %s\n", err)
 	}
 	return nil
-}
-
-// HandleConnection 处理连接, 一个连接对应一个协程
-func (t *TcpServerConnector) HandleConnection(conn net.Conn, chunkSequence *parser.IoReader) {
-
-	//for {
-	//	select {
-	//	case <-t.ChDone:
-	//		return
-	//	default:
-	//		// 4.1 Frame 数组，用于存储一帧原始报文
-	//		frame := make([]byte, 0)
-	//		// 4.2 处理所有的 Chunk 并更新快照
-	//		err = chunkSequence.ProcessAll(deviceId, reader, &frame, t.comm)
-	//		if err != nil {
-	//			if err == io.EOF {
-	//				pkg.Log.Infof("[%s] 客户端断开连接: %s", deviceId, err)
-	//				return // 客户端断开连接，优雅地结束
-	//			}
-	//			pkg.Log.Error(err)
-	//			return
-	//		}
-	//
-	//		// 4.3 发射所有的快照
-	//		chunkSequence.SnapShotCollection.LaunchALL()
-	//		// 4.4 打印原始报文
-	//		hexString := ""
-	//		for _, b := range frame {
-	//			hexString += fmt.Sprintf("%02X", b)
-	//		}
-	//		pkg.Log.Infof("[%s] %s", deviceId, fmt.Sprintf("%s", hexString))
-	//	}
-	//}
 }
