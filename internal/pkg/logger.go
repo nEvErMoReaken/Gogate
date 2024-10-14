@@ -8,9 +8,6 @@ import (
 	"os"
 )
 
-type config struct {
-}
-
 // 定义一个不导出的 key 类型，避免 context key 冲突
 type loggerKey struct{}
 

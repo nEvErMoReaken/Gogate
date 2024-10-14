@@ -14,7 +14,7 @@ import (
 
 func main() {
 	// 1. 初始化common yaml
-	config, v, err := pkg.InitCommon("yaml")
+	config, err := pkg.InitCommon("yaml")
 	if err != nil {
 		fmt.Printf("[main] 加载配置失败: %s", err)
 		return
@@ -43,12 +43,7 @@ func main() {
 	// 将logger挂载到ctx上
 	ctxWithConfigAndLogger := pkg.WithLogger(ctxWithConfig, log)
 
-	pipeLineList, err := internal.NewPipelines(ctxWithConfigAndLogger)
-	if err != nil {
-		errChan <- fmt.Errorf("初始化Pipelines失败: %w", err)
-	}
-	// 5. 启动所有管道
-	pipeLineList.StartAll()
+	internal.StartPipeline(ctxWithConfigAndLogger)
 
 	// 6. 主线程监听终止信号
 	si := make(chan os.Signal, 1)

@@ -61,7 +61,7 @@ type ConnectorConfig struct {
 }
 
 // InitCommon 用于初始化全局配置
-func InitCommon(configDir string) (*Config, *viper.Viper, error) {
+func InitCommon(configDir string) (*Config, error) {
 
 	v := viper.NewWithOptions(viper.KeyDelimiter("::")) // 设置 key 分隔符为 ::，因为默认的 . 会和 IP 地址冲突
 	v.AddConfigPath(configDir)
@@ -101,7 +101,7 @@ func InitCommon(configDir string) (*Config, *viper.Viper, error) {
 	var common Config
 	// 反序列化到结构体
 	if err := v.Unmarshal(&common); err != nil {
-		return nil, nil, fmt.Errorf("反序列化配置失败: %w", err)
+		return nil, fmt.Errorf("反序列化配置失败: %w", err)
 	}
-	return &common, v, nil
+	return &common, nil
 }

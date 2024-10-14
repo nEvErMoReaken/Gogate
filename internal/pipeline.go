@@ -8,7 +8,6 @@ import (
 	"gateway/internal/pkg"
 	"gateway/internal/strategy"
 	"gateway/util"
-	"go.uber.org/zap"
 	"time"
 )
 
@@ -16,7 +15,7 @@ import (
 func StartParser(ctx context.Context, dataSource pkg.DataSource) (strategy.MapSendStrategy, error) {
 	// 1. 初始化策略
 	mapChan := make(map[string]chan pkg.Point)
-	s, err := strategy.New(pkg.WithLogger(ctx, pkg.LoggerFromContext(ctx).With(zap.String("module", "Strategy"))))
+	s, err := strategy.New(pkg.WithLoggerAndModule(ctx, pkg.LoggerFromContext(ctx), "Strategy"))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create strategy: %w", err)
 	}
@@ -25,7 +24,7 @@ func StartParser(ctx context.Context, dataSource pkg.DataSource) (strategy.MapSe
 	}
 
 	// 2. 初始化解析器
-	p, err := parser.New(dataSource, mapChan, pkg.WithLogger(ctx, pkg.LoggerFromContext(ctx).With(zap.String("module", "Parser"))))
+	p, err := parser.New(dataSource, mapChan, pkg.WithLoggerAndModule(ctx, pkg.LoggerFromContext(ctx), "Parser"))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create parser: %w", err)
 	}
@@ -73,9 +72,9 @@ func handleEagerConnector(c connector.Connector, ctx context.Context) {
 	}
 }
 
-func Start(ctx context.Context) {
+func StartPipeline(ctx context.Context) {
 	// 0. 初始化连接器
-	c, err := connector.New(pkg.WithLogger(ctx, pkg.LoggerFromContext(ctx).With(zap.String("module", "Connector"))))
+	c, err := connector.New(pkg.WithLoggerAndModule(ctx, pkg.LoggerFromContext(ctx), "Connector"))
 	if err != nil {
 		util.ErrChanFromContext(ctx) <- fmt.Errorf("failed to create connector: %w", err)
 		return
