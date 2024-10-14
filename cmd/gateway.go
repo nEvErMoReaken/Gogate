@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"gateway/internal"
 	"gateway/internal/pkg"
-	"gateway/util"
 	"go.uber.org/zap"
 	"os"
 	"os/signal"
@@ -31,7 +30,7 @@ func main() {
 	// 4. 创建上下文
 	ctx, cancel := context.WithCancel(context.Background())
 	errChan := make(chan error, 10) // 创建一个只写的全局错误通道, 缓存大小为10
-	ctx = util.WithErrChan(ctx, errChan)
+	ctx = pkg.WithErrChan(ctx, errChan)
 	// 将config挂载到ctx上
 	ctxWithConfig := pkg.WithConfig(ctx, config)
 	// 将logger挂载到ctx上

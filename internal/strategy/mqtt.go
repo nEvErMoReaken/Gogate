@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"gateway/internal/pkg"
-	"gateway/util"
 	"go.uber.org/zap"
 	"time"
 
@@ -79,7 +78,7 @@ func NewMqttStrategy(ctx context.Context) (Strategy, error) {
 			// 断开连接
 			client.Disconnect(250)
 			// 将错误传递到错误通道，通知上层程序
-			errChan := util.ErrChanFromContext(ctx)
+			errChan := pkg.ErrChanFromContext(ctx)
 			if errChan != nil {
 				errChan <- fmt.Errorf("[MqttStrategy]MQTT reached max reconnect attempts, stopping client")
 			}
@@ -131,7 +130,7 @@ func (m *MqttStrategy) Start() {
 		case point := <-m.core.pointChan:
 			err := m.Publish(point)
 			if err != nil {
-				util.ErrChanFromContext(m.core.ctx) <- fmt.Errorf("MqttStrategy error occurred: %w", err)
+				pkg.ErrChanFromContext(m.core.ctx) <- fmt.Errorf("MqttStrategy error occurred: %w", err)
 			}
 		}
 	}

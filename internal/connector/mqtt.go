@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"gateway/internal/pkg"
-	"gateway/util"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/mitchellh/mapstructure"
 	"go.uber.org/zap"
@@ -36,14 +35,14 @@ func init() {
 func (m *MqttConnector) Start() {
 	// 检查客户端是否已经连接
 	if token := (*m.client).Connect(); token.Wait() && token.Error() != nil {
-		util.ErrChanFromContext(m.ctx) <- fmt.Errorf("MQTT连接失败: %v", token.Error())
+		pkg.ErrChanFromContext(m.ctx) <- fmt.Errorf("MQTT连接失败: %v", token.Error())
 	}
 
 	// 订阅多个话题
 	token := (*m.client).SubscribeMultiple(m.config.Topics, m.messagePubHandler)
 	token.Wait() // 等待订阅完成
 	if err := token.Error(); err != nil {
-		util.ErrChanFromContext(m.ctx) <- fmt.Errorf("MQTT订阅失败: %v", err)
+		pkg.ErrChanFromContext(m.ctx) <- fmt.Errorf("MQTT订阅失败: %v", err)
 	}
 
 	// 持续运行监听消息
@@ -120,11 +119,15 @@ func (m *MqttConnector) messagePubHandler(_ mqtt.Client, msg mqtt.Message) {
 
 // 连接成功回调
 func (m *MqttConnector) connectHandler(client mqtt.Client) {
+	// client编译器不允许使用未使用的参数，所以这里使用下划线忽略
+	_ = client
 	pkg.LoggerFromContext(m.ctx).Info("成功连接至MQTT broker")
 }
 
 // 连接丢失回调
 func (m *MqttConnector) connectLostHandler(client mqtt.Client, err error) {
+	// client编译器不允许使用未使用的参数，所以这里使用下划线忽略
+	_ = client
 	pkg.LoggerFromContext(m.ctx).Error("Connect lost", zap.Error(err))
 	// 这里Paho会自动重连，不需要手动重连
 }

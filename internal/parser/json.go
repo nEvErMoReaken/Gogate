@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"gateway/internal/pkg"
-	"gateway/util"
 	"github.com/mitchellh/mapstructure"
 	"go.uber.org/zap"
 )
@@ -68,26 +67,26 @@ func (j *jParser) Start() {
 
 func (j *jParser) ConversionToSnapshot(js string) {
 	// 1. 拿到解析函数
-	convertFunc := util.JsonScriptFuncCache[j.jParserConfig.method]
+	convertFunc := JsonScriptFuncCache[j.jParserConfig.method]
 	// 2. 将 JSON 字符串解析为 map
 	var result map[string]interface{}
 	var err error
 	err = json.Unmarshal([]byte(js), &result)
 	if err != nil {
-		util.ErrChanFromContext(j.ctx) <- fmt.Errorf("unmarshal JSON 失败: %v", err)
+		pkg.ErrChanFromContext(j.ctx) <- fmt.Errorf("unmarshal JSON 失败: %v", err)
 	}
 	// 3. 调用解析函数
 	devName, devType, fields, err := convertFunc(result)
 	if err != nil {
-		util.ErrChanFromContext(j.ctx) <- fmt.Errorf("解析 JSON 失败: %v, 请检查脚本是否正确", err)
+		pkg.ErrChanFromContext(j.ctx) <- fmt.Errorf("解析 JSON 失败: %v, 请检查脚本是否正确", err)
 	}
 	// 3. 更新 DeviceSnapshot
 	snapshot, err := j.SnapshotCollection.GetDeviceSnapshot(devName, devType)
-	util.ErrChanFromContext(j.ctx) <- fmt.Errorf("获取快照失败: %v", err)
+	pkg.ErrChanFromContext(j.ctx) <- fmt.Errorf("获取快照失败: %v", err)
 	for key, value := range fields {
 		err := snapshot.SetField(j.ctx, key, value)
 		if err != nil {
-			util.ErrChanFromContext(j.ctx) <- fmt.Errorf("设置字段失败: %v", err)
+			pkg.ErrChanFromContext(j.ctx) <- fmt.Errorf("设置字段失败: %v", err)
 		}
 	}
 }

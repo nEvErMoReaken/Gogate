@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"gateway/internal/pkg"
-	"gateway/util"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 	"regexp"
@@ -37,11 +36,12 @@ func New(ctx context.Context, dataSource pkg.DataSource, mapChan map[string]chan
 	}
 
 	// 1. 初始化脚本模块
-	err := util.LoadAllScripts(ctx, config.Parser.Para["dir"].(string))
+	err := LoadAllScripts(ctx, config.Parser.Para["dir"].(string))
 	if err != nil {
 		return nil, fmt.Errorf("加载脚本失败: %+v ", zap.Error(err))
 	}
-	pkg.LoggerFromContext(ctx).Info("已加载脚本", zap.Any("scripts", util.ByteScriptFuncCache))
+	pkg.LoggerFromContext(ctx).Info("已加载Byte脚本", zap.Any("ByteScripts", ByteScriptFuncCache))
+	pkg.LoggerFromContext(ctx).Info("已加载Json脚本", zap.Any("JsonScripts", JsonScriptFuncCache))
 
 	// 2. 直接调用工厂函数
 	parser, err := factory(dataSource, mapChan, ctx)

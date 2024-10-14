@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"gateway/internal/pkg"
-	"gateway/util"
 	"github.com/mitchellh/mapstructure"
 	"go.uber.org/zap"
 	"io"
@@ -119,11 +118,11 @@ func (r *IoReader) Start() {
 				ctx, err = chunk.Process(r.Reader, &frame, r.SnapshotCollection, ctx)
 				if err != nil {
 					if err == io.EOF {
-						util.ErrChanFromContext(r.ctx) <- fmt.Errorf("[HandleConnection] 读取到 EOF: %s", err)
+						pkg.ErrChanFromContext(r.ctx) <- fmt.Errorf("[HandleConnection] 读取到 EOF: %s", err)
 						return // 读取到 EOF 后可以退出
 					}
-					util.ErrChanFromContext(r.ctx) <- fmt.Errorf("[HandleConnection] 解析第 %d 个 Chunk 失败: %s", index+1, err) // 其他错误，终止连接
-					return                                                                                                 // 解析失败时终止处理
+					pkg.ErrChanFromContext(r.ctx) <- fmt.Errorf("[HandleConnection] 解析第 %d 个 Chunk 失败: %s", index+1, err) // 其他错误，终止连接
+					return                                                                                                // 解析失败时终止处理
 				}
 			}
 			// ** 此处是完整的一帧的结束 **
@@ -344,7 +343,7 @@ type Section struct {
 	Repeat       interface{}
 	Bit          int
 	Length       int
-	Decoding     util.ByteScriptFunc
+	Decoding     ByteScriptFunc
 	ToDeviceName string // 这里的设备名称是带模板的，需要解析。例如 ecc_{vobc_id}
 	ToDeviceType string
 	ToVarNames   []string // 解码后变量的最终去向
@@ -512,7 +511,7 @@ func createChunk(chunkMap map[string]interface{}) (Chunk, error) {
 				}
 			}
 
-			tmpDecoding, exist := util.GetScriptFunc(section.Decoding.Method)
+			tmpDecoding, exist := GetScriptFunc(section.Decoding.Method)
 			if exist {
 				tmpSec.Decoding = tmpDecoding
 			}

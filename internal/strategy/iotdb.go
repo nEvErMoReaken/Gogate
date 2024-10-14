@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"gateway/internal/pkg"
-	"gateway/util"
 	"go.uber.org/zap"
 	"strings"
 
@@ -112,7 +111,7 @@ func (b *IoTDBStrategy) Start() {
 		case point := <-b.core.pointChan:
 			err := b.Publish(point)
 			if err != nil {
-				util.ErrChanFromContext(b.core.ctx) <- fmt.Errorf("IoTDBStrategy error occurred: %w", err)
+				pkg.ErrChanFromContext(b.core.ctx) <- fmt.Errorf("IoTDBStrategy error occurred: %w", err)
 			}
 		}
 	}

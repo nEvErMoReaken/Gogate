@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"gateway/internal/pkg"
-	"gateway/util"
 	"github.com/mitchellh/mapstructure"
 	"go.uber.org/zap"
 	"net"
@@ -69,7 +68,7 @@ func (t *TcpServerConnector) Start() {
 		// 2. 等待客户端连接，阻塞
 		conn, err := t.listener.Accept()
 		if err != nil {
-			util.ErrChanFromContext(t.ctx) <- fmt.Errorf("[tcpServer]接受连接失败: %s\n", err)
+			pkg.ErrChanFromContext(t.ctx) <- fmt.Errorf("[tcpServer]接受连接失败: %s\n", err)
 		}
 		// 3. 处理连接
 		pkg.LoggerFromContext(t.ctx).Info("与 %s 建立连接", zap.String("remote", conn.RemoteAddr().String()))

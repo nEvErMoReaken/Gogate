@@ -7,6 +7,7 @@ json.go -- json解析器
 
 ioReader.go -- io.Reader解析器 （udp, tcp, file）等
 
+loadScript.go -- 加载script使用的辅助工具
 */
 
 package parser

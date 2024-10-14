@@ -7,7 +7,6 @@ import (
 	"gateway/internal/parser"
 	"gateway/internal/pkg"
 	"gateway/internal/strategy"
-	"gateway/util"
 	"time"
 )
 
@@ -45,7 +44,7 @@ func handleLazyConnector(ctx context.Context, readyChan <-chan pkg.DataSource) {
 		case dataSource := <-readyChan:
 			s, err := StartParser(ctx, dataSource)
 			if err != nil {
-				util.ErrChanFromContext(ctx) <- fmt.Errorf("failed to start parser: %w", err)
+				pkg.ErrChanFromContext(ctx) <- fmt.Errorf("failed to start parser: %w", err)
 				return
 			}
 			for _, sl := range s {
@@ -59,12 +58,12 @@ func handleLazyConnector(ctx context.Context, readyChan <-chan pkg.DataSource) {
 func handleEagerConnector(c connector.Connector, ctx context.Context) {
 	dataSource, err := c.GetDataSource()
 	if err != nil {
-		util.ErrChanFromContext(ctx) <- fmt.Errorf("failed to get data source: %w", err)
+		pkg.ErrChanFromContext(ctx) <- fmt.Errorf("failed to get data source: %w", err)
 		return
 	}
 	s, err := StartParser(ctx, dataSource)
 	if err != nil {
-		util.ErrChanFromContext(ctx) <- fmt.Errorf("failed to start parser: %w", err)
+		pkg.ErrChanFromContext(ctx) <- fmt.Errorf("failed to start parser: %w", err)
 		return
 	}
 	for _, sl := range s {
@@ -76,7 +75,7 @@ func StartPipeline(ctx context.Context) {
 	// 0. 初始化连接器
 	c, err := connector.New(pkg.WithLoggerAndModule(ctx, pkg.LoggerFromContext(ctx), "Connector"))
 	if err != nil {
-		util.ErrChanFromContext(ctx) <- fmt.Errorf("failed to create connector: %w", err)
+		pkg.ErrChanFromContext(ctx) <- fmt.Errorf("failed to create connector: %w", err)
 		return
 	}
 

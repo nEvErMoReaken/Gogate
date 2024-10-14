@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"gateway/internal/pkg"
-	"gateway/util"
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/influxdata/influxdb-client-go/v2/api"
 	"github.com/mitchellh/mapstructure"
@@ -82,7 +81,7 @@ func (b *InfluxDbStrategy) Start() {
 		case point := <-b.core.pointChan:
 			err := b.Publish(point)
 			if err != nil {
-				util.ErrChanFromContext(b.core.ctx) <- fmt.Errorf("IoTDBStrategy error occurred: %w", err)
+				pkg.ErrChanFromContext(b.core.ctx) <- fmt.Errorf("IoTDBStrategy error occurred: %w", err)
 			}
 		}
 	}
