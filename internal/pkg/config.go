@@ -67,7 +67,7 @@ func InitCommon(configDir string) (*Config, error) {
 	v.AddConfigPath(configDir)
 	v.AutomaticEnv() // 读取环境变量
 	// 遍历配置目录及其子目录中的所有文件
-	_ = filepath.WalkDir(configDir, func(filePath string, d fs.DirEntry, err error) error {
+	err := filepath.WalkDir(configDir, func(filePath string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return fmt.Errorf("访问路径 %s 失败: %w", filePath, err)
 		}
@@ -98,6 +98,9 @@ func InitCommon(configDir string) (*Config, error) {
 
 		return nil
 	})
+	if err != nil {
+		return nil, err
+	}
 	var common Config
 	// 反序列化到结构体
 	if err := v.Unmarshal(&common); err != nil {

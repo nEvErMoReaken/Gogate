@@ -17,7 +17,7 @@ func TestNewLogger(t *testing.T) {
 		MaxBackups: 3,
 		MaxAge:     7,
 		Compress:   false,
-		Level:      "info",
+		Level:      "infoo",
 	}
 
 	logger := NewLogger(config)
