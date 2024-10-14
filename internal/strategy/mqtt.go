@@ -47,7 +47,7 @@ func NewMqttStrategy(ctx context.Context) (Strategy, error) {
 	for _, strategyConfig := range config.Strategy {
 		if strategyConfig.Enable && strategyConfig.Type == "influxDB" {
 			// 将 map 转换为结构体
-			if err := mapstructure.Decode(strategyConfig.Config, &info); err != nil {
+			if err := mapstructure.Decode(strategyConfig, &info); err != nil {
 				return nil, fmt.Errorf("[NewMqttStrategy] Error decoding map to struct: %v", err)
 			}
 		}

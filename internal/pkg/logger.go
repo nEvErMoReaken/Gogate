@@ -2,11 +2,9 @@ package pkg
 
 import (
 	"context"
-	"github.com/spf13/viper"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"gopkg.in/natefinch/lumberjack.v2"
-	"log"
 	"os"
 )
 
@@ -37,17 +35,14 @@ func LoggerFromContext(ctx context.Context) *zap.Logger {
 }
 
 // NewLogger initializes the common
-func NewLogger(v *viper.Viper) *zap.Logger {
-	var logConfig config
-	if err := v.Unmarshal(&logConfig); err != nil {
-		log.Fatalf("Unable to decode into struct, %v", err)
-	}
+func NewLogger(config *LogConfig) *zap.Logger {
+
 	lumberJackLogger := &lumberjack.Logger{
-		Filename:   logConfig.para.LogPath,    // 日志文件路径
-		MaxSize:    logConfig.para.MaxSize,    // megabytes
-		MaxBackups: logConfig.para.MaxBackups, // number of backups
-		MaxAge:     logConfig.para.MaxAge,     // days
-		Compress:   logConfig.para.Compress,   // compress old logs
+		Filename:   config.LogPath,    // 日志文件路径
+		MaxSize:    config.MaxSize,    // megabytes
+		MaxBackups: config.MaxBackups, // number of backups
+		MaxAge:     config.MaxAge,     // days
+		Compress:   config.Compress,   // compress old logs
 		LocalTime:  true,
 	}
 
@@ -72,7 +67,7 @@ func NewLogger(v *viper.Viper) *zap.Logger {
 	// 通过level参数创建zapcore
 	// 解析日志级别
 	var level zapcore.Level
-	if err := level.UnmarshalText([]byte(logConfig.para.Level)); err != nil {
+	if err := level.UnmarshalText([]byte(config.Level)); err != nil {
 		level = zap.InfoLevel // 默认日志级别为 InfoLevel
 	}
 	// 创建一个核心，它将所有日志写入 combinedSyncer

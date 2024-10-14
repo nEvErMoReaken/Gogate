@@ -21,7 +21,7 @@ func main() {
 	}
 
 	// 2. 初始化log
-	log := pkg.NewLogger(v)
+	log := pkg.NewLogger(&config.Log)
 
 	log.Info("程序启动", zap.String("version", config.Version))
 	log.Info("配置信息", zap.Any("common", config))
