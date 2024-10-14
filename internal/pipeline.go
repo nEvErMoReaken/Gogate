@@ -24,7 +24,7 @@ func StartParser(ctx context.Context, dataSource pkg.DataSource) (strategy.MapSe
 	}
 
 	// 2. 初始化解析器
-	p, err := parser.New(dataSource, mapChan, pkg.WithLoggerAndModule(ctx, pkg.LoggerFromContext(ctx), "Parser"))
+	p, err := parser.New(pkg.WithLoggerAndModule(ctx, pkg.LoggerFromContext(ctx), "Parser"), dataSource, mapChan)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create parser: %w", err)
 	}

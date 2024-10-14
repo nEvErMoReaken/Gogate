@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"gateway/internal/pkg"
+	"gateway/util"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 	"regexp"
@@ -28,12 +29,20 @@ func Register(parserType string, factory FactoryFunc) {
 	Factories[parserType] = factory
 }
 
-func New(dataSource pkg.DataSource, mapChan map[string]chan pkg.Point, ctx context.Context) (Parser, error) {
+func New(ctx context.Context, dataSource pkg.DataSource, mapChan map[string]chan pkg.Point) (Parser, error) {
 	config := pkg.ConfigFromContext(ctx)
 	factory, ok := Factories[config.Connector.Type]
 	if !ok {
 		return nil, fmt.Errorf("未找到解析器类型: %s", config.Connector.Type)
 	}
+
+	// 3. 初始化脚本模块
+	err := util.LoadAllScripts(ctx, config.Parser.Para["dir"].(string))
+	if err != nil {
+		return nil, fmt.Errorf("加载脚本失败: %+v ", zap.Error(err))
+	}
+	pkg.LoggerFromContext(ctx).Info("已加载脚本", zap.Any("scripts", util.ByteScriptFuncCache))
+
 	// 直接调用工厂函数
 	parser, err := factory(dataSource, mapChan, ctx)
 	if err != nil {

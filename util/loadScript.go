@@ -1,10 +1,12 @@
 package util
 
 import (
+	"context"
 	"fmt"
 	"gateway/internal/pkg"
 	"github.com/traefik/yaegi/interp"
 	"github.com/traefik/yaegi/stdlib"
+	"go.uber.org/zap"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -36,7 +38,8 @@ var ByteScriptFuncCache = make(map[string]ByteScriptFunc)
 var JsonScriptFuncCache = make(map[string]JsonScriptFunc)
 
 // extractAndCacheFunctions 解析Go文件并缓存函数名
-func extractAndCacheFunctions(i *interp.Interpreter, path string, scriptContent []byte) error {
+func extractAndCacheFunctions(ctx context.Context, i *interp.Interpreter, path string, scriptContent []byte) error {
+	log := pkg.LoggerFromContext(ctx)
 	// 使用 go/parser 和 go/ast 解析 Go 源码文件
 	fset := token.NewFileSet()
 	node, err := parser.ParseFile(fset, path, scriptContent, parser.AllErrors)
@@ -52,26 +55,26 @@ func extractAndCacheFunctions(i *interp.Interpreter, path string, scriptContent 
 			// 从解释器中获取该函数
 			v, err := i.Eval("script." + funcName)
 			if err != nil {
-				pkg.Log.Errorf("[Warning]: 在已读取脚本中未找到 %s 方法 %v\n", funcName, err)
+				log.Error("在已读取脚本中未找到函数", zap.String("funcName", funcName))
 				continue
 			}
 
 			// 尝试将函数解析为 ByteScriptFunc
 			if fnFunc, ok := v.Interface().(ByteScriptFunc); ok {
 				ByteScriptFuncCache[funcName] = fnFunc // 缓存 ByteScriptFunc 类型函数
-				pkg.Log.Infof("[Info]: %s 方法已缓存为 ByteScriptFunc", funcName)
+				log.Info(" %s 方法已缓存为 ByteScriptFunc", zap.String("funcName", funcName))
 				continue
 			}
 
 			// 尝试将函数解析为 JsonScriptFunc
 			if fnFunc, ok := v.Interface().(JsonScriptFunc); ok {
 				JsonScriptFuncCache[funcName] = fnFunc // 缓存 JsonScriptFunc 类型函数
-				pkg.Log.Infof("[Info]: %s 方法已缓存为 JsonScriptFunc", funcName)
+				log.Error("[Info]: %s 方法已缓存为 JsonScriptFunc", zap.String("funcName", funcName))
 				continue
 			}
 
 			// 如果不匹配任何已知函数签名，输出警告
-			pkg.Log.Errorf("[Warning]: %s 方法的签名与预期的 ByteScriptFunc 或 JsonScriptFunc 类型不匹配\n", funcName)
+			log.Error("[Warning]: %s 方法的签名与预期的 ByteScriptFunc 或 JsonScriptFunc 类型不匹配\n", zap.String("funcName", funcName))
 		}
 	}
 
@@ -79,7 +82,7 @@ func extractAndCacheFunctions(i *interp.Interpreter, path string, scriptContent 
 }
 
 // LoadAllScripts 加载/script目录下的所有脚本并缓存
-func LoadAllScripts(scriptDir string) error {
+func LoadAllScripts(ctx context.Context, scriptDir string) error {
 	// 初始化yaegi解释器
 	i := interp.New(interp.Options{})
 	err := i.Use(stdlib.Symbols)
@@ -107,7 +110,7 @@ func LoadAllScripts(scriptDir string) error {
 			}
 
 			// 解析文件并提取函数名
-			err = extractAndCacheFunctions(i, path, scriptContent)
+			err = extractAndCacheFunctions(ctx, i, path, scriptContent)
 			if err != nil {
 				return fmt.Errorf("提取函数失败 %s: %w", path, err)
 			}

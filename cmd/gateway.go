@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"gateway/internal"
 	"gateway/internal/pkg"
+	"gateway/util"
 	"go.uber.org/zap"
 	"os"
 	"os/signal"
@@ -27,17 +28,10 @@ func main() {
 	log.Info("配置信息", zap.Any("common", config))
 	log.Info("*** 初始化流程开始 ***")
 
-	//// 3. 初始化脚本模块
-	//err = util.LoadAllScripts(config.Script.ScriptDir)
-	//if err != nil {
-	//	log.Panic("加载脚本失败", zap.Error(err))
-	//}
-	//log.Info("已加载脚本", zap.Any("scripts", util.ByteScriptFuncCache))
-
 	// 4. 创建上下文
 	ctx, cancel := context.WithCancel(context.Background())
 	errChan := make(chan error, 10) // 创建一个只写的全局错误通道, 缓存大小为10
-	ctx = context.WithValue(ctx, "errChan", errChan)
+	ctx = util.WithErrChan(ctx, errChan)
 	// 将config挂载到ctx上
 	ctxWithConfig := pkg.WithConfig(ctx, config)
 	// 将logger挂载到ctx上
