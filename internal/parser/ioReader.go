@@ -28,7 +28,7 @@ type FixedChunkConfig struct {
 	Sections []SectionConfig `mapstructure:"sections"`
 }
 
-type config struct {
+type ioReaderConfig struct {
 	dir       string `mapstructure:"dir"`
 	protoFile string `mapstructure:"protoFile"`
 }
@@ -78,8 +78,8 @@ func NewIoReader(dataSource pkg.DataSource, mapChan map[string]chan pkg.Point, c
 	}
 	// 1. 初始化杂项配置文件
 	v := pkg.ConfigFromContext(ctx)
-	var c config
-	err := mapstructure.Decode(v.Connector.Para, &c)
+	var c ioReaderConfig
+	err := mapstructure.Decode(v.Parser.Para, &c)
 	if err != nil {
 		return nil, fmt.Errorf("配置文件解析失败: %s", err)
 	}
@@ -94,7 +94,7 @@ func NewIoReader(dataSource pkg.DataSource, mapChan map[string]chan pkg.Point, c
 		return nil, fmt.Errorf("协议文件格式错误")
 	}
 	// 初始化 IoReader
-	ioReader, err := CreateIoParser(c, ctx, chunks, mapChan, reader, dataSource.MetaData)
+	ioReader, err := createIoParser(c, ctx, chunks, mapChan, reader, dataSource.MetaData)
 	if err != nil {
 		return nil, fmt.Errorf("初始化IoReader失败: %s", err)
 	}
@@ -302,14 +302,14 @@ func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte, handler Snap
 				return ctx, fmt.Errorf("解码后的数据长度与FieldNames长度不匹配, %d != %d", len(decoded), len(sec.ToFieldNames))
 			}
 			for ii, de := range decoded {
-				err := tarSnapshot.SetField(sec.ToFieldNames[ii], de, ctx)
+				err := tarSnapshot.SetField(ctx, sec.ToFieldNames[ii], de)
 				if err != nil {
 					return ctx, err
 				}
 			}
 			tarSnapshot.Ts = ctx.Value("ts").(time.Time)
 			// data_source对于客户端应该是常驻变量， TODO 后续考虑是否用配置文件配置
-			err := tarSnapshot.SetField("data_source", ctx.Value("data_source"), ctx)
+			err := tarSnapshot.SetField(ctx, "data_source", ctx.Value("data_source"))
 			if err != nil {
 				return ctx, err
 			}
@@ -400,8 +400,8 @@ func (s *Section) parseToDeviceName(context context.Context) (string, error) {
 	return result, nil
 }
 
-// CreateIoParser 从配置文件初始化 Chunk
-func CreateIoParser(c config, ctx context.Context, chunks []interface{}, mapChan map[string]chan pkg.Point, reader io.Reader, metadata map[string]interface{}) (IoReader, error) {
+// createIoParser 从配置文件初始化 Chunk
+func createIoParser(c ioReaderConfig, ctx context.Context, chunks []interface{}, mapChan map[string]chan pkg.Point, reader io.Reader, metadata map[string]interface{}) (IoReader, error) {
 	log := pkg.LoggerFromContext(ctx)
 	log.Info("当前启用的协议文件: %s", zap.String("protocol", c.protoFile))
 	// 初始化 SnapshotCollection

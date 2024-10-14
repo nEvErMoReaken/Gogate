@@ -36,14 +36,14 @@ func New(ctx context.Context, dataSource pkg.DataSource, mapChan map[string]chan
 		return nil, fmt.Errorf("未找到解析器类型: %s", config.Connector.Type)
 	}
 
-	// 3. 初始化脚本模块
+	// 1. 初始化脚本模块
 	err := util.LoadAllScripts(ctx, config.Parser.Para["dir"].(string))
 	if err != nil {
 		return nil, fmt.Errorf("加载脚本失败: %+v ", zap.Error(err))
 	}
 	pkg.LoggerFromContext(ctx).Info("已加载脚本", zap.Any("scripts", util.ByteScriptFuncCache))
 
-	// 直接调用工厂函数
+	// 2. 直接调用工厂函数
 	parser, err := factory(dataSource, mapChan, ctx)
 	if err != nil {
 		return nil, fmt.Errorf("初始化解析器失败: %v", err)
@@ -99,7 +99,7 @@ func (sc *SnapshotCollection) GetDeviceSnapshot(deviceName string, deviceType st
 
 func (sc *SnapshotCollection) SetDeviceSnapshot(deviceName string, deviceType string, key string, value interface{}, ctx context.Context) error {
 	if snapshot, exists := (*sc)[deviceName+":"+deviceType]; exists {
-		err := snapshot.SetField(key, value, ctx)
+		err := snapshot.SetField(ctx, key, value)
 		if err != nil {
 			return err
 		}
@@ -108,7 +108,7 @@ func (sc *SnapshotCollection) SetDeviceSnapshot(deviceName string, deviceType st
 		if err != nil {
 			return err
 		}
-		err = newSnapshot.SetField(key, value, ctx)
+		err = newSnapshot.SetField(ctx, key, value)
 		if err != nil {
 			return err
 		}
@@ -194,8 +194,8 @@ func checkFilter(deviceType, deviceName, telemetryName, filter string) (bool, er
 		telemetryRe.MatchString(telemetryName), nil
 }
 
-// SetField 设置或更新字段值，支持将值存储为指针, 需要策略配置来路由具体的发送策略
-func (dm *DeviceSnapshot) SetField(fieldName string, value interface{}, ctx context.Context) error {
+// SetField 设置或更新字段值，支持将值存储为指针, 需要策略配置来路由具体地发送策略
+func (dm *DeviceSnapshot) SetField(ctx context.Context, fieldName string, value interface{}) error {
 	// 如果字段值为“nil”，代表是需要丢弃的值，则不进行任何操作
 	if fieldName == "nil" {
 		return nil
