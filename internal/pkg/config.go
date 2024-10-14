@@ -10,11 +10,12 @@ import (
 
 // Config 根Config
 type Config struct {
-	Parser    ParserConfig     `mapstructure:"parser"`
-	Connector ConnectorConfig  `mapstructure:"connector"`
-	Strategy  []StrategyConfig `mapstructure:"strategy"`
-	Version   string           `mapstructure:"version"`
-	Log       LogConfig        `mapstructure:"log"`
+	Parser    ParserConfig           `mapstructure:"parser"`
+	Connector ConnectorConfig        `mapstructure:"connector"`
+	Strategy  []StrategyConfig       `mapstructure:"strategy"`
+	Version   string                 `mapstructure:"version"`
+	Log       LogConfig              `mapstructure:"log"`
+	Others    map[string]interface{} `mapstructure:",remain"`
 }
 
 type LogConfig struct {

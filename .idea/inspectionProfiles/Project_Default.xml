@@ -2,9 +2,9 @@
   <profile version="1.0">
     <option name="myName" value="Project Default" />
     <inspection_tool class="GoDfaErrorMayBeNotNil" enabled="true" level="WARNING" enabled_by_default="true">
-      <methods>
-        <method importPath="github.com/apache/iotdb-client-go/client" receiver="*SessionPool" name="GetSession" />
-      </methods>
+      <functions>
+        <function importPath="gateway/internal/parser" name="NewSnapshot" />
+      </functions>
     </inspection_tool>
   </profile>
 </component>

@@ -14,12 +14,11 @@ import (
 
 // Parser 定义一个通用的接口，用于处理各种数据源，并持续维护一个快照集合
 type Parser interface {
-	Start()                                                            // 启动解析器
-	Process(dataSource interface{}, mapChan map[string]chan pkg.Point) // 至少有一个解析数据源的方法
+	Start() // 启动解析器
 }
 
 // FactoryFunc 代表一个发送策略的工厂函数
-type FactoryFunc func(dataSource interface{}, mapChan map[string]chan pkg.Point, ctx context.Context) (Parser, error)
+type FactoryFunc func(dataSource pkg.DataSource, mapChan map[string]chan pkg.Point, ctx context.Context) (Parser, error)
 
 // Factories 全局工厂映射，用于注册不同策略类型的构造函数  这里面可能包含了没有启用的数据源
 var Factories = make(map[string]FactoryFunc)
@@ -29,7 +28,7 @@ func Register(parserType string, factory FactoryFunc) {
 	Factories[parserType] = factory
 }
 
-func New(dataSource interface{}, mapChan map[string]chan pkg.Point, ctx context.Context) (Parser, error) {
+func New(dataSource pkg.DataSource, mapChan map[string]chan pkg.Point, ctx context.Context) (Parser, error) {
 	config := pkg.ConfigFromContext(ctx)
 	factory, ok := Factories[config.Connector.Type]
 	if !ok {
@@ -66,32 +65,32 @@ func (dm *DeviceSnapshot) Clear() {
 	dm.Ts = time.Time{}
 }
 
-// SnapshotHandler 代表设备快照的管理器
-type SnapshotHandler struct {
-	collection map[string]*DeviceSnapshot
-	mapChan    map[string]chan pkg.Point
-}
+// SnapshotCollection 代表设备快照的管理器
+type SnapshotCollection map[string]DeviceSnapshot
 
 // GetDeviceSnapshot 获取设备快照，如果设备快照已经存在，则直接返回，否则创建一个新的设备快照
-func (sc *SnapshotHandler) GetDeviceSnapshot(deviceName string, deviceType string) (*DeviceSnapshot, error) {
+func (sc *SnapshotCollection) GetDeviceSnapshot(deviceName string, deviceType string) (*DeviceSnapshot, error) {
 	// 如果设备快照已经存在，则直接返回
-	if snapshot, exists := sc.collection[deviceName+":"+deviceType]; exists {
-		//common.Log.Debugf("GetDeviceSnapshot: %s:%s", deviceName, deviceType)
-		return snapshot, nil
+	key := deviceName + ":" + deviceType
+	if snapshot, exists := (*sc)[key]; exists {
+		// common.Log.Debugf("GetDeviceSnapshot: %s:%s", deviceName, deviceType)
+		return &snapshot, nil // 返回指针
 	}
+
 	// 如果设备快照不存在，则创建一个新的设备快照并返回
 	newSnapshot, err := NewSnapshot(deviceName, deviceType)
 	if err != nil {
 		return nil, err
 	}
-	//common.Log.Debugf("%+v", newSnapshot)
-	sc.collection[deviceName+":"+deviceType] = newSnapshot
+
+	// 将新快照存入 map，并返回指针
+	(*sc)[key] = *newSnapshot
 	return newSnapshot, nil
 }
 
-func (sc *SnapshotHandler) SetDeviceSnapshot(deviceName string, deviceType string, key string, value interface{}, strategies *[]pkg.StrategyConfig) error {
-	if snapshot, exists := sc.collection[deviceName+":"+deviceType]; exists {
-		err := snapshot.SetField(key, value, strategies)
+func (sc *SnapshotCollection) SetDeviceSnapshot(deviceName string, deviceType string, key string, value interface{}, ctx context.Context) error {
+	if snapshot, exists := (*sc)[deviceName+":"+deviceType]; exists {
+		err := snapshot.SetField(key, value, ctx)
 		if err != nil {
 			return err
 		}
@@ -100,11 +99,11 @@ func (sc *SnapshotHandler) SetDeviceSnapshot(deviceName string, deviceType strin
 		if err != nil {
 			return err
 		}
-		err = newSnapshot.SetField(key, value, strategies)
+		err = newSnapshot.SetField(key, value, ctx)
 		if err != nil {
 			return err
 		}
-		sc.collection[deviceName+":"+deviceType] = newSnapshot
+		(*sc)[deviceName+":"+deviceType] = *newSnapshot
 	}
 	return nil
 }
@@ -187,7 +186,7 @@ func checkFilter(deviceType, deviceName, telemetryName, filter string) (bool, er
 }
 
 // SetField 设置或更新字段值，支持将值存储为指针, 需要策略配置来路由具体的发送策略
-func (dm *DeviceSnapshot) SetField(fieldName string, value interface{}, strategies *[]pkg.StrategyConfig) error {
+func (dm *DeviceSnapshot) SetField(fieldName string, value interface{}, ctx context.Context) error {
 	// 如果字段值为“nil”，代表是需要丢弃的值，则不进行任何操作
 	if fieldName == "nil" {
 		return nil
@@ -198,7 +197,7 @@ func (dm *DeviceSnapshot) SetField(fieldName string, value interface{}, strategi
 
 		dm.Fields[fieldName] = value
 		// 初始化该字段的DataSink
-		err := dm.InitDataSink(fieldName, strategies)
+		err := dm.InitDataSink(fieldName, &pkg.ConfigFromContext(ctx).Strategy)
 		if err != nil {
 			return err
 		}
@@ -254,8 +253,8 @@ func (dm *DeviceSnapshot) makePoint(st string) pkg.Point {
 }
 
 // LaunchALL 发射所有数据点
-func (sc *SnapshotHandler) LaunchALL(ctx context.Context) {
-	for _, dm := range sc.collection {
-		dm.launch(ctx, sc.mapChan)
+func (sc *SnapshotCollection) LaunchALL(ctx context.Context, mapChan map[string]chan pkg.Point) {
+	for _, dm := range *sc {
+		dm.launch(ctx, mapChan)
 	}
 }

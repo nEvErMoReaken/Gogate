@@ -10,9 +10,9 @@ import (
 type Connector interface {
 	Start() // 启动数据源, 接收一个回调函数，用于将数据源和解析器绑定
 	// Ready 函数：懒连接器在接收到新连接时，通知外部准备好数据流
-	Ready() <-chan interface{}
+	Ready() <-chan pkg.DataSource
 	Close() error
-	GetDataSource() (interface{}, error) // 立刻返回数据源，适用于非懒连接器
+	GetDataSource() (pkg.DataSource, error) // 立刻返回数据源，适用于非懒连接器
 }
 
 // FactoryFunc 代表一个数据源的工厂函数, 返回数据源和连接器实例

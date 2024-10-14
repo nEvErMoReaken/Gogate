@@ -9,7 +9,6 @@ import (
 	"gateway/util"
 	"github.com/mitchellh/mapstructure"
 	"go.uber.org/zap"
-	"io"
 	"net"
 	"time"
 )
@@ -18,7 +17,7 @@ import (
 type TcpServerConnector struct {
 	ctx          context.Context
 	listener     net.Listener
-	chReady      chan interface{}
+	chReady      chan pkg.DataSource
 	serverConfig ServerConfig
 }
 
@@ -29,7 +28,7 @@ type ServerConfig struct {
 	Timeout   time.Duration     `mapstructure:"timeout"`
 }
 
-func (t *TcpServerConnector) Ready() <-chan interface{} {
+func (t *TcpServerConnector) Ready() <-chan pkg.DataSource {
 	return t.chReady
 }
 
@@ -43,7 +42,7 @@ func NewTcpServer(ctx context.Context) (Connector, error) {
 	var serverConfig ServerConfig
 	err := mapstructure.Decode(v.Connector.Para, &serverConfig)
 	if err != nil {
-		return nil, fmt.Errorf("TCPServer配置文件解析失败: %s", err)
+		return nil, fmt.Errorf("配置文件解析失败: %s", err)
 	}
 	// 2. 初始化listener
 	listener, err := net.Listen("tcp", ":"+serverConfig.Port)
@@ -53,15 +52,15 @@ func NewTcpServer(ctx context.Context) (Connector, error) {
 
 	return &TcpServerConnector{
 		ctx:          ctx,
-		chReady:      make(chan interface{}),
+		chReady:      make(chan pkg.DataSource),
 		listener:     listener,
 		serverConfig: serverConfig,
 	}, nil
 }
 
-func (t *TcpServerConnector) GetDataSource() (interface{}, error) {
+func (t *TcpServerConnector) GetDataSource() (pkg.DataSource, error) {
 	// 懒连接器，不需要也无法返回数据源
-	return nil, nil
+	return pkg.DataSource{}, fmt.Errorf("懒连接器无法立即返回数据源")
 }
 func (t *TcpServerConnector) Start() {
 	log := pkg.LoggerFromContext(t.ctx)
@@ -84,7 +83,7 @@ func (t *TcpServerConnector) Start() {
 	}
 }
 
-func (t *TcpServerConnector) initConn(conn net.Conn) (io.Reader, error) {
+func (t *TcpServerConnector) initConn(conn net.Conn) (pkg.DataSource, error) {
 	log := pkg.LoggerFromContext(t.ctx)
 	defer func(conn net.Conn) {
 		err := conn.Close()
@@ -94,8 +93,7 @@ func (t *TcpServerConnector) initConn(conn net.Conn) (io.Reader, error) {
 	}(conn)
 	// 1. 首先识别远端ip是哪个设备
 	remoteAddrWithPort := conn.RemoteAddr().String()
-	var deviceId = remoteAddrWithPort
-	t.ctx = context.WithValue(t.ctx, "deviceId", deviceId)
+	var deviceId = ""
 	// 2. 连接花名作为变量（如果有）
 	if t.serverConfig.IPAlias == nil {
 		// 2.1 如果IPAlias为空，则不需要进行识别
@@ -107,24 +105,29 @@ func (t *TcpServerConnector) initConn(conn net.Conn) (io.Reader, error) {
 		var exists bool
 		deviceId, exists = t.serverConfig.IPAlias[remoteAddr]
 		if !exists && t.serverConfig.WhiteList { // 如果白名单开启，但是没有找到对应的设备id
-			return nil, fmt.Errorf("未在配置清单中找到地址: %s", remoteAddr)
+			return pkg.DataSource{
+				Source:   nil,
+				MetaData: nil,
+			}, fmt.Errorf("未在配置清单中找到地址: %s", remoteAddr)
 		}
-		// TODO DeviceId 传递
-		panic("TODO")
-		//var deviceIdInterface interface{} = deviceId
-		//chunkSequence.VarPointer["device_id"] = &deviceIdInterface
 	}
 	// 3. 设置超时时间
 	err := conn.SetReadDeadline(time.Now().Add(t.serverConfig.Timeout))
 	if err != nil {
 		//log.Error("超时时间设置失败，关闭连接", zap.String("remote", conn.RemoteAddr().String()))
-		return nil, fmt.Errorf("超时时间设置失败，关闭连接: %s", conn.RemoteAddr().String())
+		return pkg.DataSource{
+			Source:   nil,
+			MetaData: nil,
+		}, fmt.Errorf("超时时间设置失败，关闭连接: %s", conn.RemoteAddr().String())
 	}
 	// 4. 初始化reader开始读数据
 	reader := bufio.NewReader(conn)
-	return reader, nil
-	//chunks, err := parser.InitChunks(t.ctx, pkg.ConfigFromContext(t.ctx).Parser.Type)
-	//t.HandleConnection(conn, &chunks)
+	return pkg.DataSource{
+		Source: reader,
+		MetaData: map[string]interface{}{
+			"deviceId": deviceId,
+		},
+	}, nil
 }
 func (t *TcpServerConnector) Close() error {
 	err := t.listener.Close()
@@ -135,7 +138,7 @@ func (t *TcpServerConnector) Close() error {
 }
 
 // HandleConnection 处理连接, 一个连接对应一个协程
-func (t *TcpServerConnector) HandleConnection(conn net.Conn, chunkSequence *parser.ChunkSequence) {
+func (t *TcpServerConnector) HandleConnection(conn net.Conn, chunkSequence *parser.IoReader) {
 
 	//for {
 	//	select {

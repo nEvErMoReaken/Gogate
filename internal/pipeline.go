@@ -12,7 +12,7 @@ import (
 )
 
 // StartParser 启动解析器和策略处理数据
-func StartParser(ctx context.Context, dataSource interface{}) (strategy.MapSendStrategy, error) {
+func StartParser(ctx context.Context, dataSource pkg.DataSource) (strategy.MapSendStrategy, error) {
 	// 1. 初始化策略
 	mapChan := make(map[string]chan pkg.Point)
 	s, err := strategy.New(pkg.WithLogger(ctx, pkg.LoggerFromContext(ctx).With(zap.String("module", "Strategy"))))
@@ -36,7 +36,7 @@ func StartParser(ctx context.Context, dataSource interface{}) (strategy.MapSendS
 }
 
 // handleLazyConnector 处理懒创建连接器的逻辑
-func handleLazyConnector(ctx context.Context, readyChan <-chan interface{}) {
+func handleLazyConnector(ctx context.Context, readyChan <-chan pkg.DataSource) {
 	for {
 		select {
 		case <-ctx.Done():
