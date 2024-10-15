@@ -28,8 +28,8 @@ type FixedChunkConfig struct {
 }
 
 type ioReaderConfig struct {
-	dir       string `mapstructure:"dir"`
-	protoFile string `mapstructure:"protoFile"`
+	Dir       string `mapstructure:"dir"`
+	ProtoFile string `mapstructure:"protoFile"`
 }
 
 // SectionConfig 定义
@@ -84,9 +84,9 @@ func NewIoReader(dataSource pkg.DataSource, mapChan map[string]chan pkg.Point, c
 	}
 	// 2. 初始化协议配置文件
 	//chunks := v.Sub(protoFile).Get("chunks").([]interface{})
-	chunksConfig, exist := pkg.ConfigFromContext(ctx).Others[c.protoFile]
+	chunksConfig, exist := pkg.ConfigFromContext(ctx).Others[c.ProtoFile]
 	if !exist {
-		return nil, fmt.Errorf("未找到协议文件: %s", c.protoFile)
+		return nil, fmt.Errorf("未找到协议文件: %s", c.ProtoFile)
 	}
 	chunks, ok := chunksConfig.([]interface{})
 	if !ok {
@@ -104,13 +104,13 @@ func NewIoReader(dataSource pkg.DataSource, mapChan map[string]chan pkg.Point, c
 func (r *IoReader) Start() {
 
 	for {
+		count := 0
 		select {
 		case <-r.ctx.Done():
 			return
 		default:
 			// 4.1 Frame 数组，用于存储一帧原始报文
 			frame := make([]byte, 0)
-			count := 0
 			ctx := r.ctx
 			// ** 此处是完整的一帧的开始 **
 			for index, chunk := range r.Chunks {
@@ -118,8 +118,8 @@ func (r *IoReader) Start() {
 				ctx, err = chunk.Process(r.Reader, &frame, r.SnapshotCollection, ctx)
 				if err != nil {
 					if err == io.EOF {
-						pkg.ErrChanFromContext(r.ctx) <- fmt.Errorf("[HandleConnection] 读取到 EOF: %s", err)
-						return // 读取到 EOF 后可以退出
+						pkg.LoggerFromContext(r.ctx).Info("[HandleConnection] 读取到 EOF，等待更多数据")
+						return // 读取到 EOF 后可以忽略
 					}
 					pkg.ErrChanFromContext(r.ctx) <- fmt.Errorf("[HandleConnection] 解析第 %d 个 Chunk 失败: %s", index+1, err) // 其他错误，终止连接
 					return                                                                                                // 解析失败时终止处理
@@ -127,7 +127,8 @@ func (r *IoReader) Start() {
 			}
 			// ** 此处是完整的一帧的结束 **
 			count += 1
-
+			//fmt.Println("Frame", frame)
+			//fmt.Println(r.SnapshotCollection.GetDeviceSnapshot("device1", "type1"))
 			// 4.3 发射所有的快照
 			r.SnapshotCollection.LaunchALL(ctx, r.mapChan)
 			// 4.4 打印原始报文
@@ -301,6 +302,7 @@ func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte, handler Snap
 				return ctx, fmt.Errorf("解码后的数据长度与FieldNames长度不匹配, %d != %d", len(decoded), len(sec.ToFieldNames))
 			}
 			for ii, de := range decoded {
+				//fmt.Println("sec.ToFieldNames[ii]:", sec.ToFieldNames[ii], "de:", de)
 				err := tarSnapshot.SetField(ctx, sec.ToFieldNames[ii], de)
 				if err != nil {
 					return ctx, err
@@ -402,15 +404,16 @@ func (s *Section) parseToDeviceName(context context.Context) (string, error) {
 // createIoParser 从配置文件初始化 Chunk
 func createIoParser(c ioReaderConfig, ctx context.Context, chunks []interface{}, mapChan map[string]chan pkg.Point, reader io.Reader, metadata map[string]interface{}) (IoReader, error) {
 	log := pkg.LoggerFromContext(ctx)
-	log.Info("当前启用的协议文件: %s", zap.String("protocol", c.protoFile))
+	log.Info("当前启用的协议文件: %s", zap.String("protocol", c.ProtoFile))
 	// 初始化 SnapshotCollection
-
+	ctx = context.WithValue(ctx, "deviceId", metadata["deviceId"])
+	ctx = context.WithValue(ctx, "ts", metadata["ts"])
 	var chunkSequence = IoReader{
 		reader,
 		make([]Chunk, 0),
 		make(SnapshotCollection),
 		mapChan,
-		context.WithValue(ctx, "deviceId", metadata["deviceId"]),
+		ctx,
 	}
 
 	for _, chunk := range chunks {
@@ -429,7 +432,7 @@ func createIoParser(c ioReaderConfig, ctx context.Context, chunks []interface{},
 // 解析类似 "efef_{1..8}" 范围并展开
 func expandFieldTemplate(template string) ([]string, error) {
 	// 使用正则表达式匹配 "{a..b}" 的范围
-	re := regexp.MustCompile(`\{(\d+)\.\.(\d+)}`) // 匹配大括号里的范围
+	re := regexp.MustCompile(`\${(\d+)\.\.(\d+)}`) // 匹配 ${a..b} 的范围
 	matches := re.FindStringSubmatch(template)
 	if len(matches) != 3 {
 		return nil, fmt.Errorf("无法解析模板: %s", template)
@@ -450,8 +453,8 @@ func expandFieldTemplate(template string) ([]string, error) {
 		return nil, fmt.Errorf("起始数字不能大于结束数字: %d..%d", start, end)
 	}
 
-	// 提取前缀部分 (例如 "efef_")
-	prefix := template[:strings.Index(template, "{")]
+	// 去掉 ${} 部分，提取前缀部分 (例如 "field")
+	prefix := template[:strings.Index(template, "${")]
 
 	// 生成字段名称数组
 	result := make([]string, 0, end-start+1)

@@ -108,12 +108,12 @@ func TestSnapshotCollection_MultiDevice(t *testing.T) {
 	// 添加第一个设备
 	snapshot1, err1 := collection.GetDeviceSnapshot("device1", "type1")
 	assert.NoError(t, err1, "创建第一个设备快照时不应出错")
-	snapshot1.SetField(context.Background(), "temperature", 25)
+	_ = snapshot1.SetField(context.Background(), "temperature", 25)
 
 	// 添加第二个设备
 	snapshot2, err2 := collection.GetDeviceSnapshot("device2", "type2")
 	assert.NoError(t, err2, "创建第二个设备快照时不应出错")
-	snapshot2.SetField(context.Background(), "humidity", 60)
+	_ = snapshot2.SetField(context.Background(), "humidity", 60)
 
 	// 检查两个设备快照是否独立存在
 	val1, exists1 := snapshot1.GetField("temperature")

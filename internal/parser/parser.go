@@ -207,7 +207,6 @@ func (dm *DeviceSnapshot) SetField(ctx context.Context, fieldName string, value 
 	}
 	// 如果fileds中已经不存在该字段，则初始化
 	if _, exists := dm.Fields[fieldName]; !exists {
-
 		dm.Fields[fieldName] = value
 
 		// 初始化该字段的DataSink
@@ -248,7 +247,7 @@ func (dm *DeviceSnapshot) launch(ctx context.Context, mapChan map[string]chan pk
 	for st := range dm.DataSink {
 		select {
 		case mapChan[st] <- dm.makePoint(st):
-			fmt.Printf("suucessfully sent\n")
+			//fmt.Printf("suucessfully sent\n")
 			// 成功发送
 		default:
 			fmt.Sprintln("channel blocked")
