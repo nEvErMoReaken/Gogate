@@ -18,7 +18,7 @@ type jParser struct {
 }
 
 type jParserConfig struct {
-	method string `mapstructure:"method"`
+	Method string `mapstructure:"method"`
 }
 
 func init() {
@@ -34,12 +34,12 @@ func NewJsonParser(dataSource pkg.DataSource, mapChan map[string]chan pkg.Point,
 	if err != nil {
 		return nil, fmt.Errorf("配置文件解析失败: %s", err)
 	}
-
 	return &jParser{
 		dataSource:         dataSource,
 		mapChan:            mapChan,
 		ctx:                ctx,
 		SnapshotCollection: make(SnapshotCollection),
+		jParserConfig:      jC, // 确保赋值给 jParser 的 jParserConfig 字段
 	}, nil
 }
 
@@ -56,6 +56,7 @@ func (j *jParser) Start() {
 		case data := <-dataChan:
 			// 3. 解析 JSON 数据
 			j.ConversionToSnapshot(data)
+
 			// 4. 将解析后的数据发送到策略
 			j.SnapshotCollection.LaunchALL(j.ctx, j.mapChan)
 			// 5. 打印原始数据
@@ -67,7 +68,10 @@ func (j *jParser) Start() {
 
 func (j *jParser) ConversionToSnapshot(js string) {
 	// 1. 拿到解析函数
-	convertFunc := JsonScriptFuncCache[j.jParserConfig.method]
+	convertFunc, exist := JsonScriptFuncCache[j.jParserConfig.Method]
+	if !exist {
+		pkg.ErrChanFromContext(j.ctx) <- fmt.Errorf("未找到解析函数: %s", j.jParserConfig.Method)
+	}
 	// 2. 将 JSON 字符串解析为 map
 	var result map[string]interface{}
 	var err error
@@ -82,9 +86,11 @@ func (j *jParser) ConversionToSnapshot(js string) {
 	}
 	// 3. 更新 DeviceSnapshot
 	snapshot, err := j.SnapshotCollection.GetDeviceSnapshot(devName, devType)
-	pkg.ErrChanFromContext(j.ctx) <- fmt.Errorf("获取快照失败: %v", err)
+	if err != nil {
+		pkg.ErrChanFromContext(j.ctx) <- fmt.Errorf("获取快照失败: %v", err)
+	}
 	for key, value := range fields {
-		err := snapshot.SetField(j.ctx, key, value)
+		err = snapshot.SetField(j.ctx, key, value)
 		if err != nil {
 			pkg.ErrChanFromContext(j.ctx) <- fmt.Errorf("设置字段失败: %v", err)
 		}

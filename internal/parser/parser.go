@@ -63,27 +63,23 @@ type DeviceSnapshot struct {
 
 // Clear 清空设备快照信息
 func (dm *DeviceSnapshot) Clear() {
-	// 将Fields中的字面量值置空
-	for _, value := range dm.Fields {
-		if value != nil {
-			// 重置为零值，确保引用保留，但内容清空
-			value = nil
-		}
+	// 清空Fields
+	for key := range dm.Fields {
+		dm.Fields[key] = nil // 将每个字段的值置为 nil
 	}
-	// 清空Ts
+	// 清空时间戳
 	dm.Ts = time.Time{}
 }
 
 // SnapshotCollection 代表设备快照的管理器
-type SnapshotCollection map[string]DeviceSnapshot
+type SnapshotCollection map[string]*DeviceSnapshot
 
 // GetDeviceSnapshot 获取设备快照，如果设备快照已经存在，则直接返回，否则创建一个新的设备快照
 func (sc *SnapshotCollection) GetDeviceSnapshot(deviceName string, deviceType string) (*DeviceSnapshot, error) {
 	// 如果设备快照已经存在，则直接返回
 	key := deviceName + ":" + deviceType
 	if snapshot, exists := (*sc)[key]; exists {
-		// common.Log.Debugf("GetDeviceSnapshot: %s:%s", deviceName, deviceType)
-		return &snapshot, nil // 返回指针
+		return snapshot, nil // 返回指针而不是副本
 	}
 
 	// 如果设备快照不存在，则创建一个新的设备快照并返回
@@ -93,7 +89,7 @@ func (sc *SnapshotCollection) GetDeviceSnapshot(deviceName string, deviceType st
 	}
 
 	// 将新快照存入 map，并返回指针
-	(*sc)[key] = *newSnapshot
+	(*sc)[key] = newSnapshot
 	return newSnapshot, nil
 }
 
@@ -112,7 +108,7 @@ func (sc *SnapshotCollection) SetDeviceSnapshot(deviceName string, deviceType st
 		if err != nil {
 			return err
 		}
-		(*sc)[deviceName+":"+deviceType] = *newSnapshot
+		(*sc)[deviceName+":"+deviceType] = newSnapshot
 	}
 	return nil
 }
@@ -149,6 +145,15 @@ func (dm *DeviceSnapshot) toJSON() string {
 // 前提：DeviceSnapshot的DeviceName, DeviceType, Fields字段已经全部初始化
 func (dm *DeviceSnapshot) InitDataSink(fieldKey string, strategies *[]pkg.StrategyConfig) error {
 	for _, strategy := range *strategies {
+		if strategy.Filter == nil {
+			// 如果策略没有过滤条件，则直接添加字段
+			if _, exists := dm.DataSink[strategy.Type]; !exists {
+				dm.DataSink[strategy.Type] = []string{fieldKey}
+			} else {
+				dm.DataSink[strategy.Type] = append(dm.DataSink[strategy.Type], fieldKey)
+			}
+			continue
+		}
 		for _, filter := range strategy.Filter {
 			// 遍历字段，判断是否符合策略过滤条件
 			if ok, err := checkFilter(dm.DeviceType, dm.DeviceName, fieldKey, filter); ok && (err == nil) {
@@ -200,16 +205,19 @@ func (dm *DeviceSnapshot) SetField(ctx context.Context, fieldName string, value 
 	if fieldName == "nil" {
 		return nil
 	}
-	// 如果fileds中已经存在该字段，则更新字段值
-	dm.Fields[fieldName] = value
+	// 如果fileds中已经不存在该字段，则初始化
 	if _, exists := dm.Fields[fieldName]; !exists {
 
 		dm.Fields[fieldName] = value
+
 		// 初始化该字段的DataSink
 		err := dm.InitDataSink(fieldName, &pkg.ConfigFromContext(ctx).Strategy)
 		if err != nil {
 			return err
 		}
+	} else {
+		// 如果已存在， 直接更新
+		dm.Fields[fieldName] = value
 	}
 	return nil
 }
@@ -234,11 +242,16 @@ func (dm *DeviceSnapshot) Equal(other *DeviceSnapshot) bool {
 // launch 发射所有数据点
 func (dm *DeviceSnapshot) launch(ctx context.Context, mapChan map[string]chan pkg.Point) {
 	pkg.LoggerFromContext(ctx).Info("launching device snapshot", zap.Any("snapshot", dm))
+	//fmt.Printf("launching device snapshot: %v\n", dm)
+	//fmt.Printf("mapChan: %v\n", mapChan)
+	//fmt.Printf("DataSink: %v\n", dm.DataSink)
 	for st := range dm.DataSink {
 		select {
 		case mapChan[st] <- dm.makePoint(st):
+			fmt.Printf("suucessfully sent\n")
 			// 成功发送
 		default:
+			fmt.Sprintln("channel blocked")
 			// 打印通道堵塞警告，避免影响其他通道
 			pkg.LoggerFromContext(ctx).Warn("channel blocked", zap.String("strategy", st))
 		}
