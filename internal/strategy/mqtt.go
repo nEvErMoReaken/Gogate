@@ -18,9 +18,17 @@ func init() {
 	Register("mqtt", NewMqttStrategy)
 }
 
+// MQTTClientInterface 定义了我们需要的 MQTT 客户端方法
+type MQTTClientInterface interface {
+	Connect() MQTT.Token
+	Disconnect(quiesce uint)
+	Publish(topic string, qos byte, retained bool, payload interface{}) MQTT.Token
+	// 根据需要添加其他方法
+}
+
 // MqttStrategy 实现将数据发布到 MQTT 的逻辑
 type MqttStrategy struct {
-	client MQTT.Client
+	client MQTTClientInterface
 	info   MQTTInfo
 	core   Core
 	logger *zap.Logger
@@ -44,9 +52,9 @@ func NewMqttStrategy(ctx context.Context) (Strategy, error) {
 	config := pkg.ConfigFromContext(ctx)
 	var info MQTTInfo
 	for _, strategyConfig := range config.Strategy {
-		if strategyConfig.Enable && strategyConfig.Type == "influxDB" {
+		if strategyConfig.Enable && strategyConfig.Type == "mqtt" {
 			// 将 map 转换为结构体
-			if err := mapstructure.Decode(strategyConfig, &info); err != nil {
+			if err := mapstructure.Decode(strategyConfig.Para, &info); err != nil {
 				return nil, fmt.Errorf("[NewMqttStrategy] Error decoding map to struct: %v", err)
 			}
 		}
