@@ -20,10 +20,59 @@ func init() {
 
 // IoTDBStrategy 实现将数据发布到 IoTDB 的逻辑
 type IoTDBStrategy struct {
-	sessionPool *client.SessionPool
+	sessionPool SessionPoolInterface
 	info        IotDBInfo
 	core        Core
 	logger      *zap.Logger
+}
+
+// SessionInterface 定义了我们需要使用的 iotdbclient.Session 方法
+type SessionInterface interface {
+	InsertAlignedRecordsOfOneDevice(deviceId string, timestamps []int64, measurements [][]string, dataTypes [][]client.TSDataType, values [][]interface{}, isAligned bool) (*rpc.TSStatus, error)
+	Close()
+}
+
+// SessionPoolInterface 定义了 SessionPool 的行为
+type SessionPoolInterface interface {
+	GetSession() (SessionInterface, error)
+	PutBack(session SessionInterface)
+	Close()
+}
+
+// Session 包装了 iotdbclient.Session
+type Session struct {
+	session client.Session
+}
+
+func (s *Session) InsertAlignedRecordsOfOneDevice(deviceId string, timestamps []int64, measurements [][]string, dataTypes [][]client.TSDataType, values [][]interface{}, isAligned bool) (*rpc.TSStatus, error) {
+	return s.session.InsertAlignedRecordsOfOneDevice(deviceId, timestamps, measurements, dataTypes, values, isAligned)
+}
+
+func (s *Session) Close() {
+	s.session.Close()
+}
+
+// SessionPool 包装了 iotdbclient.SessionPool
+type SessionPool struct {
+	pool *client.SessionPool
+}
+
+func (sp *SessionPool) GetSession() (SessionInterface, error) {
+	session, err := sp.pool.GetSession()
+	if err != nil {
+		return nil, err
+	}
+	return &Session{session: session}, nil
+}
+
+func (sp *SessionPool) PutBack(session SessionInterface) {
+	if s, ok := session.(*Session); ok {
+		sp.pool.PutBack(s.session)
+	}
+}
+
+func (sp *SessionPool) Close() {
+	sp.pool.Close()
 }
 
 // IotDBInfo IoTDB 的专属配置
@@ -37,50 +86,49 @@ type IotDBInfo struct {
 	BatchSize int32  `mapstructure:"batch_size"`
 }
 
-// NewIoTDBStrategy Step.0 构造函数
 func NewIoTDBStrategy(ctx context.Context) (Strategy, error) {
 	config := pkg.ConfigFromContext(ctx)
 	var info IotDBInfo
 	for _, strategyConfig := range config.Strategy {
 		if strategyConfig.Enable && strategyConfig.Type == "iotdb" {
 			// 将 map 转换为结构体
-			if err := mapstructure.Decode(strategyConfig, &info); err != nil {
+			if err := mapstructure.Decode(strategyConfig.Para, &info); err != nil {
 				return nil, fmt.Errorf("[NewIoTDBStrategy] Error decoding map to struct: %v", err)
 			}
 		}
 	}
 
-	var sessionPool client.SessionPool
+	var sessionPool SessionPoolInterface
 	if info.mode == "cluster" {
 		// 集群模式
 		config := &client.PoolConfig{
-			NodeUrls: strings.Split(info.URL, ","),
-			UserName: info.UserName,
-			Password: info.Password,
-			// 可选配置
+			NodeUrls:        strings.Split(info.URL, ","),
+			UserName:        info.UserName,
+			Password:        info.Password,
 			FetchSize:       info.BatchSize,
 			TimeZone:        "Asia/Shanghai",
 			ConnectRetryMax: 5,
 		}
-		sessionPool = client.NewSessionPool(config, 3, 60000, 60000, false)
+		pool := client.NewSessionPool(config, 3, 60000, 60000, false)
+		sessionPool = &SessionPool{pool: &pool}
 	} else {
 		// 单机模式
 		config := &client.PoolConfig{
-			Host:     info.Host,
-			Port:     info.Port,
-			UserName: info.UserName,
-			Password: info.Password,
-			// 可选配置
+			Host:            info.Host,
+			Port:            info.Port,
+			UserName:        info.UserName,
+			Password:        info.Password,
 			FetchSize:       info.BatchSize,
 			TimeZone:        "Asia/Shanghai",
 			ConnectRetryMax: 5,
 		}
-		sessionPool = client.NewSessionPool(config, 3, 60000, 60000, false)
+		pool := client.NewSessionPool(config, 3, 60000, 60000, false)
+		sessionPool = &SessionPool{pool: &pool}
 	}
-
+	pkg.LoggerFromContext(ctx).Debug("IoTDB 配置", zap.Any("info", info))
 	return &IoTDBStrategy{
 		logger:      pkg.LoggerFromContext(ctx),
-		sessionPool: &sessionPool,
+		sessionPool: sessionPool,
 		info:        info,
 		core: Core{
 			StrategyType: "iotdb",
@@ -124,17 +172,16 @@ func (b *IoTDBStrategy) Publish(point pkg.Point) error {
 	log.Debug("正在发送 %+v", zap.Any("point", point))
 	session, err := b.sessionPool.GetSession()
 	defer b.sessionPool.PutBack(session)
-	if err == nil {
+	if err != nil {
 		return fmt.Errorf("failed to get session %+v", err)
 	}
 
 	var (
 		deviceId     string // 设备 ID
-		measurements = make([][]string, 0)
-		values       = make([][]interface{}, 0)
-		dataTypes    = make([][]client.TSDataType, 0) //dataTypes 切片
+		measurements = [][]string{make([]string, 0)}
+		values       = [][]interface{}{make([]interface{}, 0)}
+		dataTypes    = [][]client.TSDataType{make([]client.TSDataType, 0)}
 	)
-
 	// 遍历字段
 	for key, valuePtr := range point.Field {
 		if valuePtr == nil {
