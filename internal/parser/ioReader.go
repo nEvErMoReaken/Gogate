@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"gateway/internal/pkg"
@@ -216,8 +217,10 @@ func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte, handler Snap
 		return ctx, fmt.Errorf("获取FixedLengthChunk长度错误: %v", err)
 	}
 	// 1. 读取固定长度数据
+	// 包装 reader 为 bufio.Reader，缓冲读取
+	bufReader := bufio.NewReader(reader)
 	data := make([]byte, chunkLen)
-	n, err := io.ReadFull(reader, data)
+	n, err := io.ReadFull(bufReader, data) // 使用 bufio.Reader 缓冲读取数据
 	if err != nil {
 		// 处理 EOF 错误
 		if err == io.EOF {
