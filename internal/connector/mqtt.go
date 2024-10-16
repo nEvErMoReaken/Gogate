@@ -10,6 +10,14 @@ import (
 	"time"
 )
 
+// MQTTClient 定义一个接口，包含需要的 MQTT 客户端方法
+type MQTTClient interface {
+	Connect() mqtt.Token
+	Disconnect(quiesce uint)
+	SubscribeMultiple(filters map[string]byte, callback mqtt.MessageHandler) mqtt.Token
+	IsConnected() bool
+}
+
 // MqttConfig 包含 MQTT 配置信息
 type MqttConfig struct {
 	Broker               string          `mapstructure:"broker"`
@@ -24,8 +32,8 @@ type MqttConfig struct {
 type MqttConnector struct {
 	ctx      context.Context
 	config   *MqttConfig
-	client   *mqtt.Client // MQTT 客户端
-	dataChan chan string  // 数据通道
+	Client   MQTTClient  // MQTT 客户端
+	dataChan chan string // 数据通道
 }
 
 func init() {
@@ -34,12 +42,12 @@ func init() {
 
 func (m *MqttConnector) Start() {
 	// 检查客户端是否已经连接
-	if token := (*m.client).Connect(); token.Wait() && token.Error() != nil {
+	if token := m.Client.Connect(); token.Wait() && token.Error() != nil {
 		pkg.ErrChanFromContext(m.ctx) <- fmt.Errorf("MQTT连接失败: %v", token.Error())
 	}
 
 	// 订阅多个话题
-	token := (*m.client).SubscribeMultiple(m.config.Topics, m.messagePubHandler)
+	token := m.Client.SubscribeMultiple(m.config.Topics, m.messagePubHandler)
 	token.Wait() // 等待订阅完成
 	if err := token.Error(); err != nil {
 		pkg.ErrChanFromContext(m.ctx) <- fmt.Errorf("MQTT订阅失败: %v", err)
@@ -63,8 +71,8 @@ func (m *MqttConnector) GetDataSource() (pkg.DataSource, error) {
 
 func (m *MqttConnector) Close() error {
 	// 关闭MQTT客户端，优雅关闭
-	if m.client != nil && (*m.client).IsConnected() {
-		(*m.client).Disconnect(250)
+	if m.Client != nil && m.Client.IsConnected() {
+		m.Client.Disconnect(250)
 		pkg.LoggerFromContext(m.ctx).Info("MQTT连接已断开")
 		return nil
 	}
@@ -75,6 +83,15 @@ func (m *MqttConnector) Close() error {
 func NewMqttConnector(ctx context.Context) (connector Connector, err error) {
 	// 1. 初始化配置文件
 	config := pkg.ConfigFromContext(ctx)
+	// 2. 处理 timeout 字段（从字符串解析为 time.Duration）
+	if timeoutStr, ok := config.Connector.Para["maxReconnectInterval"].(string); ok {
+		duration, err := time.ParseDuration(timeoutStr)
+		if err != nil {
+			return nil, fmt.Errorf("解析超时配置失败: %s", err)
+		}
+		config.Connector.Para["maxReconnectInterval"] = duration // 替换为 time.Duration
+	}
+
 	var mqttConfig MqttConfig
 	err = mapstructure.Decode(config.Connector.Para, &mqttConfig)
 	if err != nil {
@@ -103,7 +120,7 @@ func NewMqttConnector(ctx context.Context) (connector Connector, err error) {
 
 	// 创建 MQTT 客户端
 	client := mqtt.NewClient(opts)
-	mqttConnector.client = &client
+	mqttConnector.Client = client
 
 	return mqttConnector, nil
 }
