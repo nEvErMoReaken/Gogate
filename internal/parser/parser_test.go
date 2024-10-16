@@ -245,23 +245,30 @@ func TestLaunchALL(t *testing.T) {
 	// 启动所有快照的发射
 	go collection.LaunchALL(ctx, mapChan)
 
-	// 增加超时机制，防止死锁
-	select {
-	case point1 := <-mapChan["influxdb"]:
-		// 检查第一个设备的数据点
-		assert.Equal(t, "device1", point1.DeviceName, "设备名称应为 'device1'")
-		assert.Equal(t, 25, point1.Field["temperature"], "字段 'temperature' 应为 25")
-	case <-time.After(1 * time.Second):
-		t.Fatal("Timed out waiting for first point")
+	// 创建一个 map 来存储接收到的数据点
+	receivedPoints := make(map[string]pkg.Point)
+
+	timeout := time.After(2 * time.Second)
+	for i := 0; i < 2; i++ {
+		select {
+		case point := <-mapChan["influxdb"]:
+			receivedPoints[point.DeviceName] = point
+		case <-timeout:
+			t.Fatal("Timed out waiting for points")
+		}
 	}
 
-	select {
-	case point2 := <-mapChan["influxdb"]:
-		// 检查第二个设备的数据点
-		assert.Equal(t, "device2", point2.DeviceName, "设备名称应为 'device2'")
-		assert.Equal(t, 60, point2.Field["humidity"], "字段 'humidity' 应为 60")
-	case <-time.After(1 * time.Second):
-		t.Fatal("Timed out waiting for second point")
+	// 检查是否收到了预期的设备数据点
+	if point, ok := receivedPoints["device1"]; ok {
+		assert.Equal(t, 25, point.Field["temperature"], "字段 'temperature' 应为 25")
+	} else {
+		t.Fatal("Did not receive data point from 'device1'")
+	}
+
+	if point, ok := receivedPoints["device2"]; ok {
+		assert.Equal(t, 60, point.Field["humidity"], "字段 'humidity' 应为 60")
+	} else {
+		t.Fatal("Did not receive data point from 'device2'")
 	}
 }
 

@@ -49,7 +49,10 @@ func (s *Session) InsertAlignedRecordsOfOneDevice(deviceId string, timestamps []
 }
 
 func (s *Session) Close() {
-	s.session.Close()
+	_, err := s.session.Close()
+	if err != nil {
+		return
+	}
 }
 
 // SessionPool 包装了 iotdbclient.SessionPool

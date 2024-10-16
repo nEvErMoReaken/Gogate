@@ -27,7 +27,7 @@ func main() {
 	log.Info("配置信息", zap.Any("common", config))
 	log.Info("*** 初始化流程开始 ***")
 
-	// 4. 创建上下文
+	// 3. 创建上下文
 	ctx, cancel := context.WithCancel(context.Background())
 	errChan := make(chan error, 10) // 创建一个只写的全局错误通道, 缓存大小为10
 	ctx = pkg.WithErrChan(ctx, errChan)
@@ -38,7 +38,7 @@ func main() {
 
 	internal.StartPipeline(ctxWithConfigAndLogger)
 
-	// 6. 主线程监听终止信号
+	// 5. 主线程监听终止信号
 	si := make(chan os.Signal, 1)
 	signal.Notify(si, os.Interrupt, syscall.SIGTERM)
 	for {

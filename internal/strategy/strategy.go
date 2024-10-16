@@ -34,8 +34,6 @@ func Register(strategyType string, factory FactoryFunc) {
 // MapSendStrategy 代表发送策略集 这里面是所有已启用的数据源
 type MapSendStrategy map[string]Strategy
 
-//var SendStrategyMap MapSendStrategy
-
 // New 初始化一个发送策略集
 func New(ctx context.Context) (MapSendStrategy, error) {
 	SendStrategyMap := make(MapSendStrategy)
@@ -52,8 +50,3 @@ func New(ctx context.Context) (MapSendStrategy, error) {
 	}
 	return SendStrategyMap, nil
 }
-
-//// Get 获取一个发送策略
-//func Get(strategyType string) Strategy {
-//	return SendStrategyMap[strategyType]
-//}
