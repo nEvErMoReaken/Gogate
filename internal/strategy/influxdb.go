@@ -17,6 +17,16 @@ func init() {
 	Register("influxdb", NewInfluxDbStrategy)
 }
 
+// InfluxDbInfo InfluxDB的专属配置
+type InfluxDbInfo struct {
+	URL       string   `mapstructure:"url"`
+	Org       string   `mapstructure:"org"`
+	Token     string   `mapstructure:"token"`
+	Bucket    string   `mapstructure:"bucket"`
+	BatchSize uint     `mapstructure:"batch_size"`
+	Tags      []string `mapstructure:"tags"`
+}
+
 // InfluxDbStrategy 实现将数据发布到 InfluxDB 的逻辑
 type InfluxDbStrategy struct {
 	client   influxdb2.Client
@@ -29,15 +39,21 @@ type InfluxDbStrategy struct {
 // NewInfluxDbStrategy Step.0 构造函数
 func NewInfluxDbStrategy(ctx context.Context) (Strategy, error) {
 	config := pkg.ConfigFromContext(ctx)
+
 	var info InfluxDbInfo
 	for _, strategyConfig := range config.Strategy {
-		if strategyConfig.Enable && strategyConfig.Type == "influxDB" {
+		if strategyConfig.Enable && strategyConfig.Type == "influxdb" {
 			// 将 map 转换为结构体
-			if err := mapstructure.Decode(strategyConfig, &info); err != nil {
+			if err := mapstructure.Decode(strategyConfig.Para, &info); err != nil {
 				return nil, fmt.Errorf("[NewInfluxDbStrategy] Error decoding map to struct: %v", err)
 			}
 		}
 	}
+	// 检查 BatchSize 是否为零或未设置，如果是，使用默认值 否则会出现 /0 的panic
+	if info.BatchSize == 0 {
+		info.BatchSize = 100 // 使用默认的批处理大小
+	}
+	pkg.LoggerFromContext(ctx).Debug("InfluxDB配置", zap.Any("info", info))
 	client := influxdb2.NewClientWithOptions(info.URL, info.Token, influxdb2.DefaultOptions().SetBatchSize(info.BatchSize))
 	// 获取写入 API
 	writeAPI := client.WriteAPI(info.Org, info.Bucket)
@@ -85,16 +101,6 @@ func (b *InfluxDbStrategy) Start() {
 			}
 		}
 	}
-}
-
-// InfluxDbInfo InfluxDB的专属配置
-type InfluxDbInfo struct {
-	URL       string   `mapstructure:"url"`
-	Org       string   `mapstructure:"org"`
-	Token     string   `mapstructure:"token"`
-	Bucket    string   `mapstructure:"bucket"`
-	BatchSize uint     `mapstructure:"batch_size"`
-	Tags      []string `mapstructure:"tags"`
 }
 
 func (b *InfluxDbStrategy) Publish(point pkg.Point) error {
