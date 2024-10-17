@@ -28,7 +28,7 @@ func Register(parserType string, factory FactoryFunc) {
 	Factories[parserType] = factory
 }
 
-func New(ctx context.Context, dataSource pkg.DataSource, mapChan map[string]chan pkg.Point) (Parser, error) {
+var New = func(ctx context.Context, dataSource pkg.DataSource, mapChan map[string]chan pkg.Point) (Parser, error) {
 	config := pkg.ConfigFromContext(ctx)
 	factory, ok := Factories[config.Connector.Type]
 	if !ok {

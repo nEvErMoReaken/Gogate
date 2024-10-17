@@ -27,7 +27,7 @@ func Register(connType string, factory FactoryFunc) {
 }
 
 // New 运行指定类型的数据源
-func New(ctx context.Context) (connector Connector, err error) {
+var New = func(ctx context.Context) (connector Connector, err error) {
 	config := pkg.ConfigFromContext(ctx)
 	factory, ok := Factories[config.Connector.Type]
 	if !ok {

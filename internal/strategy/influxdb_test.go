@@ -97,7 +97,7 @@ func TestInfluxDbStrategy_Publish(t *testing.T) {
 			Tags:   []string{"tag1", "tag2"},
 		},
 		logger: zap.NewNop(),
-		core:   Core{StrategyType: "influxdb", pointChan: make(chan pkg.Point, 200), ctx: context.Background()},
+		core:   Core{StrategyType: "influxdb", PointChan: make(chan pkg.Point, 200), ctx: context.Background()},
 	}
 
 	// 模拟数据点
@@ -147,7 +147,7 @@ func TestInfluxDbStrategy_StartAndStop(t *testing.T) {
 			Tags:   []string{"tag1", "tag2"},
 		},
 		logger: zap.NewNop(),
-		core:   Core{StrategyType: "influxDB", pointChan: make(chan pkg.Point, 200), ctx: context.Background()},
+		core:   Core{StrategyType: "influxDB", PointChan: make(chan pkg.Point, 200), ctx: context.Background()},
 	}
 
 	// 创建一个取消函数来停止策略
@@ -158,7 +158,7 @@ func TestInfluxDbStrategy_StartAndStop(t *testing.T) {
 	go strategy.Start()
 
 	// 发送一个数据点到 channel
-	strategy.core.pointChan <- pkg.Point{
+	strategy.core.PointChan <- pkg.Point{
 		DeviceName: "device1",
 		DeviceType: "type1",
 		Field:      map[string]interface{}{"field1": 42},

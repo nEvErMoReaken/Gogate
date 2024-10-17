@@ -71,7 +71,7 @@ func NewInfluxDbStrategy(ctx context.Context) (Strategy, error) {
 		client:   client,
 		writeAPI: writeAPI,
 		info:     info,
-		core:     Core{StrategyType: "influxDB", pointChan: make(chan pkg.Point, 200), ctx: ctx},
+		core:     Core{StrategyType: "influxDB", PointChan: make(chan pkg.Point, 200), ctx: ctx},
 	}, nil
 }
 
@@ -82,7 +82,7 @@ func (b *InfluxDbStrategy) GetCore() Core {
 
 // GetChan Step.2
 func (b *InfluxDbStrategy) GetChan() chan pkg.Point {
-	return b.core.pointChan
+	return b.core.PointChan
 }
 
 // Start Step.3
@@ -94,7 +94,7 @@ func (b *InfluxDbStrategy) Start() {
 		case <-b.core.ctx.Done():
 			b.Stop()
 			pkg.LoggerFromContext(b.core.ctx).Info("===IoTDBStrategy stopped===")
-		case point := <-b.core.pointChan:
+		case point := <-b.core.PointChan:
 			err := b.Publish(point)
 			if err != nil {
 				pkg.ErrChanFromContext(b.core.ctx) <- fmt.Errorf("IoTDBStrategy error occurred: %w", err)

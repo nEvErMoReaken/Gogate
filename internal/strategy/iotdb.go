@@ -135,7 +135,7 @@ func NewIoTDBStrategy(ctx context.Context) (Strategy, error) {
 		info:        info,
 		core: Core{
 			StrategyType: "iotdb",
-			pointChan:    make(chan pkg.Point, 200),
+			PointChan:    make(chan pkg.Point, 200),
 			ctx:          context.WithValue(ctx, "strategy", "iotdb"),
 		},
 	}, nil
@@ -143,7 +143,7 @@ func NewIoTDBStrategy(ctx context.Context) (Strategy, error) {
 
 // GetChan Step.1
 func (b *IoTDBStrategy) GetChan() chan pkg.Point {
-	return b.core.pointChan
+	return b.core.PointChan
 }
 
 // GetCore Step.2
@@ -159,7 +159,7 @@ func (b *IoTDBStrategy) Start() {
 		case <-b.core.ctx.Done():
 			b.Stop()
 			b.logger.Info("===IoTDBStrategy stopped===")
-		case point := <-b.core.pointChan:
+		case point := <-b.core.PointChan:
 			err := b.Publish(point)
 			if err != nil {
 				pkg.ErrChanFromContext(b.core.ctx) <- fmt.Errorf("IoTDBStrategy error occurred: %w", err)

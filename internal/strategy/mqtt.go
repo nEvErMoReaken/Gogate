@@ -109,7 +109,7 @@ func NewMqttStrategy(ctx context.Context) (Strategy, error) {
 	return &MqttStrategy{
 		client: mqCLi,
 		info:   info,
-		core:   Core{StrategyType: "mqtt", pointChan: make(chan pkg.Point, 200), ctx: ctx},
+		core:   Core{StrategyType: "mqtt", PointChan: make(chan pkg.Point, 200), ctx: ctx},
 		logger: logger,
 	}, nil
 }
@@ -121,7 +121,7 @@ func (m *MqttStrategy) GetCore() Core {
 
 // GetChan Step.2
 func (m *MqttStrategy) GetChan() chan pkg.Point {
-	return m.core.pointChan
+	return m.core.PointChan
 }
 
 // Start Step.3
@@ -135,7 +135,7 @@ func (m *MqttStrategy) Start() {
 		case <-m.core.ctx.Done():
 			m.Stop()
 			pkg.LoggerFromContext(m.core.ctx).Info("===MqttStrategy stopped===")
-		case point := <-m.core.pointChan:
+		case point := <-m.core.PointChan:
 			err := m.Publish(point)
 			if err != nil {
 				pkg.ErrChanFromContext(m.core.ctx) <- fmt.Errorf("MqttStrategy error occurred: %w", err)

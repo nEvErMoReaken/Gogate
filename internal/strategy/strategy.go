@@ -16,7 +16,7 @@ type Strategy interface {
 // Core 代表一个发送策略的核心结构, 其他策略必须组合它
 type Core struct {
 	StrategyType string
-	pointChan    chan pkg.Point
+	PointChan    chan pkg.Point
 	ctx          context.Context
 }
 
@@ -34,8 +34,10 @@ func Register(strategyType string, factory FactoryFunc) {
 // MapSendStrategy 代表发送策略集 这里面是所有已启用的数据源
 type MapSendStrategy map[string]Strategy
 
+//var SendStrategyMap MapSendStrategy
+
 // New 初始化一个发送策略集
-func New(ctx context.Context) (MapSendStrategy, error) {
+var New = func(ctx context.Context) (MapSendStrategy, error) {
 	SendStrategyMap := make(MapSendStrategy)
 	for _, strategyConfig := range pkg.ConfigFromContext(ctx).Strategy {
 		if strategyConfig.Enable {

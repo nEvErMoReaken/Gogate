@@ -109,7 +109,7 @@ func TestIoTDBStrategy_Publish(t *testing.T) {
 		info:        IotDBInfo{},
 		core: Core{
 			StrategyType: "iotdb",
-			pointChan:    make(chan pkg.Point, 200),
+			PointChan:    make(chan pkg.Point, 200),
 			ctx:          ctx,
 		},
 		logger: zap.NewNop(),
@@ -163,7 +163,7 @@ func TestIoTDBStrategy_Publish_Error(t *testing.T) {
 		info:        IotDBInfo{},
 		core: Core{
 			StrategyType: "iotdb",
-			pointChan:    make(chan pkg.Point, 200),
+			PointChan:    make(chan pkg.Point, 200),
 			ctx:          ctx,
 		},
 		logger: zap.NewNop(),
@@ -195,7 +195,7 @@ func TestIoTDBStrategy_StartStop(t *testing.T) {
 		info:        IotDBInfo{},
 		core: Core{
 			StrategyType: "iotdb",
-			pointChan:    make(chan pkg.Point, 1),
+			PointChan:    make(chan pkg.Point, 1),
 			ctx:          ctx,
 		},
 		logger: zap.NewNop(),
@@ -212,7 +212,7 @@ func TestIoTDBStrategy_StartStop(t *testing.T) {
 		Field:      map[string]interface{}{"temperature": 25.0},
 		Ts:         time.Now(),
 	}
-	iotdbStrategy.core.pointChan <- point
+	iotdbStrategy.core.PointChan <- point
 
 	// 停止策略
 	cancel()
