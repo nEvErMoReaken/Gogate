@@ -17,7 +17,7 @@ type Strategy interface {
 type Core struct {
 	StrategyType string
 	PointChan    chan pkg.Point
-	ctx          context.Context
+	Ctx          context.Context
 }
 
 // FactoryFunc 代表一个发送策略的工厂函数

@@ -13,7 +13,7 @@ type MockConnector struct{}
 
 func (m *MockConnector) Start() {}
 
-func (m *MockConnector) Ready() <-chan pkg.DataSource {
+func (m *MockConnector) Ready() chan pkg.DataSource {
 	return nil
 }
 

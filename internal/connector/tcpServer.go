@@ -29,7 +29,7 @@ type ServerConfig struct {
 	Timeout   time.Duration     `mapstructure:"timeout"`
 }
 
-func (t *TcpServerConnector) Ready() <-chan pkg.DataSource {
+func (t *TcpServerConnector) Ready() chan pkg.DataSource {
 	return t.chReady
 }
 
