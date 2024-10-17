@@ -57,7 +57,7 @@ func (m *MqttConnector) Start() {
 	pkg.LoggerFromContext(m.ctx).Info("MQTT订阅成功，正在监听消息")
 }
 
-func (m *MqttConnector) Ready() <-chan pkg.DataSource {
+func (m *MqttConnector) Ready() chan pkg.DataSource {
 	// 饿连接器可以立即返回数据源无需通道
 	return nil
 }
