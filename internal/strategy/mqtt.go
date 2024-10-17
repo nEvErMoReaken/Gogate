@@ -48,13 +48,14 @@ type MQTTInfo struct {
 
 // NewMqttStrategy Step.0 构造函数
 func NewMqttStrategy(ctx context.Context) (Strategy, error) {
-	logger := pkg.LoggerFromContext(ctx)
+	log := pkg.LoggerFromContext(ctx)
 	config := pkg.ConfigFromContext(ctx)
 	var info MQTTInfo
 	for _, strategyConfig := range config.Strategy {
 		if strategyConfig.Enable && strategyConfig.Type == "mqtt" {
 			// 将 map 转换为结构体
 			if err := mapstructure.Decode(strategyConfig.Para, &info); err != nil {
+				log.Error("Error decoding map to struct", zap.Error(err))
 				return nil, fmt.Errorf("[NewMqttStrategy] Error decoding map to struct: %v", err)
 			}
 		}
@@ -71,7 +72,7 @@ func NewMqttStrategy(ctx context.Context) (Strategy, error) {
 	opts.SetConnectRetryInterval(10 * time.Second)
 	// 添加连接丢失的回调函数，打印连接丢失日志
 	opts.SetConnectionLostHandler(func(client MQTT.Client, err error) {
-		logger.Error("MQTT connection lost", zap.Error(err))
+		log.Error("MQTT connection lost", zap.Error(err))
 	})
 
 	reconnectAttempts := 0 // 重连尝试计数器
@@ -79,7 +80,7 @@ func NewMqttStrategy(ctx context.Context) (Strategy, error) {
 	// 重连中的回调函数
 	opts.SetReconnectingHandler(func(client MQTT.Client, opts *MQTT.ClientOptions) {
 		reconnectAttempts++
-		logger.Info("Attempting to reconnect...", zap.Int("attempt", reconnectAttempts))
+		log.Info("Attempting to reconnect...", zap.Int("attempt", reconnectAttempts))
 
 		// 如果超过最大重连次数
 		if reconnectAttempts >= maxReconnectAttempts {
@@ -88,6 +89,7 @@ func NewMqttStrategy(ctx context.Context) (Strategy, error) {
 			// 将错误传递到错误通道，通知上层程序
 			errChan := pkg.ErrChanFromContext(ctx)
 			if errChan != nil {
+				log.Error("MQTT reached max reconnect attempts, stopping client")
 				errChan <- fmt.Errorf("[MqttStrategy]MQTT reached max reconnect attempts, stopping client")
 			}
 		}
@@ -96,13 +98,14 @@ func NewMqttStrategy(ctx context.Context) (Strategy, error) {
 	// 成功连接时重置计数器
 	opts.SetOnConnectHandler(func(client MQTT.Client) {
 		reconnectAttempts = 0
-		logger.Info("Successfully connected to MQTT Broker.")
+		log.Info("Successfully connected to MQTT Broker.")
 	})
 
 	// 创建 MQTT 客户端
 	mqCLi := MQTT.NewClient(opts)
 	// 连接到 MQTT Broker
 	if token := mqCLi.Connect(); token.Wait() && token.Error() != nil {
+		log.Error("Failed to connect to MQTT Broker", zap.Error(token.Error()))
 		return nil, fmt.Errorf("连接到 MQTT Broker 失败:%+v", token.Error())
 	}
 
@@ -110,7 +113,7 @@ func NewMqttStrategy(ctx context.Context) (Strategy, error) {
 		client: mqCLi,
 		info:   info,
 		core:   Core{StrategyType: "mqtt", PointChan: make(chan pkg.Point, 200), Ctx: ctx},
-		logger: logger,
+		logger: log,
 	}, nil
 }
 
@@ -154,6 +157,7 @@ func (m *MqttStrategy) Publish(point pkg.Point) error {
 
 		decodedFields[key] = valuePtr
 	}
+	decodedFields["ts"] = point.Ts
 	// 将 map 序列化为 JSON
 	jsonData, err := json.Marshal(decodedFields)
 	if err != nil {

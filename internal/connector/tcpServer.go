@@ -34,7 +34,7 @@ func (t *TcpServerConnector) Ready() chan pkg.DataSource {
 }
 
 func init() {
-	Register("tcpServer", NewTcpServer)
+	Register("tcpserver", NewTcpServer)
 }
 
 func NewTcpServer(ctx context.Context) (Connector, error) {
@@ -45,6 +45,7 @@ func NewTcpServer(ctx context.Context) (Connector, error) {
 	if timeoutStr, ok := config.Connector.Para["timeout"].(string); ok {
 		duration, err := time.ParseDuration(timeoutStr)
 		if err != nil {
+			pkg.LoggerFromContext(ctx).Error("解析超时配置失败", zap.Error(err))
 			return nil, fmt.Errorf("解析超时配置失败: %s", err)
 		}
 		config.Connector.Para["timeout"] = duration // 替换为 time.Duration
@@ -54,12 +55,14 @@ func NewTcpServer(ctx context.Context) (Connector, error) {
 	var serverConfig ServerConfig
 	err := mapstructure.Decode(config.Connector.Para, &serverConfig)
 	if err != nil {
+		pkg.LoggerFromContext(ctx).Error("解析超时配置失败", zap.Error(err))
 		return nil, fmt.Errorf("配置文件解析失败: %s", err)
 	}
 
 	// 4. 初始化listener
 	listener, err := net.Listen("tcp", ":"+serverConfig.Port)
 	if err != nil {
+		pkg.LoggerFromContext(ctx).Error("解析超时配置失败", zap.Error(err))
 		return nil, fmt.Errorf("tcpServer监听程序启动失败: %s\n", err)
 	}
 
@@ -78,7 +81,7 @@ func (t *TcpServerConnector) GetDataSource() (pkg.DataSource, error) {
 func (t *TcpServerConnector) Start() {
 	log := pkg.LoggerFromContext(t.ctx)
 	// 1. 监听指定的端口
-	log.Info("TCPServer listening on: " + t.serverConfig.Port)
+	log.Debug("TCPServer listening on: " + t.serverConfig.Port)
 	for {
 		// 该循环会一直阻塞，直到有新的连接到来
 		// 只有两种情况会退出循环：1.监听器关闭 2.接受连接失败

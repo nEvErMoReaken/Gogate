@@ -40,6 +40,7 @@ func mockStrategyFactory(ctx context.Context) (strategy.Strategy, error) {
 }
 
 func failingStrategyFactory(ctx context.Context) (strategy.Strategy, error) {
+	_ = ctx
 	return nil, errors.New("failed to create strategy")
 }
 

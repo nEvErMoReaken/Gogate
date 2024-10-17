@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"gateway/internal/pkg"
+	"go.uber.org/zap"
 )
 
 // Connector 是所有数据源的通用接口
@@ -29,6 +30,13 @@ func Register(connType string, factory FactoryFunc) {
 // New 运行指定类型的数据源
 var New = func(ctx context.Context) (connector Connector, err error) {
 	config := pkg.ConfigFromContext(ctx)
+	// 记录可用的工厂类型
+	factoryTypes := make([]string, 0, len(Factories))
+	for key := range Factories {
+		factoryTypes = append(factoryTypes, key)
+	}
+	pkg.LoggerFromContext(ctx).Debug("Connector Factory:", zap.Strings("Factories", factoryTypes))
+	pkg.LoggerFromContext(ctx).Debug(fmt.Sprintf("===正在启动Connector: %s===", config.Connector.Type))
 	factory, ok := Factories[config.Connector.Type]
 	if !ok {
 		return nil, fmt.Errorf("未找到数据源类型: %s", config.Connector.Type)

@@ -27,6 +27,7 @@ func (m *MockConnector) GetDataSource() (pkg.DataSource, error) {
 
 // MockFactoryFunc 是一个用于测试的工厂函数
 func MockFactoryFunc(ctx context.Context) (Connector, error) {
+	_ = ctx
 	return &MockConnector{}, nil
 }
 

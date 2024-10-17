@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/spf13/viper"
 	"io/fs"
+	"os"
 	"path/filepath"
 )
 
@@ -62,12 +63,16 @@ type ConnectorConfig struct {
 
 // InitCommon 用于初始化全局配置
 func InitCommon(configDir string) (*Config, error) {
-
+	currentDir, err := os.Getwd()
+	if err != nil {
+		fmt.Printf("获取当前工作目录失败: %v\n", err)
+	} else {
+		fmt.Printf("当前工作目录: %s\n", currentDir)
+	}
 	v := viper.NewWithOptions(viper.KeyDelimiter("::")) // 设置 key 分隔符为 ::，因为默认的 . 会和 IP 地址冲突
 	v.AddConfigPath(configDir)
-	v.AutomaticEnv() // 读取环境变量
 	// 遍历配置目录及其子目录中的所有文件
-	err := filepath.WalkDir(configDir, func(filePath string, d fs.DirEntry, err error) error {
+	err = filepath.WalkDir(configDir, func(filePath string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return fmt.Errorf("访问路径 %s 失败: %w", filePath, err)
 		}
@@ -101,6 +106,8 @@ func InitCommon(configDir string) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	// 在配置文件读取之后启用环境变量
+	v.AutomaticEnv()
 	var common Config
 	// 反序列化到结构体
 	if err := v.Unmarshal(&common); err != nil {

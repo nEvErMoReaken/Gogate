@@ -52,10 +52,10 @@ func NewLogger(config *LogConfig) *zap.Logger {
 		MessageKey:     "msg",
 		StacktraceKey:  "trace",
 		LineEnding:     zapcore.DefaultLineEnding,
-		EncodeLevel:    zapcore.CapitalColorLevelEncoder, // 带颜色
-		EncodeTime:     zapcore.ISO8601TimeEncoder,       // ISO8601时间格式
-		EncodeDuration: zapcore.SecondsDurationEncoder,   // 时间格式
-		EncodeCaller:   zapcore.ShortCallerEncoder,       // 简短的调用者编码器 (文件名和行号)
+		EncodeLevel:    zapcore.CapitalLevelEncoder,
+		EncodeTime:     zapcore.ISO8601TimeEncoder,     // ISO8601时间格式
+		EncodeDuration: zapcore.SecondsDurationEncoder, // 时间格式
+		EncodeCaller:   zapcore.ShortCallerEncoder,     // 简短的调用者编码器 (文件名和行号)
 	}
 
 	// 创建一个控制台编码器，带有自定义的日志格式

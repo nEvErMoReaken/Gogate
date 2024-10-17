@@ -7,6 +7,7 @@ import (
 	"gateway/internal/parser"
 	"gateway/internal/pkg"
 	"gateway/internal/strategy"
+	"go.uber.org/zap"
 	"time"
 )
 
@@ -44,6 +45,7 @@ func handleLazyConnector(ctx context.Context, readyChan <-chan pkg.DataSource) {
 		case dataSource := <-readyChan:
 			s, err := StartParser(ctx, dataSource)
 			if err != nil {
+				pkg.LoggerFromContext(ctx).Error("failed to start parser", zap.Error(err))
 				pkg.ErrChanFromContext(ctx) <- fmt.Errorf("failed to start parser: %w", err)
 				return
 			}
@@ -75,19 +77,24 @@ func StartPipeline(ctx context.Context) {
 	// 0. 初始化连接器
 	c, err := connector.New(pkg.WithLoggerAndModule(ctx, pkg.LoggerFromContext(ctx), "Connector"))
 	if err != nil {
+		pkg.LoggerFromContext(ctx).Error("failed to create connector", zap.Error(err))
 		pkg.ErrChanFromContext(ctx) <- fmt.Errorf("failed to create connector: %w", err)
 		return
 	}
 
 	// 1. 启动连接器，启动 Connector 后，数据源由 Parser 处理
-	c.Start()
+	// 懒拦截器这里会阻塞， 主动型连接器这里会立即返回
+	go c.Start()
+
 	readyChan := c.Ready()
 
 	// 2. 处理懒连接器（有 readyChan）或主动连接器（无 readyChan）
 	if readyChan != nil {
+		pkg.LoggerFromContext(ctx).Debug("===正在启动懒连接器===")
 		// 懒创建型连接器
 		go handleLazyConnector(ctx, readyChan)
 	} else {
+		pkg.LoggerFromContext(ctx).Debug("===正在启动主动连接器===")
 		// 主动启动型连接器
 		handleEagerConnector(c, ctx)
 	}

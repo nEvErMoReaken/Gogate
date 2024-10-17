@@ -30,10 +30,15 @@ func Register(parserType string, factory FactoryFunc) {
 
 var New = func(ctx context.Context, dataSource pkg.DataSource, mapChan map[string]chan pkg.Point) (Parser, error) {
 	config := pkg.ConfigFromContext(ctx)
-	factory, ok := Factories[config.Connector.Type]
+	factory, ok := Factories[config.Parser.Type]
 	if !ok {
 		return nil, fmt.Errorf("未找到解析器类型: %s", config.Connector.Type)
 	}
+	factoryTypes := make([]string, 0, len(Factories))
+	for key := range Factories {
+		factoryTypes = append(factoryTypes, key)
+	}
+	pkg.LoggerFromContext(ctx).Debug("Strategy Factory:", zap.Strings("Factories", factoryTypes))
 
 	// 1. 初始化脚本模块
 	err := LoadAllScripts(ctx, config.Parser.Para["dir"].(string))
@@ -42,6 +47,7 @@ var New = func(ctx context.Context, dataSource pkg.DataSource, mapChan map[strin
 	}
 	pkg.LoggerFromContext(ctx).Info("已加载Byte脚本", zap.Any("ByteScripts", ByteScriptFuncCache))
 	pkg.LoggerFromContext(ctx).Info("已加载Json脚本", zap.Any("JsonScripts", JsonScriptFuncCache))
+	pkg.LoggerFromContext(ctx).Debug(fmt.Sprintf("===正在启动Parser: %s===", config.Parser.Type))
 
 	// 2. 直接调用工厂函数
 	parser, err := factory(dataSource, mapChan, ctx)
@@ -201,6 +207,7 @@ func checkFilter(deviceType, deviceName, telemetryName, filter string) (bool, er
 
 // SetField 设置或更新字段值，支持将值存储为指针, 需要策略配置来路由具体地发送策略
 func (dm *DeviceSnapshot) SetField(ctx context.Context, fieldName string, value interface{}) error {
+	pkg.LoggerFromContext(ctx).Debug("updating field", zap.String("devName", dm.DeviceName), zap.String("devType", dm.DeviceType), zap.String("field", fieldName), zap.Any("value", value))
 	// 如果字段值为“nil”，代表是需要丢弃的值，则不进行任何操作
 	if fieldName == "nil" {
 		return nil
@@ -244,6 +251,8 @@ func (dm *DeviceSnapshot) launch(ctx context.Context, mapChan map[string]chan pk
 	//fmt.Printf("launching device snapshot: %v\n", dm)
 	//fmt.Printf("mapChan: %v\n", mapChan)
 	//fmt.Printf("DataSink: %v\n", dm.DataSink)
+	// 发射时统一更新时间， 确保一帧的时间是一致的
+	dm.Ts = ctx.Value("ts").(time.Time)
 	for st := range dm.DataSink {
 		select {
 		case mapChan[st] <- dm.makePoint(st):

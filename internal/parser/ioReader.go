@@ -62,7 +62,7 @@ type ToConfig struct {
 
 // Chunk 处理器接口
 type Chunk interface {
-	Process(reader io.Reader, frame *[]byte, handler SnapshotCollection, ctx context.Context) (changedCtx context.Context, err error)
+	Process(reader io.Reader, frame *[]byte, handler *SnapshotCollection, ctx context.Context) (changedCtx context.Context, err error)
 	String() string // 添加 String 方法
 }
 
@@ -89,12 +89,13 @@ func NewIoReader(dataSource pkg.DataSource, mapChan map[string]chan pkg.Point, c
 	if !exist {
 		return nil, fmt.Errorf("未找到协议文件: %s", c.ProtoFile)
 	}
-	chunks, ok := chunksConfig.([]interface{})
+	pkg.LoggerFromContext(ctx).Debug("协议文件", zap.Any("chunks", chunksConfig))
+	chunks, ok := chunksConfig.(map[string]interface{})
 	if !ok {
 		return nil, fmt.Errorf("协议文件格式错误")
 	}
 	// 初始化 IoReader
-	ioReader, err := createIoParser(c, ctx, chunks, mapChan, reader, dataSource.MetaData)
+	ioReader, err := createIoParser(c, ctx, chunks["chunks"].([]interface{}), mapChan, reader, dataSource.MetaData)
 	if err != nil {
 		return nil, fmt.Errorf("初始化IoReader失败: %s", err)
 	}
@@ -103,7 +104,7 @@ func NewIoReader(dataSource pkg.DataSource, mapChan map[string]chan pkg.Point, c
 
 // Start 方法用于启动 IoReader
 func (r *IoReader) Start() {
-
+	pkg.LoggerFromContext(r.ctx).Info("===IoReader 开始处理数据===")
 	for {
 		count := 0
 		select {
@@ -113,19 +114,22 @@ func (r *IoReader) Start() {
 			// 4.1 Frame 数组，用于存储一帧原始报文
 			frame := make([]byte, 0)
 			ctx := r.ctx
+			// 绑定默认时间, 协议中有可能覆盖
+			ctx = context.WithValue(ctx, "ts", time.Now())
 			// ** 此处是完整的一帧的开始 **
 			for index, chunk := range r.Chunks {
 				var err error
-				ctx, err = chunk.Process(r.Reader, &frame, r.SnapshotCollection, ctx)
+				ctx, err = chunk.Process(r.Reader, &frame, &r.SnapshotCollection, ctx)
 				if err != nil {
 					if err == io.EOF {
-						pkg.LoggerFromContext(r.ctx).Info("[HandleConnection] 读取到 EOF，等待更多数据")
+						pkg.LoggerFromContext(r.ctx).Info("读取到 EOF，等待更多数据")
 						return // 读取到 EOF 后可以忽略
 					}
-					pkg.ErrChanFromContext(r.ctx) <- fmt.Errorf("[HandleConnection] 解析第 %d 个 Chunk 失败: %s", index+1, err) // 其他错误，终止连接
-					return                                                                                                // 解析失败时终止处理
+					pkg.ErrChanFromContext(r.ctx) <- fmt.Errorf("解析第 %d 个 Chunk 失败: %s", index+1, err) // 其他错误，终止连接
+					return                                                                             // 解析失败时终止处理
 				}
 			}
+			pkg.LoggerFromContext(r.ctx).Debug("SnapshotCollection status", zap.Any("SnapshotCollection", r.SnapshotCollection))
 			// ** 此处是完整的一帧的结束 **
 			count += 1
 			//fmt.Println("Frame", frame)
@@ -209,7 +213,7 @@ func (f *FixedLengthChunk) String() string {
 	return fmt.Sprintf("FixedLengthChunk:\n  Length=%s\n  Sections:\n%s", lengthVal, sectionsStr)
 }
 
-func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte, handler SnapshotCollection, ctx context.Context) (changedCtx context.Context, err error) {
+func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte, handler *SnapshotCollection, ctx context.Context) (changedCtx context.Context, err error) {
 	log := pkg.LoggerFromContext(ctx)
 	// ～～～ 定长块的处理逻辑 ～～～
 	chunkLen, err := getIntVar(ctx, f.length)
@@ -235,7 +239,8 @@ func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte, handler Snap
 	// 定长Chunk可以直接追加到frame中
 	*frame = append(*frame, data...)
 	// 2. 解析数据
-	log.Debug("Processing FixedLengthChunk")
+	log.Debug("===Processing FixedLengthChunk===")
+	log.Debug("FixedLengthChunk", zap.Any("fix", f))
 	byteCursor := 0
 	for _, sec := range f.Sections {
 		var parsedToDeviceName string
@@ -245,12 +250,14 @@ func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte, handler Snap
 			return ctx, err
 		}
 		for i := 0; i < repeat; i++ {
+
 			// 2.1. 根据Sec的length解码
 			if sec.Decoding == nil {
 				// 如果没有解码函数，直接跳过
 				byteCursor += sec.Length
 				continue
 			}
+
 			if byteCursor+sec.Length > len(data) {
 				return ctx, fmt.Errorf("游标超出数据长度")
 			}
@@ -311,7 +318,7 @@ func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte, handler Snap
 					return ctx, err
 				}
 			}
-			tarSnapshot.Ts = ctx.Value("ts").(time.Time)
+
 			// data_source对于客户端应该是常驻变量， TODO 后续考虑是否用配置文件配置
 			err := tarSnapshot.SetField(ctx, "data_source", ctx.Value("data_source"))
 			if err != nil {
@@ -332,7 +339,7 @@ type ConditionalChunk struct {
 	Sections       []Section
 }
 
-func (c *ConditionalChunk) Process(reader io.Reader, frame *[]byte, handler SnapshotCollection, ctx context.Context) (changedCtx context.Context, err error) {
+func (c *ConditionalChunk) Process(reader io.Reader, frame *[]byte, handler *SnapshotCollection, ctx context.Context) (changedCtx context.Context, err error) {
 	fmt.Println("Processing ConditionalChunk")
 	// 打印一下所有字段 避免sonar检测
 	fmt.Println(reader, frame, handler, ctx)
@@ -435,7 +442,7 @@ func createIoParser(c ioReaderConfig, ctx context.Context, chunks []interface{},
 // 解析类似 "efef_{1..8}" 范围并展开
 func expandFieldTemplate(template string) ([]string, error) {
 	// 使用正则表达式匹配 "{a..b}" 的范围
-	re := regexp.MustCompile(`\${(\d+)\.\.(\d+)}`) // 匹配 ${a..b} 的范围
+	re := regexp.MustCompile(`\{(\d+)\.\.(\d+)}`) // 匹配 ${a..b} 的范围
 	matches := re.FindStringSubmatch(template)
 	if len(matches) != 3 {
 		return nil, fmt.Errorf("无法解析模板: %s", template)
@@ -457,7 +464,7 @@ func expandFieldTemplate(template string) ([]string, error) {
 	}
 
 	// 去掉 ${} 部分，提取前缀部分 (例如 "field")
-	prefix := template[:strings.Index(template, "${")]
+	prefix := template[:strings.Index(template, "{")]
 
 	// 生成字段名称数组
 	result := make([]string, 0, end-start+1)
@@ -520,6 +527,8 @@ func createChunk(chunkMap map[string]interface{}) (Chunk, error) {
 			tmpDecoding, exist := GetScriptFunc(section.Decoding.Method)
 			if exist {
 				tmpSec.Decoding = tmpDecoding
+			} else {
+				return nil, fmt.Errorf("未找到解码函数: %s", section.Decoding.Method)
 			}
 
 			fixedChunk.Sections = append(fixedChunk.Sections, tmpSec)

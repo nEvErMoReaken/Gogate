@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"gateway/internal/pkg"
+	"go.uber.org/zap"
 )
 
 // Strategy 定义了所有发送策略的通用接口
@@ -39,8 +40,15 @@ type MapSendStrategy map[string]Strategy
 // New 初始化一个发送策略集
 var New = func(ctx context.Context) (MapSendStrategy, error) {
 	SendStrategyMap := make(MapSendStrategy)
+	// 记录可用的工厂类型
+	factoryTypes := make([]string, 0, len(Factories))
+	for key := range Factories {
+		factoryTypes = append(factoryTypes, key)
+	}
+	pkg.LoggerFromContext(ctx).Debug("Strategy Factory:", zap.Strings("Factories", factoryTypes))
 	for _, strategyConfig := range pkg.ConfigFromContext(ctx).Strategy {
 		if strategyConfig.Enable {
+			pkg.LoggerFromContext(ctx).Debug(fmt.Sprintf("===正在启动Strategy: %s===", strategyConfig.Type))
 			if factory, exists := Factories[strategyConfig.Type]; exists {
 				strategy, err := factory(ctx)
 				if err != nil {
