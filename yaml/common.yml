@@ -115,3 +115,10 @@ strategy:
       username:
       password:
       willTopic: "status/gateway"
+  - type: prometheus
+    enable: false
+    filter:
+      - ".*:.*:.*"
+    config:
+      port: 8080
+      endpoint: /metrics

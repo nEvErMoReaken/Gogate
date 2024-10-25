@@ -10,7 +10,7 @@
 
 拟支持多种类型的数据源
 - Json类型数据源
-    - Mqtt (正在编写...)
+    - Mqtt 
     - Kafka
 - Byte类型数据源
     - TcpServer (作为TcpServer接收报文) (已完成)
