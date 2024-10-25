@@ -202,7 +202,8 @@ func TestMakePoint(t *testing.T) {
 }
 
 func TestLaunch(t *testing.T) {
-	ctx := context.Background()
+	ctx := context.WithValue(context.Background(), "ts", time.Now())
+
 	snapshot := &DeviceSnapshot{
 		DeviceName: "device1",
 		DeviceType: "type1",
@@ -226,7 +227,8 @@ func TestLaunch(t *testing.T) {
 }
 
 func TestLaunchALL(t *testing.T) {
-	ctx := context.Background()
+	ctx := context.WithValue(context.Background(), "ts", time.Now())
+
 	collection := make(SnapshotCollection)
 
 	// 创建两个快照
@@ -281,8 +283,7 @@ func TestNew(t *testing.T) {
 
 	// 模拟配置
 	config := &pkg.Config{
-		Connector: pkg.ConnectorConfig{Type: "test_parser"},
-		Parser:    pkg.ParserConfig{Para: map[string]interface{}{"dir": "../../script"}},
+		Parser: pkg.ParserConfig{Type: "test_parser", Para: map[string]interface{}{"dir": "../../script"}},
 	}
 	ctx = pkg.WithConfig(ctx, config)
 
@@ -290,7 +291,6 @@ func TestNew(t *testing.T) {
 	Register("test_parser", func(ds pkg.DataSource, mapCh map[string]chan pkg.Point, ctx context.Context) (Parser, error) {
 		return &mockParser{}, nil
 	})
-
 	// 测试 New 函数
 	parser, err := New(ctx, dataSource, mapChan)
 	assert.NoError(t, err, "初始化解析器不应报错")

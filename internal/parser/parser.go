@@ -32,7 +32,7 @@ var New = func(ctx context.Context, dataSource pkg.DataSource, mapChan map[strin
 	config := pkg.ConfigFromContext(ctx)
 	factory, ok := Factories[config.Parser.Type]
 	if !ok {
-		return nil, fmt.Errorf("未找到解析器类型: %s", config.Connector.Type)
+		return nil, fmt.Errorf("未找到解析器类型: %s", config.Parser.Type)
 	}
 	factoryTypes := make([]string, 0, len(Factories))
 	for key := range Factories {

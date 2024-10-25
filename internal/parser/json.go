@@ -7,6 +7,7 @@ import (
 	"gateway/internal/pkg"
 	"github.com/mitchellh/mapstructure"
 	"go.uber.org/zap"
+	"time"
 )
 
 type jParser struct {
@@ -56,7 +57,7 @@ func (j *jParser) Start() {
 		case data := <-dataChan:
 			// 3. 解析 JSON 数据
 			j.ConversionToSnapshot(data)
-
+			j.ctx = context.WithValue(j.ctx, "ts", time.Now())
 			// 4. 将解析后的数据发送到策略
 			j.SnapshotCollection.LaunchALL(j.ctx, j.mapChan)
 			// 5. 打印原始数据
