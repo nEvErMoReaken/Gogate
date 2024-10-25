@@ -6,7 +6,14 @@
 
 ![img.png](asset/img.png)
 
-## DataSource 数据源
+解析状态机：
+
+![img.png](asset/img3.png)
+
+使用pipeline责任链模式构建三个核心模块：
+![img_1.png](asset/img_1.png)
+
+## DataSource 数据源模块
 
 拟支持多种类型的数据源
 - Json类型数据源
@@ -29,7 +36,7 @@ dataSource 仅需要满足两点：
 - 转换为deviceSnapshot的
 所以可以无限扩展
 
-## Parse 解析
+## Parser 解析模块
 
 不同数据源解析逻辑不同，共有思路是通过读取配置的解析流程，灵活的对不同协议进行解析。
 
@@ -110,10 +117,8 @@ json只需要配置字段转换规则即可。
 
 由于协议的标准不统一的特点，这样变量的动态化解析是通用网关实现的难点所在。本项目通过一个变量池解决了该问题，实现思路如下：
 
-变量池（帧上下文）定义为：
-```go
-type FrameContext map[string]*interface{}
-```
+变量池（帧上下文）实际上就是一个map
+
 原则为：
 - 上下文的生命周期为一帧发送结束时。
 - 变量可在任意时间赋值，但是赋值后，必须只能在后面的帧解析流程中使用。例如：在第65Section中，解析出了变量repeatTimes，在(66, ∞)的帧解析流程中都可以使用。**否则会引起空指针问题**。其实很好理解，变量还未解析出来，怎么使用？
@@ -154,6 +159,7 @@ type FrameContext map[string]*interface{}
 
 ## Script 脚本
 
+脚本采用动态化模式，牺牲些许性能来保证通用性。
 上述Decoding字段仅配置了解码函数名称，真正的函数实现追加到./script下的script.go下即可。
 该目录会挂载到容器内部，程序启动后，会智能读取协议中用到的函数名称进行动态调用。
 
@@ -173,13 +179,14 @@ type ScriptFunc func([]byte) ([]interface{}, error)
 ```go
 // DeviceSnapshot 代表一个设备的物模型在某时刻的快照
 type DeviceSnapshot struct {
-	id         uuid.UUID                // 设备 ID
-	DeviceName string                   // 设备名称，例如 "vobc0001.abc"
-	DeviceType string                   // 设备类型，例如 "vobc.info"
-	Fields     map[string]*interface{}  // 字段存储，key 为字段名称，value 为字段值
-	PointMap   map[string]*PointPackage // 数据点映射，key 为策略名称，value 为数据点，仅为了方便查找
-	Ts         time.Time                // 时间戳
+Id         uuid.UUID           `json:"id"`          // 设备 ID
+DeviceName string              `json:"device_name"` // 设备名称，例如 "vobc0001.abc"
+DeviceType string              `json:"device_type"` // 设备类型，例如 "vobc.info"
+Fields     map[string]any      `json:"fields"`      // 字段存储，key 为字段名称，value 为字段值
+DataSink   map[string][]string `json:"sink_map"`    // 指示策略-字段名的映射关系
+Ts         time.Time           `json:"timestamp"`   // 时间戳
 }
+
 ```
 
 本项目中将数据的去向称为`Strategy`，代表数据后续的处理与发送策略。
@@ -206,29 +213,28 @@ type DeviceSnapshot struct {
 - kafka
 - mq
 - redis
-- prometheus + grafana 可视化网关设备参数
+- prometheus
 - 其他策略
 
 ```yaml
 strategy:
-  - type: influxdb
-    enable: true
-    url: http://10.17.191.107:8086
-    token: mK_0NkLVPW8THIYkn52eqr7enL6IinGp8d5xbXizO1mVxAEk_EuOFxZ9OKWYcwVgi2XmogD6iPcO9KQ8ToVvtQ==
-    org: "byd"
-    bucket: "test"
-    batch_size: 2000
-    filter: # 格式<设备类型>:<设备名称>:<遥测名称>
-       - ".*:.*:.*"
-       - ".*:vobc.*:RIOM_sta_3"
-    tags:
-      - "data_source"
+  - type: iotdb
+    enable: false
+    config:
+      url: "127.0.0.1:6667,127.0.0.1:6668,127.0.0.1:6669"
+      username:
+      password:
+      batch_size:
   - type: mqtt
     enable: false
-    url: tcp://
-    topic: "sam"
     filter: # 格式<设备类型>:<设备名称>:<遥测名称>
       - ".*:.*:.*"
+    config:
+      url: tcp://
+      clientID:
+      username:
+      password:
+      willTopic: "status/gateway"
 ```
 
 filter完全采用正则语法，在字段更新时会自动检测是否符合所有过滤器。遵循
@@ -256,5 +262,12 @@ type SendStrategy interface {
 }
 ```
 
+
+## flow
+主流程从pipeline开始，拼接了三个模块。得益于工厂模式设计，三个模块均符合开闭原则，可以方便的拓展及测试。
+
+## 测试
+单元测试在对应软件包下，集成测试统一在test/目录下。
+![img.png](asset/img4.png)
 ## 使用
 项目打包为镜像后，仅需要通过配置来指定所有流程。

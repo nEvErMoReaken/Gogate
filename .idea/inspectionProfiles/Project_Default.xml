@@ -5,6 +5,9 @@
       <functions>
         <function importPath="gateway/internal/parser" name="NewSnapshot" />
       </functions>
+      <methods>
+        <method importPath="gateway/internal/parser" receiver="*SnapshotCollection" name="GetDeviceSnapshot" />
+      </methods>
     </inspection_tool>
   </profile>
 </component>
