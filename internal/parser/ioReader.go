@@ -74,6 +74,7 @@ func init() {
 func NewIoReader(dataSource pkg.DataSource, mapChan map[string]chan pkg.Point, ctx context.Context) (Parser, error) {
 	reader, ok := dataSource.Source.(io.Reader)
 	if !ok {
+		pkg.LoggerFromContext(ctx).Error("数据源类型错误")
 		return nil, fmt.Errorf("数据源类型错误")
 	}
 	// 1. 初始化杂项配置文件
@@ -81,22 +82,25 @@ func NewIoReader(dataSource pkg.DataSource, mapChan map[string]chan pkg.Point, c
 	var c ioReaderConfig
 	err := mapstructure.Decode(v.Parser.Para, &c)
 	if err != nil {
+		pkg.LoggerFromContext(ctx).Error("配置文件解析失败", zap.Error(err))
 		return nil, fmt.Errorf("配置文件解析失败: %s", err)
 	}
 	// 2. 初始化协议配置文件
-	//chunks := v.Sub(protoFile).Get("chunks").([]interface{})
 	chunksConfig, exist := pkg.ConfigFromContext(ctx).Others[c.ProtoFile]
 	if !exist {
-		return nil, fmt.Errorf("未找到协议文件: %s", c.ProtoFile)
+		pkg.LoggerFromContext(ctx).Error("未找到协议文件", zap.String("ProtoFile", c.ProtoFile))
+		return nil, fmt.Errorf("未找到协议文件:%s", c.ProtoFile)
 	}
 	pkg.LoggerFromContext(ctx).Debug("协议文件", zap.Any("chunks", chunksConfig))
 	chunks, ok := chunksConfig.(map[string]interface{})
 	if !ok {
+		pkg.LoggerFromContext(ctx).Error("协议文件格式错误", zap.Any("chunks", chunksConfig))
 		return nil, fmt.Errorf("协议文件格式错误")
 	}
 	// 初始化 IoReader
 	ioReader, err := createIoParser(c, ctx, chunks["chunks"].([]interface{}), mapChan, reader, dataSource.MetaData)
 	if err != nil {
+		pkg.LoggerFromContext(ctx).Error("未找到协议文件", zap.Error(err))
 		return nil, fmt.Errorf("初始化IoReader失败: %s", err)
 	}
 	return &ioReader, nil
@@ -435,7 +439,7 @@ func createIoParser(c ioReaderConfig, ctx context.Context, chunks []interface{},
 
 		chunkSequence.Chunks = append(chunkSequence.Chunks, tmpChunk)
 	}
-	log.Info("IoReader 初始化成功:\n %+v", zap.Any("IoReader", chunkSequence))
+	log.Info("IoReader 初始化成功")
 	return chunkSequence, nil
 }
 
@@ -523,12 +527,13 @@ func createChunk(chunkMap map[string]interface{}) (Chunk, error) {
 					tmpSec.ToFieldNames = append(tmpSec.ToFieldNames, section.To.Fields[i])
 				}
 			}
-
-			tmpDecoding, exist := GetScriptFunc(section.Decoding.Method)
-			if exist {
-				tmpSec.Decoding = tmpDecoding
-			} else {
-				return nil, fmt.Errorf("未找到解码函数: %s", section.Decoding.Method)
+			if section.Decoding.Method != "" {
+				tmpDecoding, exist := GetScriptFunc(section.Decoding.Method)
+				if exist {
+					tmpSec.Decoding = tmpDecoding
+				} else {
+					return nil, fmt.Errorf("未找到解码函数: %s", section.Decoding.Method)
+				}
 			}
 
 			fixedChunk.Sections = append(fixedChunk.Sections, tmpSec)

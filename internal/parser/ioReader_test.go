@@ -14,7 +14,7 @@ func TestNewIoReader(t *testing.T) {
 	reader := strings.NewReader("mock data")
 	dataSource := pkg.DataSource{Source: reader, MetaData: map[string]interface{}{"deviceId": "testDevice"}}
 	mapChan := make(map[string]chan pkg.Point)
-	ctx := context.Background()
+	ctx := pkg.WithLogger(context.Background(), logger)
 
 	// 模拟配置
 	config := &pkg.Config{
@@ -25,23 +25,23 @@ func TestNewIoReader(t *testing.T) {
 			},
 		},
 		Others: map[string]interface{}{
-			"testProtoFile": []interface{}{
-				map[string]interface{}{
-					"type":   "FixedLengthChunk",
-					"length": 10,
-					"sections": []interface{}{
-						map[string]interface{}{
-							"from": map[string]interface{}{
-								"byte":   1,
-								"repeat": 1,
+			"testProtoFile": map[string]interface{}{
+				"chunks": []interface{}{ // chunks 是一个列表
+					map[string]interface{}{
+						"type":   "FixedLengthChunk",
+						"length": 10,
+						"sections": []interface{}{
+							map[string]interface{}{
+								"from": map[string]interface{}{
+									"byte":   1,
+									"repeat": 1,
+								},
 							},
-							"to": map[string]interface{}{
-								"device": "device1",
-								"type":   "type1",
-								"fields": []string{"field1"},
-							},
-							"decoding": map[string]interface{}{
-								"method": "mockDecode",
+							map[string]interface{}{
+								"from": map[string]interface{}{
+									"byte":   2,
+									"repeat": 2,
+								},
 							},
 						},
 					},
@@ -88,7 +88,7 @@ func TestFixedLengthChunk_Process(t *testing.T) {
 	}
 
 	// 处理数据
-	changedCtx, err := fixedChunk.Process(reader, &frame, snapshotCollection, ctx)
+	changedCtx, err := fixedChunk.Process(reader, &frame, &snapshotCollection, ctx)
 	assert.NoError(t, err, "应成功处理定长数据块")
 	assert.NotNil(t, changedCtx, "上下文应被更新")
 
@@ -117,34 +117,36 @@ func TestIoReaderStart(t *testing.T) {
 	config := &pkg.Config{
 		Parser: pkg.ParserConfig{
 			Para: map[string]interface{}{
-				"dir":       "./testdir",
-				"protoFile": "testProtoFile",
+				"dir":       "./testdir",     // 配置目录路径
+				"protoFile": "testProtoFile", // 协议文件名称
 			},
 		},
 		Strategy: []pkg.StrategyConfig{
 			{
-				Type:   "influxdb",
-				Enable: true,
+				Type:   "influxdb", // 定义一个策略类型，例如 InfluxDB
+				Enable: true,       // 启用该策略
 			},
 		},
 		Others: map[string]interface{}{
-			"testProtoFile": []interface{}{
-				map[string]interface{}{
-					"type":   "FixedLengthChunk",
-					"length": 8,
-					"sections": []interface{}{
-						map[string]interface{}{
-							"from": map[string]interface{}{
-								"byte":   1,
-								"repeat": 1,
-							},
-							"to": map[string]interface{}{
-								"device": "device1",
-								"type":   "type1",
-								"fields": []string{"field1"},
-							},
-							"decoding": map[string]interface{}{
-								"method": "mockDecode",
+			"testProtoFile": map[string]interface{}{
+				"chunks": []interface{}{ // chunks 是一个列表，每个 chunk 是一个 map[string]interface{}
+					map[string]interface{}{
+						"type":   "FixedLengthChunk", // chunk 的类型
+						"length": 8,                  // chunk 的长度
+						"sections": []interface{}{ // sections 是 chunks 的一部分
+							map[string]interface{}{
+								"from": map[string]interface{}{
+									"byte":   1, // 数据从第 1 个字节开始
+									"repeat": 1, // 重复次数
+								},
+								"to": map[string]interface{}{
+									"device": "device1",          // 目标设备
+									"type":   "type1",            // 目标类型
+									"fields": []string{"field1"}, // 字段数组
+								},
+								"decoding": map[string]interface{}{
+									"method": "mockDecode", // 解码方法
+								},
 							},
 						},
 					},
@@ -152,6 +154,7 @@ func TestIoReaderStart(t *testing.T) {
 			},
 		},
 	}
+
 	ctx = pkg.WithConfig(ctx, config)
 
 	// 模拟解码函数
@@ -183,7 +186,7 @@ func TestIoReaderStart(t *testing.T) {
 }
 
 func TestExpandFieldTemplate(t *testing.T) {
-	fields, err := expandFieldTemplate("field${1..3}")
+	fields, err := expandFieldTemplate("field{1..3}")
 	assert.NoError(t, err, "应成功解析模板")
 	assert.Equal(t, []string{"field1", "field2", "field3"}, fields, "应成功展开模板")
 }
