@@ -5,15 +5,11 @@ import (
 	"context"
 	"gateway/internal/pkg"
 	"github.com/stretchr/testify/assert"
-	"go.uber.org/zap"
 	"net"
 	"sync"
 	"testing"
 	"time"
 )
-
-// Mock Logger for capturing log outputs
-var logger, _ = zap.NewDevelopment()
 
 // 测试 TcpServerConnector 的初始化
 func TestNewTcpServer(t *testing.T) {
@@ -91,7 +87,7 @@ func TestTcpServerStart(t *testing.T) {
 	}
 
 	// 确保服务器正常关闭
-	tcpServer.Close()
+	_ = tcpServer.Close()
 	wg.Wait() // 等待服务器关闭
 }
 
