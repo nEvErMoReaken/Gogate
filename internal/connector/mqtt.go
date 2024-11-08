@@ -30,10 +30,10 @@ type MqttConfig struct {
 
 // MqttConnector Connector的Mqtt版本实现
 type MqttConnector struct {
-	ctx      context.Context
-	config   *MqttConfig
-	Client   MQTTClient  // MQTT 客户端
-	dataChan chan string // 数据通道
+	ctx    context.Context
+	config *MqttConfig
+	Client MQTTClient            // MQTT 客户端
+	Sink   pkg.MessageDataSource // 数据通道
 }
 
 func init() {
@@ -57,16 +57,17 @@ func (m *MqttConnector) Start() {
 	pkg.LoggerFromContext(m.ctx).Info("MQTT订阅成功，正在监听消息")
 }
 
-func (m *MqttConnector) Ready() chan pkg.DataSource {
-	// 饿连接器可以立即返回数据源无需通道
-	return nil
+func (m *MqttConnector) SinkType() string {
+	return "message"
 }
 
-func (m *MqttConnector) GetDataSource() (pkg.DataSource, error) {
-	return pkg.DataSource{
-		Source:   m.dataChan,
-		MetaData: nil,
-	}, nil
+func (m *MqttConnector) SetSink(source *pkg.DataSource) {
+	// 确保接口断言类型是指针类型的 `MessageDataSource`
+	if sink, ok := (*source).(*pkg.MessageDataSource); ok {
+		m.Sink = *sink
+	} else {
+		pkg.LoggerFromContext(m.ctx).Error("Mqtt数据源类型错误, 期望pkg.MessageDataSource")
+	}
 }
 
 func (m *MqttConnector) Close() error {
@@ -98,9 +99,8 @@ func NewMqttConnector(ctx context.Context) (connector Connector, err error) {
 	}
 	// 2. 创建 MQTT Connector 实例
 	mqttConnector := &MqttConnector{
-		ctx:      ctx,
-		dataChan: make(chan string, 200),
-		config:   &mqttConfig,
+		ctx:    ctx,
+		config: &mqttConfig,
 	}
 
 	// 3. 创建一个新的 MQTT 客户端
@@ -127,10 +127,11 @@ func NewMqttConnector(ctx context.Context) (connector Connector, err error) {
 func (m *MqttConnector) messagePubHandler(_ mqtt.Client, msg mqtt.Message) {
 	pkg.LoggerFromContext(m.ctx).Info("Received message: %s from topic: %s\n", zap.String("payload", string(msg.Payload())), zap.String("topic", msg.Topic()))
 
-	// 1. 将 MQTT 消息 Payload 转换为字符串
-	js := string(msg.Payload())
-	// 2. 将消息发送到数据通道
-	m.dataChan <- js
+	err := m.Sink.WriteOne(msg.Payload())
+	if err != nil {
+		pkg.LoggerFromContext(m.ctx).Error("Failed to write message to sink", zap.Error(err))
+		return
+	}
 }
 
 // 连接成功回调
