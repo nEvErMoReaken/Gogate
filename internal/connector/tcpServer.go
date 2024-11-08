@@ -1,15 +1,14 @@
 package connector
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
 	"gateway/internal/pkg"
 	"github.com/mitchellh/mapstructure"
 	"go.uber.org/zap"
+	"io"
 	"net"
-	"sync"
 	"time"
 )
 
@@ -19,7 +18,7 @@ type TcpServerConnector struct {
 	listener     net.Listener
 	chReady      chan pkg.DataSource
 	serverConfig ServerConfig
-	activeConns  sync.Map // 使用 sync.Map 来存储活跃的连接
+	Sink         pkg.StreamDataSource
 }
 
 type ServerConfig struct {
@@ -27,6 +26,18 @@ type ServerConfig struct {
 	IPAlias   map[string]string `mapstructure:"ipAlias"`
 	Port      string            `mapstructure:"port"`
 	Timeout   time.Duration     `mapstructure:"timeout"`
+}
+
+func (t *TcpServerConnector) SinkType() string {
+	return "stream"
+}
+
+func (t *TcpServerConnector) SetSink(source *pkg.DataSource) {
+	if sink, ok := (*source).(*pkg.StreamDataSource); ok {
+		t.Sink = *sink
+	} else {
+		pkg.LoggerFromContext(t.ctx).Error("TcpServer数据源类型错误, 期望pkg.StreamDataSource")
+	}
 }
 
 func (t *TcpServerConnector) Ready() chan pkg.DataSource {
@@ -45,8 +56,8 @@ func NewTcpServer(ctx context.Context) (Connector, error) {
 	if timeoutStr, ok := config.Connector.Para["timeout"].(string); ok {
 		duration, err := time.ParseDuration(timeoutStr)
 		if err != nil {
-			pkg.LoggerFromContext(ctx).Error("解析超时配置失败", zap.Error(err))
-			return nil, fmt.Errorf("解析超时配置失败: %s", err)
+			pkg.LoggerFromContext(ctx).Error("配置文件解析失败", zap.Error(err))
+			return nil, fmt.Errorf("配置文件解析失败: %s", err)
 		}
 		config.Connector.Para["timeout"] = duration // 替换为 time.Duration
 	}
@@ -74,16 +85,22 @@ func NewTcpServer(ctx context.Context) (Connector, error) {
 	}, nil
 }
 
-func (t *TcpServerConnector) GetDataSource() (pkg.DataSource, error) {
-	// 懒连接器，不需要也无法返回数据源
-	return pkg.DataSource{}, fmt.Errorf("懒连接器无法立即返回数据源")
-}
 func (t *TcpServerConnector) Start() {
 	log := pkg.LoggerFromContext(t.ctx)
 	// 1. 监听指定的端口
 	log.Debug("TCPServer listening on: " + t.serverConfig.Port)
+
+	// 2. 在新的协程中监听 ctx.Done()
+	go func() {
+		<-t.ctx.Done()
+		// 关闭 listener 使 Accept() 退出阻塞状态
+		if err := t.listener.Close(); err != nil {
+			log.Error("关闭监听器失败", zap.Error(err))
+		}
+	}()
+
 	for {
-		// 该循环会一直阻塞，直到有新的连接到来
+		// 该循环会一直阻塞，直到有新地连接到来
 		// 只有两种情况会退出循环：1.监听器关闭 2.接受连接失败
 		// 所以需要该循环理论上无法自我逃逸，必须依赖外部的 Close 方法来关闭监听器
 		conn, err := t.listener.Accept()
@@ -92,50 +109,76 @@ func (t *TcpServerConnector) Start() {
 			if errors.Is(err, net.ErrClosed) {
 				log.Info("监听器已关闭，停止接受连接")
 				return
-			}
-			log.Error("接受连接失败", zap.Error(err))
-			continue
-		}
-		// 将连接存储到 activeConns
-		connID := conn.RemoteAddr().String()
-		t.activeConns.Store(connID, conn)
-		go func(conn net.Conn) {
-			// 不在这里关闭连接，让上层代码（例如读取操作完毕后）来管理关闭
-			pkg.LoggerFromContext(t.ctx).Info("建立连接", zap.String("remote", conn.RemoteAddr().String()))
-			dataSource, err := t.initConn(conn)
-			if err == nil {
-				// 将初始化的 DataSource 发送到通道
-				select {
-				case t.chReady <- dataSource:
-					log.Info("DataSource 已准备好")
-				case <-time.After(3 * time.Second): // 可以用配置的超时替代
-					log.Warn("发送 DataSource 到 chReady 超时")
-				}
+			} else if errors.Is(err, io.EOF) {
+				log.Info("收到 EOF 信号，停止接受连接")
+				continue
 			} else {
-				log.Error("初始化连接失败", zap.String("remote", conn.RemoteAddr().String()), zap.Error(err))
-				// 在初始化失败时关闭连接
-				err := conn.Close()
-				if err != nil {
-					log.Warn("关闭连接失败", zap.String("remote", conn.RemoteAddr().String()), zap.Error(err))
-				}
+				log.Error("接受连接失败", zap.Error(err))
+				continue
 			}
-		}(conn)
+		}
+
+		connID := conn.RemoteAddr().String()
+		// 不在这里关闭连接，让下层代码（例如读取操作完毕后）来管理关闭
+		pkg.LoggerFromContext(t.ctx).Info("建立连接", zap.String("remote", conn.RemoteAddr().String()))
+		err = t.initConn(conn)
+		if err != nil {
+			pkg.LoggerFromContext(t.ctx).Error("初始化连接失败，关闭连接", zap.String("remote", conn.RemoteAddr().String()), zap.Error(err))
+			err := conn.Close()
+			if err != nil {
+				pkg.LoggerFromContext(t.ctx).Warn("关闭连接失败", zap.String("remote", conn.RemoteAddr().String()), zap.Error(err))
+			}
+		}
+		go t.handleConn(conn, connID)
 	}
 }
 
-func (t *TcpServerConnector) initConn(conn net.Conn) (pkg.DataSource, error) {
+func (t *TcpServerConnector) handleConn(conn net.Conn, connID string) {
+	log := pkg.LoggerFromContext(t.ctx)
+	// 创建缓冲区用于读取数据
+	buffer := make([]byte, 1024)
+	defer func() {
+		err := conn.Close()
+		if err != nil {
+			log.Error("关闭连接失败", zap.String("remote", connID), zap.Error(err))
+			return
+		}
+		log.Info("连接已关闭", zap.String("remote", connID))
+	}()
+
+	for {
+		select {
+		case <-t.ctx.Done():
+			return
+		default:
+			// 从 TCP 连接读取数据
+			n, err := conn.Read(buffer)
+			if err != nil {
+				if err == io.EOF {
+					log.Info("连接已断开", zap.String("remote", connID))
+					break
+				}
+				log.Error("读取数据失败", zap.Error(err))
+				break
+			}
+
+			// 将读取的数据写入到 Sink 的 writer 中
+			if _, err := t.Sink.WriteASAP(buffer[:n]); err != nil {
+				log.Error("写入数据到 Sink 失败", zap.Error(err))
+				break
+			}
+		}
+	}
+}
+
+func (t *TcpServerConnector) initConn(conn net.Conn) error {
 	log := pkg.LoggerFromContext(t.ctx)
 	// 不要在这里关闭连接，让上层代码（例如读取操作完毕后）来管理关闭！！
 	// 1. 获取远程地址
 	remoteAddrWithPort := conn.RemoteAddr().String()
 	remoteAddr, _, err := net.SplitHostPort(remoteAddrWithPort)
 	if err != nil {
-		// 出现错误时，立刻关闭连接
-		err := conn.Close()
-		if err != nil {
-			return pkg.DataSource{}, err
-		}
-		return pkg.DataSource{}, fmt.Errorf("无法解析远程地址: %v", remoteAddrWithPort)
+		return fmt.Errorf("无法解析远程地址: %v", remoteAddrWithPort)
 	}
 
 	// 2. 初始化设备ID
@@ -155,53 +198,13 @@ func (t *TcpServerConnector) initConn(conn net.Conn) (pkg.DataSource, error) {
 	if t.serverConfig.WhiteList {
 		if _, exists := t.serverConfig.IPAlias[remoteAddr]; !exists {
 			log.Warn("白名单启用，拒绝未在白名单中的连接", zap.String("remote", remoteAddr))
-			return pkg.DataSource{}, fmt.Errorf("白名单启用，拒绝连接: %s", remoteAddr)
+			return fmt.Errorf("白名单启用，拒绝连接: %s", remoteAddr)
 		}
 	}
 	// 3. 设置超时时间
-	if err := conn.SetReadDeadline(time.Now().Add(t.serverConfig.Timeout)); err != nil {
-		// 设置超时时间失败时关闭连接
-		err := conn.Close()
-		if err != nil {
-			return pkg.DataSource{}, err
-		}
-		return pkg.DataSource{}, fmt.Errorf("设置超时时间失败，关闭连接: %s", conn.RemoteAddr().String())
+	if err = conn.SetReadDeadline(time.Now().Add(t.serverConfig.Timeout)); err != nil {
+		return fmt.Errorf("设置超时时间失败 %s", conn.RemoteAddr().String())
 	}
-
-	// 4. 初始化reader开始读数据
-	reader := bufio.NewReader(conn)
-	return pkg.DataSource{
-		Source: reader,
-		MetaData: map[string]interface{}{
-			"deviceId": deviceId,
-		},
-	}, nil
-}
-func (t *TcpServerConnector) Close() error {
-	log := pkg.LoggerFromContext(t.ctx)
-	log.Info("关闭监听器并停止接收新连接")
-
-	// 关闭监听器，停止接收新连接
-	err := t.listener.Close()
-	if err != nil {
-		return fmt.Errorf("[tcpServer]关闭监听程序失败: %s\n", err)
-	}
-
-	// 关闭所有活跃连接
-	t.closeAllActiveConnections()
 
 	return nil
-}
-
-func (t *TcpServerConnector) closeAllActiveConnections() {
-	log := pkg.LoggerFromContext(t.ctx)
-	t.activeConns.Range(func(key, value interface{}) bool {
-		conn := value.(net.Conn)
-		log.Info("关闭连接", zap.String("remote", conn.RemoteAddr().String()))
-		err := conn.Close()
-		if err != nil {
-			return false
-		} // 关闭连接
-		return true // 继续遍历
-	})
 }
