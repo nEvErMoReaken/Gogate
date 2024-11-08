@@ -2,11 +2,10 @@ package parser
 
 import (
 	"context"
-	"testing"
-	"time"
-
 	"gateway/internal/pkg"
 	"github.com/stretchr/testify/assert"
+	"testing"
+	"time"
 )
 
 // 测试 checkFilter 函数对于通配符和部分匹配的行为

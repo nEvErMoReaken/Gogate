@@ -90,9 +90,9 @@ type IotDBInfo struct {
 }
 
 func NewIoTDBStrategy(ctx context.Context) (Strategy, error) {
-	config := pkg.ConfigFromContext(ctx)
+	c := pkg.ConfigFromContext(ctx)
 	var info IotDBInfo
-	for _, strategyConfig := range config.Strategy {
+	for _, strategyConfig := range c.Strategy {
 		if strategyConfig.Enable && strategyConfig.Type == "iotdb" {
 			// 将 map 转换为结构体
 			if err := mapstructure.Decode(strategyConfig.Para, &info); err != nil {

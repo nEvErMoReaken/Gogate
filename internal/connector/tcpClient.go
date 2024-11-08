@@ -32,7 +32,7 @@ type ClientConfig struct {
 	Timeout    time.Duration `mapstructure:"timeout"`    // 超时时间
 }
 
-// Ready 方法返回 DataSource 准备好的通道
+// Ready 方法返回 DataSou	rce 准备好的通道
 func (t *TcpClientConnector) Ready() chan pkg.DataSource {
 	return t.chReady
 }

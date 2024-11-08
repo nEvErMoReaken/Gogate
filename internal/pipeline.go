@@ -57,7 +57,7 @@ func handleLazyConnector(ctx context.Context, readyChan <-chan pkg.DataSource) {
 }
 
 // handleEagerConnector 处理主动启动型连接器的逻辑
-func handleEagerConnector(c connector.Connector, ctx context.Context) {
+func handleEagerConnector(ctx context.Context, c connector.Connector) {
 	dataSource, err := c.GetDataSource()
 	if err != nil {
 		pkg.ErrChanFromContext(ctx) <- fmt.Errorf("failed to get data source: %w", err)
@@ -83,7 +83,6 @@ func StartPipeline(ctx context.Context) {
 	}
 
 	// 1. 启动连接器，启动 Connector 后，数据源由 Parser 处理
-	// 懒拦截器这里会阻塞， 主动型连接器这里会立即返回
 	go c.Start()
 
 	readyChan := c.Ready()
@@ -96,6 +95,6 @@ func StartPipeline(ctx context.Context) {
 	} else {
 		pkg.LoggerFromContext(ctx).Debug("===正在启动主动连接器===")
 		// 主动启动型连接器
-		handleEagerConnector(c, ctx)
+		handleEagerConnector(ctx, c)
 	}
 }

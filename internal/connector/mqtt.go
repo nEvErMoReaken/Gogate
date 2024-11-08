@@ -28,7 +28,7 @@ type MqttConfig struct {
 	Topics               map[string]byte `mapstructure:"topics"` // 主题和 QoS 的 map
 }
 
-// MqttConnector Connector的TcpServer版本实现
+// MqttConnector Connector的Mqtt版本实现
 type MqttConnector struct {
 	ctx      context.Context
 	config   *MqttConfig
@@ -76,7 +76,6 @@ func (m *MqttConnector) Close() error {
 		pkg.LoggerFromContext(m.ctx).Info("MQTT连接已断开")
 		return nil
 	}
-
 	return fmt.Errorf("MQTT客户端未连接")
 }
 
