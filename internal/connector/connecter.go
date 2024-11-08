@@ -9,11 +9,9 @@ import (
 
 // Connector 是所有数据源的通用接口
 type Connector interface {
-	Start() // 启动数据源, 接收一个回调函数，用于将数据源和解析器绑定
-	// Ready 函数：懒连接器在接收到新连接时，通知外部准备好数据流
-	Ready() chan pkg.DataSource
-	Close() error
-	GetDataSource() (pkg.DataSource, error) // 立刻返回数据源，适用于非懒连接器
+	Start()                         // 启动连接器
+	SinkType() string               // 返回流出数据源类型
+	SetSink(source *pkg.DataSource) // 设置流出数据源
 }
 
 // FactoryFunc 代表一个数据源的工厂函数, 返回数据源和连接器实例
