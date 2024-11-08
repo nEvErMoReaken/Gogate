@@ -8,31 +8,30 @@ import (
 	"github.com/mitchellh/mapstructure"
 	"go.uber.org/zap"
 	"net"
+	"strings"
+	"sync"
 	"time"
 )
 
 // TcpClientConnector Connector的TcpClient版本实现
 type TcpClientConnector struct {
 	ctx          context.Context
-	conn         net.Conn
 	chReady      chan pkg.DataSource
 	clientConfig ClientConfig
+	activeConns  sync.Map // 使用 sync.Map 来存储活跃的连接
 }
 
 func (t *TcpClientConnector) GetDataSource() (pkg.DataSource, error) {
-	// 懒连接器 ，不实现该部分
-	return pkg.DataSource{
-		Source:   nil,
-		MetaData: nil,
-	}, nil
+	// 懒连接器，不实现该部分
+	return pkg.DataSource{}, fmt.Errorf("懒连接器无法立即返回数据源")
 }
 
 type ClientConfig struct {
-	ServerAddr string        `mapstructure:"serverAddr"` // 服务器地址
-	Timeout    time.Duration `mapstructure:"timeout"`    // 超时时间
+	ServerAddrs []string      `mapstructure:"serverAddrs"` // 服务器地址列表
+	Timeout     time.Duration `mapstructure:"timeout"`     // 超时时间
 }
 
-// Ready 方法返回 DataSou	rce 准备好的通道
+// Ready 方法返回 DataSource 准备好的通道
 func (t *TcpClientConnector) Ready() chan pkg.DataSource {
 	return t.chReady
 }
@@ -57,6 +56,23 @@ func NewTcpClient(ctx context.Context) (Connector, error) {
 		config.Connector.Para["timeout"] = duration
 	}
 
+	// 处理 serverAddrs 字段，支持字符串列表或逗号分隔的字符串
+	var serverAddrs []string
+	switch addrs := config.Connector.Para["serverAddrs"].(type) {
+	case []interface{}:
+		for _, addr := range addrs {
+			if addrStr, ok := addr.(string); ok {
+				serverAddrs = append(serverAddrs, addrStr)
+			}
+		}
+	case string:
+		serverAddrs = strings.Split(addrs, ",")
+	default:
+		pkg.LoggerFromContext(ctx).Error("解析服务器地址列表失败")
+		return nil, fmt.Errorf("解析服务器地址列表失败")
+	}
+	config.Connector.Para["serverAddrs"] = serverAddrs
+
 	// 初始化配置结构
 	var clientConfig ClientConfig
 	err := mapstructure.Decode(config.Connector.Para, &clientConfig)
@@ -75,96 +91,82 @@ func NewTcpClient(ctx context.Context) (Connector, error) {
 
 // Start 方法启动客户端连接到服务器
 func (t *TcpClientConnector) Start() {
-	log := pkg.LoggerFromContext(t.ctx)
-	// 尝试连接到服务器
-	err := t.connectToServer()
-	if err != nil {
-		log.Error("无法连接到服务器", zap.Error(err))
-		t.reconnect()
+	for _, serverAddr := range t.clientConfig.ServerAddrs {
+		// 对每个服务器地址启动一个协程
+		go t.manageConnection(serverAddr)
 	}
 }
 
-// connectToServer 尝试连接到服务器
-func (t *TcpClientConnector) connectToServer() error {
+// manageConnection 管理对单个服务器的连接，包括重连逻辑
+func (t *TcpClientConnector) manageConnection(serverAddr string) {
 	log := pkg.LoggerFromContext(t.ctx)
-	// 1. 建立连接
-	log.Debug("正在连接到服务器: " + t.clientConfig.ServerAddr)
-	conn, err := net.DialTimeout("tcp", t.clientConfig.ServerAddr, t.clientConfig.Timeout)
-	if err != nil {
-		return fmt.Errorf("无法连接到服务器: %v", err)
-	}
-	t.conn = conn
-
-	// 2. 设置超时时间
-	err = conn.SetReadDeadline(time.Now().Add(t.clientConfig.Timeout))
-	if err != nil {
-		err = conn.Close()
+	for {
+		// 尝试连接到服务器
+		conn, err := net.DialTimeout("tcp", serverAddr, t.clientConfig.Timeout)
 		if err != nil {
-			return fmt.Errorf("设置超时时间失败并且在关闭时发生错误: %v", err)
+			log.Warn("无法连接到服务器，5秒后重试", zap.String("serverAddr", serverAddr), zap.Error(err))
+			time.Sleep(5 * time.Second)
+			continue
 		}
-		return fmt.Errorf("设置超时时间失败: %v", err)
-	}
+		// 将连接存储到 activeConns
+		t.activeConns.Store(serverAddr, conn)
 
-	// 3. 初始化连接
-	dataSource, err := t.initConn(conn)
-	if err != nil {
-		err := conn.Close()
+		// 初始化连接
+		dataSource, err := t.initConn(conn, serverAddr)
 		if err != nil {
-			return fmt.Errorf("初始化连接失败并且在关闭时发生错误: %v", err)
+			log.Error("初始化连接失败，关闭连接", zap.String("serverAddr", serverAddr), zap.Error(err))
+			err := conn.Close()
+			if err != nil {
+				log.Warn("关闭连接失败", zap.String("serverAddr", serverAddr), zap.Error(err))
+			}
+			t.activeConns.Delete(serverAddr)
+			continue
 		}
-		return fmt.Errorf("初始化连接失败: %v", err)
-	}
 
-	// 4. 发送数据源到准备好的通道
-	select {
-	case t.chReady <- dataSource:
-		log.Info("DataSource 已准备好")
-	case <-time.After(3 * time.Second):
-		log.Warn("发送 DataSource 到 chReady 超时")
-	}
+		// 将初始化的 DataSource 发送到通道
+		select {
+		case t.chReady <- dataSource:
+			log.Info("DataSource 已准备好", zap.String("serverAddr", serverAddr))
+		case <-time.After(3 * time.Second):
+			log.Warn("发送 DataSource 到 chReady 超时", zap.String("serverAddr", serverAddr))
+		}
+		// 监控连接状态，如果连接断开则重连
 
-	return nil
+	}
 }
 
 // initConn 初始化连接，并返回数据源
-func (t *TcpClientConnector) initConn(conn net.Conn) (pkg.DataSource, error) {
-	// 1. 通过 bufio.Reader 读取数据
+func (t *TcpClientConnector) initConn(conn net.Conn, serverAddr string) (pkg.DataSource, error) {
+	// 设置超时时间
+	if err := conn.SetReadDeadline(time.Now().Add(t.clientConfig.Timeout)); err != nil {
+		return pkg.DataSource{}, fmt.Errorf("设置超时时间失败，关闭连接: %s", conn.RemoteAddr().String())
+	}
+
+	// 创建 reader
 	reader := bufio.NewReader(conn)
 
-	// 2. 返回数据源
+	// 返回数据源
 	return pkg.DataSource{
 		Source: reader,
 		MetaData: map[string]interface{}{
-			"clientAddr": t.clientConfig.ServerAddr,
+			"serverAddr": serverAddr,
 		},
 	}, nil
 }
 
-// reconnect 处理断线重连逻辑
-func (t *TcpClientConnector) reconnect() {
-	log := pkg.LoggerFromContext(t.ctx)
-	for {
-		// 重新尝试连接
-		time.Sleep(5 * time.Second) // 重连间隔
-		err := t.connectToServer()
-		if err == nil {
-			log.Info("重连成功")
-			break
-		}
-		log.Warn("重连失败，5秒后重试...", zap.Error(err))
-	}
-}
-
-// Close 关闭客户端连接
+// Close 关闭客户端所有连接
 func (t *TcpClientConnector) Close() error {
 	log := pkg.LoggerFromContext(t.ctx)
-	if t.conn != nil {
-		err := t.conn.Close()
+	log.Info("关闭所有连接")
+	t.activeConns.Range(func(key, value interface{}) bool {
+		conn := value.(net.Conn)
+		serverAddr := key.(string)
+		log.Info("关闭连接", zap.String("serverAddr", serverAddr))
+		err := conn.Close()
 		if err != nil {
-			log.Error("关闭连接失败", zap.Error(err))
-			return err
+			log.Warn("关闭连接失败", zap.String("serverAddr", serverAddr), zap.Error(err))
 		}
-		log.Info("连接已关闭")
-	}
+		return true
+	})
 	return nil
 }
