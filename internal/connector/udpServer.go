@@ -2,12 +2,12 @@ package connector
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"gateway/internal/pkg"
 	"github.com/mitchellh/mapstructure"
 	"go.uber.org/zap"
 	"net"
+	"sync"
 	"time"
 )
 
@@ -21,10 +21,11 @@ type UdpConfig struct {
 
 // UdpConnector Connector的Udp版本实现
 type UdpConnector struct {
-	ctx      context.Context
-	config   *UdpConfig
-	dataChan chan string // 数据通道
-	conn     *net.UDPConn
+	ctx        context.Context
+	config     *UdpConfig
+	conn       *net.UDPConn
+	Sink       pkg.MessageDataSource // 数据通道
+	bufferPool *sync.Pool            // 缓冲区池
 }
 
 func init() {
@@ -54,7 +55,7 @@ func (u *UdpConnector) Start() {
 		select {
 		case <-u.ctx.Done():
 			log.Info("UDP 服务停止中...")
-			err := u.Close()
+			err = u.Close()
 			if err != nil {
 				log.Error("UDP 服务关闭失败", zap.Error(err))
 				return
@@ -62,22 +63,20 @@ func (u *UdpConnector) Start() {
 			return
 		default:
 			// 在每次读取之前设置读取超时
-			err := u.conn.SetReadDeadline(time.Now().Add(u.config.Timeout))
+			err = u.conn.SetReadDeadline(time.Now().Add(u.config.Timeout))
 			if err != nil {
 				log.Error("Error setting read deadline", zap.Error(err))
 				continue
 			}
 
-			buffer := make([]byte, u.config.BufferSize) // 缓冲区
-			n, addr, err := u.conn.ReadFromUDP(buffer)
+			buffer := u.bufferPool.Get().([]byte) // 缓冲区
+			var n int
+			var addr *net.UDPAddr
+			n, addr, err = u.conn.ReadFromUDP(buffer)
 			if err != nil {
-				// 检查是否为超时错误
-				var opErr *net.OpError
-				if errors.As(err, &opErr) && opErr.Timeout() {
-					continue // 继续等待新的数据包
-				}
 				log.Error("Error reading from UDP", zap.Error(err))
-				return
+
+				continue
 			}
 			// 2. 初始化设备ID
 			var deviceId string
@@ -92,22 +91,29 @@ func (u *UdpConnector) Start() {
 				log.Info("IP 别名未找到，使用默认 deviceId", zap.String("remote", remoteAddr), zap.String("deviceId", deviceId))
 			}
 
-			// 将接收到的数据和设备ID作为json字符串发送到数据通道
-			u.dataChan <- fmt.Sprintf(`{"deviceId":"%s","data":"%s"}`, deviceId, string(buffer[:n]))
+			// 3. 将接收到的数据和设备ID作为json字符串发送到数据通道
+			err = u.Sink.WriteOne([]byte(fmt.Sprintf(`{"deviceId":"%s","data":"%s"}`, deviceId, string(buffer[:n]))))
+			if err != nil {
+				log.Error("Failed to write message to sink", zap.Error(err))
+				return
+			}
+			// 4. 将缓冲区放回池中，供下次使用
+			u.bufferPool.Put(buffer)
 		}
 	}
 }
 
-func (u *UdpConnector) Ready() chan pkg.DataSource {
-	// 饿连接器可以立即返回数据源无需通道
-	return nil
+func (u *UdpConnector) SinkType() string {
+	return "message"
 }
 
-func (u *UdpConnector) GetDataSource() (pkg.DataSource, error) {
-	return pkg.DataSource{
-		Source:   u.dataChan,
-		MetaData: nil,
-	}, nil
+func (u *UdpConnector) SetSink(source *pkg.DataSource) {
+	// 确保接口断言类型是指针类型的 `MessageDataSource`
+	if sink, ok := (*source).(*pkg.MessageDataSource); ok {
+		u.Sink = *sink
+	} else {
+		pkg.LoggerFromContext(u.ctx).Error("Mqtt数据源类型错误, 期望pkg.MessageDataSource")
+	}
 }
 
 func (u *UdpConnector) Close() error {
@@ -135,12 +141,17 @@ func NewUdpConnector(ctx context.Context) (connector Connector, err error) {
 	if err != nil {
 		return nil, fmt.Errorf("配置文件解析失败: %s", err)
 	}
-
+	// 初始化 bufferPool
+	bufferPool := &sync.Pool{
+		New: func() interface{} {
+			return make([]byte, udpConfig.BufferSize)
+		},
+	}
 	// 3. 创建 MQTT Connector 实例
 	udpConn := &UdpConnector{
-		ctx:      ctx,
-		config:   &udpConfig,
-		dataChan: make(chan string, 200),
+		ctx:        ctx,
+		config:     &udpConfig,
+		bufferPool: bufferPool,
 	}
 
 	return udpConn, nil
