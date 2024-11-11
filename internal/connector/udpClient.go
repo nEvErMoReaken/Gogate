@@ -9,6 +9,7 @@ import (
 	"go.uber.org/zap"
 	"net"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -16,24 +17,27 @@ import (
 type UdpClientConnector struct {
 	ctx          context.Context
 	clientConfig *UdpClientConfig
-	Sink         pkg.StreamDataSource
+	Sink         pkg.MessageDataSource
+	bufferPool   *sync.Pool // 缓冲区池
 }
 
 func (u *UdpClientConnector) SinkType() string {
-	return "stream"
+	return "message"
 }
 
 func (u *UdpClientConnector) SetSink(source *pkg.DataSource) {
-	if sink, ok := (*source).(*pkg.StreamDataSource); ok {
+	if sink, ok := (*source).(*pkg.MessageDataSource); ok {
 		u.Sink = *sink
 	} else {
-		pkg.LoggerFromContext(u.ctx).Error("UDP 数据源类型错误, 期望 pkg.StreamDataSource")
+		pkg.LoggerFromContext(u.ctx).Error("UDP 数据源类型错误, 期望 pkg.MessageDataSource")
 	}
 }
 
 type UdpClientConfig struct {
-	ServerAddrs []string      `mapstructure:"serverAddrs"` // 服务器地址列表
-	Timeout     time.Duration `mapstructure:"timeout"`     // 超时时间
+	ServerAddrs    []string      `mapstructure:"serverAddrs"`    // 服务器地址列表
+	Timeout        time.Duration `mapstructure:"timeout"`        // 超时时间
+	ReconnectDelay time.Duration `mapstructure:"reconnectDelay"` // 重连延迟
+	BufferSize     int           `mapstructure:"bufferSize"`     // 缓冲区大小
 }
 
 func init() {
@@ -54,7 +58,15 @@ func NewUdpClient(ctx context.Context) (Connector, error) {
 		}
 		config.Connector.Para["timeout"] = duration
 	}
-
+	// 处理 timeout 字段
+	if timeoutStr, ok := config.Connector.Para["reconnectDelay"].(string); ok {
+		duration, err := time.ParseDuration(timeoutStr)
+		if err != nil {
+			pkg.LoggerFromContext(ctx).Error("解析超时配置失败", zap.Error(err))
+			return nil, fmt.Errorf("解析超时配置失败: %s", err)
+		}
+		config.Connector.Para["reconnectDelay"] = duration
+	}
 	// 处理 serverAddrs 字段
 	var serverAddrs []string
 	switch addrs := config.Connector.Para["serverAddrs"].(type) {
@@ -80,10 +92,17 @@ func NewUdpClient(ctx context.Context) (Connector, error) {
 		return nil, fmt.Errorf("配置文件解析失败: %s", err)
 	}
 
+	// 初始化 bufferPool
+	bufferPool := &sync.Pool{
+		New: func() interface{} {
+			return make([]byte, clientConfig.BufferSize)
+		},
+	}
 	// 初始化并返回 UdpClientConnector
 	return &UdpClientConnector{
 		ctx:          ctx,
 		clientConfig: &clientConfig,
+		bufferPool:   bufferPool,
 	}, nil
 }
 
@@ -120,7 +139,7 @@ func (u *UdpClientConnector) manageConnection(serverAddr string) {
 		conn, err := net.ListenUDP("udp", nil)
 		if err != nil {
 			log.Warn("无法创建 UDP 连接，5秒后重试", zap.String("serverAddr", serverAddr), zap.Error(err))
-			time.Sleep(u.clientConfig.Timeout)
+			time.Sleep(u.clientConfig.ReconnectDelay)
 			continue
 		}
 
@@ -134,7 +153,7 @@ func (u *UdpClientConnector) manageConnection(serverAddr string) {
 				}
 			}()
 
-			buffer := make([]byte, 1024)
+			buffer := u.bufferPool.Get().([]byte) // 缓冲区
 
 			for {
 				select {
@@ -143,32 +162,33 @@ func (u *UdpClientConnector) manageConnection(serverAddr string) {
 					return
 				default:
 					// 设置读取超时时间
-					err := conn.SetReadDeadline(time.Now().Add(u.clientConfig.Timeout))
+					err = conn.SetReadDeadline(time.Now().Add(u.clientConfig.Timeout))
 					if err != nil {
 						log.Error("设置读取超时失败", zap.String("serverAddr", serverAddr), zap.Error(err))
 						return
 					}
-
+					var n int
 					// 从 UDP 服务器接收数据
-					n, _, err := conn.ReadFromUDP(buffer)
+					n, _, err = conn.ReadFromUDP(buffer)
 					if err != nil {
 						var opErr *net.OpError
 						if errors.As(err, &opErr) && opErr.Timeout() {
 							log.Warn("读取超时，准备重新接收", zap.String("serverAddr", serverAddr))
 						}
 					}
-
 					// 将接收到的数据写入到 Sink 的 writer 中
-					if _, err := u.Sink.WriteASAP(buffer[:n]); err != nil {
+					if err = u.Sink.WriteOne(buffer[:n]); err != nil {
 						log.Error("写入数据到 Sink 失败", zap.Error(err))
-						return // 写入失败，退出以重连
+						return
 					}
+					//	将缓冲区放回池中
+					u.bufferPool.Put(buffer)
 				}
 			}
 		}()
 
 		// 重连等待
 		log.Info("5秒后重试 UDP 连接", zap.String("serverAddr", serverAddr))
-		time.Sleep(u.clientConfig.Timeout)
+		time.Sleep(u.clientConfig.ReconnectDelay)
 	}
 }

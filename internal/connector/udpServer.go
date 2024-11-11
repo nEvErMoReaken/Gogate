@@ -11,8 +11,8 @@ import (
 	"time"
 )
 
-// UdpConfig 包含 UDP 配置信息
-type UdpConfig struct {
+// UdpServerConfig 包含 UDP 配置信息
+type UdpServerConfig struct {
 	IPAlias    map[string]string `mapstructure:"ipAlias"`
 	Port       string            `mapstructure:"port"`
 	BufferSize int               `mapstructure:"bufferSize"`
@@ -22,7 +22,7 @@ type UdpConfig struct {
 // UdpConnector Connector的Udp版本实现
 type UdpConnector struct {
 	ctx        context.Context
-	config     *UdpConfig
+	config     *UdpServerConfig
 	conn       *net.UDPConn
 	Sink       pkg.MessageDataSource // 数据通道
 	bufferPool *sync.Pool            // 缓冲区池
@@ -136,7 +136,7 @@ func NewUdpConnector(ctx context.Context) (connector Connector, err error) {
 		}
 		config.Connector.Para["timeout"] = duration // 替换为 time.Duration
 	}
-	var udpConfig UdpConfig
+	var udpConfig UdpServerConfig
 	err = mapstructure.Decode(config.Connector.Para, &udpConfig)
 	if err != nil {
 		return nil, fmt.Errorf("配置文件解析失败: %s", err)

@@ -15,7 +15,7 @@ import (
 // TcpClientConnector Connector的TcpClient版本实现
 type TcpClientConnector struct {
 	ctx          context.Context
-	clientConfig ClientConfig
+	clientConfig *tcpClientConfig
 	Sink         pkg.StreamDataSource
 }
 
@@ -31,9 +31,10 @@ func (t *TcpClientConnector) SetSink(source *pkg.DataSource) {
 	}
 }
 
-type ClientConfig struct {
-	ServerAddrs []string      `mapstructure:"serverAddrs"` // 服务器地址列表
-	Timeout     time.Duration `mapstructure:"timeout"`     // 超时时间
+type tcpClientConfig struct {
+	ServerAddrs    []string      `mapstructure:"serverAddrs"`    // 服务器地址列表
+	Timeout        time.Duration `mapstructure:"timeout"`        // 超时时间
+	ReconnectDelay time.Duration `mapstructure:"reconnectDelay"` // 超时时间
 }
 
 // init 函数注册 TcpClientConnector
@@ -55,7 +56,15 @@ func NewTcpClient(ctx context.Context) (Connector, error) {
 		}
 		config.Connector.Para["timeout"] = duration
 	}
-
+	// 处理 timeout 字段
+	if timeoutStr, ok := config.Connector.Para["reconnectDelay"].(string); ok {
+		duration, err := time.ParseDuration(timeoutStr)
+		if err != nil {
+			pkg.LoggerFromContext(ctx).Error("解析超时配置失败", zap.Error(err))
+			return nil, fmt.Errorf("解析超时配置失败: %s", err)
+		}
+		config.Connector.Para["reconnectDelay"] = duration
+	}
 	// 处理 serverAddrs 字段，支持字符串列表或逗号分隔的字符串
 	var serverAddrs []string
 	switch addrs := config.Connector.Para["serverAddrs"].(type) {
@@ -74,7 +83,7 @@ func NewTcpClient(ctx context.Context) (Connector, error) {
 	config.Connector.Para["serverAddrs"] = serverAddrs
 
 	// 初始化配置结构
-	var clientConfig ClientConfig
+	var clientConfig tcpClientConfig
 	err := mapstructure.Decode(config.Connector.Para, &clientConfig)
 	if err != nil {
 		pkg.LoggerFromContext(ctx).Error("配置文件解析失败", zap.Error(err))
@@ -84,7 +93,7 @@ func NewTcpClient(ctx context.Context) (Connector, error) {
 	// 初始化并返回 TcpClientConnector
 	return &TcpClientConnector{
 		ctx:          ctx,
-		clientConfig: clientConfig,
+		clientConfig: &clientConfig,
 	}, nil
 }
 
@@ -108,7 +117,7 @@ func (t *TcpClientConnector) manageConnection(serverAddr string) {
 		default:
 		}
 		// 尝试连接到服务器
-		conn, err := net.DialTimeout("tcp", serverAddr, t.clientConfig.Timeout)
+		conn, err := net.DialTimeout("tcp", serverAddr, t.clientConfig.ReconnectDelay)
 
 		if err != nil {
 			log.Warn("无法连接到服务器，5秒后重试", zap.String("serverAddr", serverAddr), zap.Error(err))
@@ -160,6 +169,6 @@ func (t *TcpClientConnector) manageConnection(serverAddr string) {
 		}()
 		// 等待再重连
 		log.Info("正在尝试重连", zap.String("serverAddr", serverAddr))
-		time.Sleep(t.clientConfig.Timeout)
+		time.Sleep(t.clientConfig.ReconnectDelay)
 	}
 }

@@ -17,11 +17,11 @@ type TcpServerConnector struct {
 	ctx          context.Context
 	listener     net.Listener
 	chReady      chan pkg.DataSource
-	serverConfig ServerConfig
+	serverConfig *TcpServerConfig
 	Sink         pkg.StreamDataSource
 }
 
-type ServerConfig struct {
+type TcpServerConfig struct {
 	WhiteList bool              `mapstructure:"whiteList"`
 	IPAlias   map[string]string `mapstructure:"ipAlias"`
 	Port      string            `mapstructure:"port"`
@@ -63,7 +63,7 @@ func NewTcpServer(ctx context.Context) (Connector, error) {
 	}
 
 	// 3. 初始化配置结构
-	var serverConfig ServerConfig
+	var serverConfig TcpServerConfig
 	err := mapstructure.Decode(config.Connector.Para, &serverConfig)
 	if err != nil {
 		pkg.LoggerFromContext(ctx).Error("解析超时配置失败", zap.Error(err))
@@ -81,7 +81,7 @@ func NewTcpServer(ctx context.Context) (Connector, error) {
 		ctx:          ctx,
 		chReady:      make(chan pkg.DataSource, 1),
 		listener:     listener,
-		serverConfig: serverConfig,
+		serverConfig: &serverConfig,
 	}, nil
 }
 
