@@ -33,7 +33,7 @@ var New = func(ctx context.Context) (connector Template, err error) {
 		factoryTypes = append(factoryTypes, key)
 	}
 	pkg.LoggerFromContext(ctx).Debug("Template Factory:", zap.Strings("Factories", factoryTypes))
-	pkg.LoggerFromContext(ctx).Debug(fmt.Sprintf("===正在启动Connector: %s===", config.Connector.Type))
+	pkg.LoggerFromContext(ctx).Debug(fmt.Sprintf("===正在创建Connector: %s===", config.Connector.Type))
 	factory, ok := Factories[config.Connector.Type]
 	if !ok {
 		return nil, fmt.Errorf("未找到数据源类型: %s", config.Connector.Type)

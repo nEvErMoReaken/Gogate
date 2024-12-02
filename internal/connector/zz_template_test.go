@@ -1,115 +1,78 @@
-package connector_test
+package connector
 
 import (
 	"context"
 	"errors"
 	"gateway/internal/pkg"
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/smartystreets/goconvey/convey"
 )
 
-// MockConnector 是一个模拟的 Template，用于测试
-type MockConnector struct{}
+// 模拟 Template 实现
+type mockTemplate struct {
+	typ string
+}
 
-func (m *MockConnector) Start() {}
-
-func (m *MockConnector) Ready() chan pkg.DataSource {
+func (m *mockTemplate) Start(dataSourceChan chan pkg.DataSource) error {
 	return nil
 }
 
-func (m *MockConnector) Close() error {
-	return nil
+func (m *mockTemplate) GetType() string {
+	return m.typ
 }
 
-func (m *MockConnector) GetDataSource() (pkg.DataSource, error) {
-	return pkg.DataSource{}, nil
+// 模拟 FactoryFunc
+func mockFactory(ctx context.Context) (Template, error) {
+	return &mockTemplate{typ: "mockType"}, nil
 }
 
-// MockFactoryFunc 是一个用于测试的工厂函数
-func MockFactoryFunc(ctx context.Context) (Template, error) {
-	_ = ctx
-	return &MockConnector{}, nil
+func failingFactory(ctx context.Context) (Template, error) {
+	return nil, errors.New("factory error")
 }
-
-func TestRegister(t *testing.T) {
-	// 清空 Factories 映射，防止测试污染
-	Factories = make(map[string]FactoryFunc)
-
-	// 注册一个新的数据源类型
-	Register("mock", MockFactoryFunc)
-
-	// 验证是否正确注册
-	factory, exists := Factories["mock"]
-	assert.True(t, exists, "应该成功注册数据源类型 'mock'")
-
-	// 调用注册的工厂函数，验证是否可以成功返回一个 Template
-	connector, err := factory(context.Background())
-	assert.NoError(t, err, "调用注册的工厂函数不应返回错误")
-	assert.NotNil(t, connector, "工厂函数返回的 Template 不应为 nil")
-}
-
-func TestNew_Success(t *testing.T) {
-	// 清空 Factories 映射，防止测试污染
-	Factories = make(map[string]FactoryFunc)
-
-	// 注册一个新的数据源类型
-	Register("mock", MockFactoryFunc)
-
-	// 模拟配置
-	config := &pkg.Config{
+func mockConfigFromString(connType string) *pkg.Config {
+	return &pkg.Config{
 		Connector: pkg.ConnectorConfig{
-			Type: "mock",
+			Type: connType,
+			Para: map[string]interface{}{},
 		},
 	}
-	ctx := pkg.WithConfig(context.Background(), config)
-
-	// 调用 New 函数
-	connector, err := New(ctx)
-	assert.NoError(t, err, "New 函数应成功返回")
-	assert.NotNil(t, connector, "返回的 Template 不应为 nil")
-
-	// 验证返回的 Template 是否为 MockConnector 类型
-	_, ok := connector.(*MockConnector)
-	assert.True(t, ok, "返回的 Template 应为 MockConnector 类型")
 }
+func TestConnectorPackage(t *testing.T) {
+	convey.Convey("测试 connector 包的功能", t, func() {
+		convey.Convey("测试 Register 函数", func() {
+			Register("mockType", mockFactory)
+			convey.So(Factories["mockType"], convey.ShouldNotBeNil)
+		})
 
-func TestNew_UnknownType(t *testing.T) {
-	// 清空 Factories 映射，防止测试污染
-	Factories = make(map[string]FactoryFunc)
+		convey.Convey("测试 New 函数", func() {
+			ctx := pkg.WithConfig(commonCtx, mockConfigFromString("mockType"))
+			// 注册 mockType 的工厂函数
+			Register("mockType", mockFactory)
+			// 调用 New 方法
+			conn, err := New(ctx)
+			convey.So(err, convey.ShouldBeNil)
+			convey.So(conn, convey.ShouldNotBeNil)
+			convey.So(conn.GetType(), convey.ShouldEqual, "mockType")
+		})
 
-	// 模拟配置，使用未注册的类型
-	config := &pkg.Config{
-		Connector: pkg.ConnectorConfig{
-			Type: "unknown",
-		},
-	}
-	ctx := pkg.WithConfig(context.Background(), config)
+		convey.Convey("测试 New 函数未注册类型", func() {
+			// 调用 New 方法
+			conn, err := New(commonCtx)
+			convey.So(err, convey.ShouldNotBeNil)
+			convey.So(conn, convey.ShouldBeNil)
+			convey.So(err.Error(), convey.ShouldContainSubstring, "未找到数据源类型")
+		})
 
-	// 调用 New 函数，预期应该失败
-	_, err := New(ctx)
-	assert.Error(t, err, "应返回错误，因为 'unknown' 类型未注册")
-	assert.EqualError(t, err, "未找到数据源类型: unknown")
-}
+		convey.Convey("测试 New 函数失败的工厂函数", func() {
 
-func TestNew_FactoryError(t *testing.T) {
-	// 清空 Factories 映射，防止测试污染
-	Factories = make(map[string]FactoryFunc)
-
-	// 注册一个工厂函数，它返回错误
-	Register("error", func(ctx context.Context) (Template, error) {
-		return nil, errors.New("factory error")
+			// 注册失败的工厂函数
+			Register("failingType", failingFactory)
+			// 调用 New 方法
+			conn, err := New(pkg.WithConfig(commonCtx, mockConfigFromString("failingType")))
+			convey.So(err, convey.ShouldNotBeNil)
+			convey.So(conn, convey.ShouldBeNil)
+			convey.So(err.Error(), convey.ShouldContainSubstring, "初始化数据源失败")
+		})
 	})
-
-	// 模拟配置
-	config := &pkg.Config{
-		Connector: pkg.ConnectorConfig{
-			Type: "error",
-		},
-	}
-	ctx := pkg.WithConfig(context.Background(), config)
-
-	// 调用 New 函数，预期应该返回初始化错误
-	_, err := New(ctx)
-	assert.Error(t, err, "应返回错误，因为工厂函数返回错误")
-	assert.EqualError(t, err, "初始化数据源失败: factory error")
 }

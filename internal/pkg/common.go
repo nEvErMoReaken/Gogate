@@ -49,6 +49,11 @@ func (s *StreamDataSource) ReadFully(p []byte) (int, error) {
 	return io.ReadFull(s.Reader, p)
 }
 
+// Read 立即读取
+func (s *StreamDataSource) Read(p []byte) (int, error) {
+	return (s.Reader).Read(p)
+}
+
 // WriteASAP 立即写入数据
 func (s *StreamDataSource) WriteASAP(data []byte) (int, error) {
 	return (s.Writer).Write(data)

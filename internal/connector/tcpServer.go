@@ -15,7 +15,6 @@ import (
 // TcpServerConnector Connector的TcpServer版本实现
 type TcpServerConnector struct {
 	ctx          context.Context
-	listener     net.Listener
 	chReady      chan pkg.DataSource
 	serverConfig *TcpServerConfig
 }
@@ -23,12 +22,8 @@ type TcpServerConnector struct {
 type TcpServerConfig struct {
 	WhiteList bool              `mapstructure:"whiteList"`
 	IPAlias   map[string]string `mapstructure:"ipAlias"`
-	Port      string            `mapstructure:"port"`
+	Url       string            `mapstructure:"url"`
 	Timeout   time.Duration     `mapstructure:"timeout"`
-}
-
-func (t *TcpServerConnector) Ready() chan pkg.DataSource {
-	return t.chReady
 }
 
 func init() {
@@ -43,7 +38,6 @@ func NewTcpServer(ctx context.Context) (Template, error) {
 	if timeoutStr, ok := config.Connector.Para["timeout"].(string); ok {
 		duration, err := time.ParseDuration(timeoutStr)
 		if err != nil {
-			pkg.LoggerFromContext(ctx).Error("配置文件解析失败", zap.Error(err))
 			return nil, fmt.Errorf("配置文件解析失败: %s", err)
 		}
 		config.Connector.Para["timeout"] = duration // 替换为 time.Duration
@@ -53,21 +47,12 @@ func NewTcpServer(ctx context.Context) (Template, error) {
 	var serverConfig TcpServerConfig
 	err := mapstructure.Decode(config.Connector.Para, &serverConfig)
 	if err != nil {
-		pkg.LoggerFromContext(ctx).Error("解析超时配置失败", zap.Error(err))
 		return nil, fmt.Errorf("配置文件解析失败: %s", err)
-	}
-
-	// 4. 初始化listener
-	listener, err := net.Listen("tcp", ":"+serverConfig.Port)
-	if err != nil {
-		pkg.LoggerFromContext(ctx).Error("解析超时配置失败", zap.Error(err))
-		return nil, fmt.Errorf("tcpServer监听程序启动失败: %s\n", err)
 	}
 
 	return &TcpServerConnector{
 		ctx:          ctx,
 		chReady:      make(chan pkg.DataSource, 1),
-		listener:     listener,
 		serverConfig: &serverConfig,
 	}, nil
 }
@@ -76,13 +61,16 @@ func (t *TcpServerConnector) Start(sourceChan chan pkg.DataSource) error {
 
 	log := pkg.LoggerFromContext(t.ctx)
 	// 1. 监听指定的端口
-	log.Debug("TCPServer listening on: " + t.serverConfig.Port)
-
+	log.Debug("TCPServer listening on: " + t.serverConfig.Url)
+	listener, err := net.Listen("tcp", t.serverConfig.Url)
+	if err != nil {
+		return fmt.Errorf("tcpServer监听程序启动失败: %s\n", err)
+	}
 	// 2. 在新的协程中监听 ctx.Done()
 	go func() {
 		<-t.ctx.Done()
 		// 关闭 listener 使 Accept() 退出阻塞状态
-		if err := t.listener.Close(); err != nil {
+		if err = listener.Close(); err != nil {
 			log.Error("关闭监听器失败", zap.Error(err))
 		}
 	}()
@@ -91,7 +79,7 @@ func (t *TcpServerConnector) Start(sourceChan chan pkg.DataSource) error {
 			// 该循环会一直阻塞，直到有新地连接到来
 			// 只有两种情况会退出循环：1.监听器关闭 2.接受连接失败
 			// 所以需要该循环理论上无法自我逃逸，必须依赖外部的 Close 方法来关闭监听器
-			conn, err := t.listener.Accept()
+			conn, err := listener.Accept()
 			if err != nil {
 				// 检查错误是否由于监听器已关闭
 				if errors.Is(err, net.ErrClosed) {
@@ -174,6 +162,11 @@ func (t *TcpServerConnector) initConn(conn net.Conn) error {
 	remoteAddr, _, err := net.SplitHostPort(remoteAddrWithPort)
 	if err != nil {
 		return fmt.Errorf("无法解析远程地址: %v", remoteAddrWithPort)
+	}
+
+	// 处理 IPv6 地址 "::1"，将其视为 "127.0.0.1"
+	if remoteAddr == "::1" {
+		remoteAddr = "127.0.0.1"
 	}
 
 	// 2. 初始化设备ID

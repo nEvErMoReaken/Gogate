@@ -39,7 +39,7 @@ connector:
 #  config:
 #    check_crc: true
 #    timeout: 5m
-#    port: 8080
+#    url: :8080
 #    whiteList: false # 白名单模式
 #    ipAlias: # 给收到的ip起一个别名
 #      "172.25.3.108": ER2_1_1_1
