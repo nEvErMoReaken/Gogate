@@ -2,204 +2,66 @@ package connector
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"gateway/internal/pkg"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
-	"github.com/stretchr/testify/assert"
+	. "github.com/smartystreets/goconvey/convey"
 	"github.com/stretchr/testify/mock"
+	"go.uber.org/zap"
 	"testing"
 	"time"
 )
 
-// MockMQTTClient 是模拟的 MQTT 客户端，实现 MQTTClient 接口
 type MockMQTTClient struct {
 	mock.Mock
 }
 
-func (m *MockMQTTClient) IsConnectionOpen() bool {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (m *MockMQTTClient) Publish(topic string, qos byte, retained bool, payload interface{}) mqtt.Token {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (m *MockMQTTClient) Subscribe(topic string, qos byte, callback mqtt.MessageHandler) mqtt.Token {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (m *MockMQTTClient) Unsubscribe(topics ...string) mqtt.Token {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (m *MockMQTTClient) AddRoute(topic string, callback mqtt.MessageHandler) {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (m *MockMQTTClient) OptionsReader() mqtt.ClientOptionsReader {
-	//TODO implement me
-	panic("implement me")
-}
-
-// Connect 模拟 MQTT 客户端的连接
 func (m *MockMQTTClient) Connect() mqtt.Token {
 	args := m.Called()
 	return args.Get(0).(mqtt.Token)
 }
 
-// Disconnect 模拟 MQTT 客户端的断开连接
 func (m *MockMQTTClient) Disconnect(quiesce uint) {
 	m.Called(quiesce)
-
 }
 
-// SubscribeMultiple 模拟 MQTT 客户端的多主题订阅
 func (m *MockMQTTClient) SubscribeMultiple(filters map[string]byte, callback mqtt.MessageHandler) mqtt.Token {
 	args := m.Called(filters, callback)
 	return args.Get(0).(mqtt.Token)
 }
 
-// IsConnected 模拟 MQTT 客户端的连接状态
 func (m *MockMQTTClient) IsConnected() bool {
 	args := m.Called()
 	return args.Bool(0)
 }
 
-// MockToken 是模拟的 MQTT Token
+// MockToken 用于模拟 MQTT Token
 type MockToken struct {
 	mock.Mock
-	mqtt.Token
 }
 
-// Wait 模拟 Token 的等待行为
-func (m *MockToken) Wait() bool {
-	args := m.Called()
+func (t *MockToken) Wait() bool {
+	args := t.Called()
 	return args.Bool(0)
 }
 
-// Error 模拟 Token 的错误
-func (m *MockToken) Error() error {
-	args := m.Called()
+func (t *MockToken) WaitTimeout(timeout time.Duration) bool {
+	args := t.Called(timeout)
+	return args.Bool(0)
+}
+
+func (t *MockToken) Error() error {
+	args := t.Called()
 	return args.Error(0)
 }
 
-func TestMqttConnectorStart(t *testing.T) {
-	ctx := context.Background()
-	mockClient := new(MockMQTTClient)
-	mockToken := new(MockToken)
-
-	// 模拟配置
-	config := &pkg.Config{
-		Connector: pkg.ConnectorConfig{
-			Para: map[string]interface{}{
-				"broker":               "tcp://localhost:1883",
-				"clientID":             "test-client",
-				"username":             "test-user",
-				"password":             "test-pass",
-				"maxReconnectInterval": "5s",
-				"topics": map[string]byte{
-					"test/topic": 1,
-				},
-			},
-		},
-	}
-	ctx = pkg.WithConfig(ctx, config)
-	// 从 NewMqttConnector 返回的 Template 接口进行类型断言
-	connector, err := NewMqttConnector(ctx)
-	assert.NoError(t, err)
-
-	// 使用类型断言将 connector 转换为 *MqttConnector 类型
-	mqttConnector, ok := connector.(*MqttConnector)
-	assert.True(t, ok, "转换为 *MqttConnector 失败")
-	assert.True(t, ok, "转换为 *MqttConnector 失败")
-	assert.NoError(t, err)
-	mqttConnector.Client = mockClient
-
-	// 模拟连接成功
-	mockClient.On("Connect").Return(mockToken)
-	mockToken.On("Wait").Return(true)
-	mockToken.On("Error").Return(nil)
-
-	// 模拟订阅成功
-	mockClient.On("SubscribeMultiple", mock.Anything, mock.Anything).Return(mockToken)
-	mockToken.On("Wait").Return(true)
-	mockToken.On("Error").Return(nil)
-
-	// 执行 Start 方法
-	mqttConnector.Start()
-
-	// 验证连接和订阅的调用次数
-	mockClient.AssertCalled(t, "Connect")
-	mockClient.AssertCalled(t, "SubscribeMultiple", mock.Anything, mock.Anything)
-}
-
-func TestMqttConnectorClose(t *testing.T) {
-	ctx := context.Background()
-	mockClient := new(MockMQTTClient)
-
-	// 模拟 MQTT 连接状态
-	mockClient.On("IsConnected").Return(true)
-	mockClient.On("Disconnect", uint(250)).Return()
-
-	// 创建 MqttConnector 并设置 mockClient
-	mqttConnector := &MqttConnector{
-		ctx:    ctx,
-		Client: mockClient,
-	}
-
-	// 执行 Close 方法
-	err := mqttConnector.Close()
-	assert.NoError(t, err, "关闭 MqttConnector 不应出错")
-
-	// 验证 Disconnect 是否被调用
-	mockClient.AssertCalled(t, "Disconnect", uint(250))
-}
-
-// 测试未连接状态下的 Close
-func TestMqttConnectorClose_NotConnected(t *testing.T) {
-	ctx := context.Background()
-	mockClient := new(MockMQTTClient)
-
-	// 模拟 MQTT 未连接状态
-	mockClient.On("IsConnected").Return(false)
-
-	// 创建 MqttConnector 并设置 mockClient
-	mqttConnector := &MqttConnector{
-		ctx:    ctx,
-		Client: mockClient,
-	}
-
-	// 执行 Close 方法
-	err := mqttConnector.Close()
-	assert.EqualError(t, err, "MQTT客户端未连接")
-}
-
-func TestMqttConnectorGetDataSource(t *testing.T) {
-	ctx := context.Background()
-	dataChan := make(chan string, 1)
-
-	// 创建 MqttConnector
-	mqttConnector := &MqttConnector{
-		ctx:      ctx,
-		dataChan: dataChan,
-	}
-
-	// 调用 GetDataSource
-	dataSource, err := mqttConnector.GetDataSource()
-	assert.NoError(t, err, "GetDataSource 不应出错")
-	assert.Equal(t, dataChan, dataSource.Source, "数据源的 Source 应该与 dataChan 相同")
-	assert.Nil(t, dataSource.MetaData, "MetaData 应为 nil")
-}
-
-// MockMessage 实现 mqtt.Message 接口
 type MockMessage struct {
-	topic   string
-	payload []byte
+	TopicStr   string
+	PayloadStr []byte
+}
+
+func (m *MockMessage) Ack() {
+	return
 }
 
 func (m *MockMessage) Duplicate() bool {
@@ -215,7 +77,7 @@ func (m *MockMessage) Retained() bool {
 }
 
 func (m *MockMessage) Topic() string {
-	return m.topic
+	return m.TopicStr
 }
 
 func (m *MockMessage) MessageID() uint16 {
@@ -223,69 +85,182 @@ func (m *MockMessage) MessageID() uint16 {
 }
 
 func (m *MockMessage) Payload() []byte {
-	return m.payload
+	return m.PayloadStr
 }
 
-// 实现 Ack 方法
-func (m *MockMessage) Ack() {
-	// 模拟 Ack 操作，这里可以是一个空的实现
+// Mock Logger for capturing log outputs
+var logger, _ = zap.NewDevelopment()
+
+var commonCtx, cancel = context.WithCancel(pkg.WithErrChan(pkg.WithLogger(context.Background(), logger), make(chan error, 5)))
+
+func TestMqttConnector(t *testing.T) {
+	Convey("给定一个合法的 ctx 和配置", t, func() {
+		ctx := pkg.WithLogger(context.Background(), logger)
+		mockClient := new(MockMQTTClient)
+		mockToken := new(MockToken)
+
+		// 模拟配置
+		mqttConfig := &MqttConfig{
+			Broker:               "tcp://localhost:1883",
+			ClientID:             "test-client",
+			Username:             "user",
+			Password:             "password",
+			MaxReconnectInterval: 10 * time.Second,
+			Topics:               map[string]byte{"test/topic": 0},
+		}
+
+		mqttConn := &MqttConnector{
+			ctx:    ctx,
+			config: mqttConfig,
+			Client: mockClient,
+			Sink:   pkg.NewMessageDataSource(),
+		}
+
+		Convey("当调用 Start 并连接成功时", func() {
+			mockClient.On("Connect").Return(mockToken)
+			mockToken.On("Wait").Return(true)
+			mockToken.On("Error").Return(nil)
+			mockClient.On("SubscribeMultiple", mock.Anything, mock.Anything).Return(mockToken)
+
+			sourceChan := make(chan pkg.DataSource)
+			go func() {
+				err := mqttConn.Start(sourceChan)
+				Convey("应该成功启动且没有错误", func() {
+					So(err, ShouldBeNil)
+					mockClient.AssertCalled(t, "Connect")
+					mockClient.AssertCalled(t, "SubscribeMultiple", mock.Anything, mock.Anything)
+				})
+			}()
+		})
+
+		Convey("当调用 Start 并连接失败时", func() {
+			mockClient.On("Connect").Return(mockToken)
+			mockToken.On("Wait").Return(true)
+			mockToken.On("Error").Return(errors.New("连接失败"))
+
+			sourceChan := make(chan pkg.DataSource)
+			go func() {
+				err := mqttConn.Start(sourceChan)
+				Convey("应该将错误写入上下文的 ErrChan", func() {
+					So(err, ShouldBeNil)
+					// 模拟读取错误通道，验证是否收到错误
+					errChan := pkg.ErrChanFromContext(ctx)
+					So(<-errChan, ShouldNotBeNil)
+				})
+			}()
+		})
+
+		Convey("当调用 Close 并客户端已连接时", func() {
+			mockClient.On("IsConnected").Return(true)
+			mockClient.On("Disconnect", uint(250)).Return()
+
+			err := mqttConn.Close()
+
+			Convey("应该成功断开连接且没有错误", func() {
+				So(err, ShouldBeNil)
+				mockClient.AssertCalled(t, "Disconnect", uint(250))
+			})
+		})
+
+		Convey("当调用 Close 并客户端未连接时", func() {
+			mockClient.On("IsConnected").Return(false)
+
+			err := mqttConn.Close()
+
+			Convey("应该返回未连接的错误", func() {
+				So(err, ShouldNotBeNil)
+				So(err.Error(), ShouldContainSubstring, "MQTT客户端未连接")
+			})
+		})
+
+		Convey("当调用 messagePubHandler 并消息成功写入时", func() {
+			message := &MockMessage{
+				TopicStr:   "test/topic",
+				PayloadStr: []byte("test message"),
+			}
+
+			mqttConn.messagePubHandler(nil, message)
+
+			Convey("应该将消息写入 Sink 且没有错误", func() {
+				data, err := mqttConn.Sink.ReadOne()
+				So(err, ShouldBeNil)
+				So(data, ShouldResemble, []byte("test message"))
+			})
+		})
+
+	})
 }
 
-// 测试 messagePubHandler 方法
-func TestMqttConnectorMessagePubHandler(t *testing.T) {
-	ctx := context.Background()
-	dataChan := make(chan string, 1)
+func TestNewMqttConnector(t *testing.T) {
+	Convey("创建一个新的 MQTT 连接器", t, func() {
+		ctx := pkg.WithLogger(context.Background(), logger)
 
-	// 创建 MqttConnector
-	mqttConnector := &MqttConnector{
-		ctx:      ctx,
-		dataChan: dataChan,
-	}
+		Convey("当配置正确时", func() {
+			// 模拟合法的配置
+			validConfig := pkg.Config{
+				Connector: pkg.ConnectorConfig{
+					Para: map[string]interface{}{
+						"broker":               "tcp://localhost:1883",
+						"clientID":             "test-client",
+						"username":             "user",
+						"password":             "password",
+						"maxReconnectInterval": "10s",
+						"topics":               map[string]byte{"test/topic": 0},
+					},
+				},
+			}
+			ctx = pkg.WithConfig(ctx, &validConfig)
 
-	// 创建模拟的 MQTT 消息
-	msg := &MockMessage{
-		topic:   "test/topic",
-		payload: []byte("test-message"),
-	}
+			connector, err := NewMqttConnector(ctx)
 
-	// 执行消息处理函数
-	mqttConnector.messagePubHandler(nil, msg)
+			Convey("应该成功返回一个 MqttConnector 实例", func() {
+				So(err, ShouldBeNil)
+				So(connector, ShouldNotBeNil)
+				mqttConn := connector.(*MqttConnector)
+				So(mqttConn.config.Broker, ShouldEqual, "tcp://localhost:1883")
+				So(mqttConn.config.ClientID, ShouldEqual, "test-client")
+				So(mqttConn.config.Topics, ShouldContainKey, "test/topic")
+			})
+		})
 
-	// 验证消息是否被发送到数据通道
-	select {
-	case data := <-dataChan:
-		assert.Equal(t, "test-message", data)
-	case <-time.After(1 * time.Second):
-		t.Fatal("消息未发送到数据通道")
-	}
-}
+		Convey("当 maxReconnectInterval 配置错误时", func() {
+			// 模拟错误的 maxReconnectInterval 配置
+			invalidConfig := pkg.Config{
+				Connector: pkg.ConnectorConfig{
+					Para: map[string]interface{}{
+						"maxReconnectInterval": "invalid_duration",
+					},
+				},
+			}
+			ctx = pkg.WithConfig(ctx, &invalidConfig)
 
-func TestMqttConnectorConnectHandler(t *testing.T) {
+			connector, err := NewMqttConnector(ctx)
 
-	ctx := pkg.WithLogger(context.Background(), logger)
-	// 创建 MqttConnector 实例
-	mqttConnector := &MqttConnector{
-		ctx: ctx,
-	}
+			Convey("应该返回解析错误", func() {
+				So(err, ShouldNotBeNil)
+				So(err.Error(), ShouldContainSubstring, "解析超时配置失败")
+				So(connector, ShouldBeNil)
+			})
+		})
 
-	// 模拟 MQTT 客户端
-	mockClient := new(MockMQTTClient)
+		Convey("当配置字段解析失败时", func() {
+			// 模拟错误的配置字段
+			invalidConfig := pkg.Config{
+				Connector: pkg.ConnectorConfig{
+					Para: map[string]interface{}{
+						"invalidField": "value",
+					},
+				},
+			}
+			ctx = pkg.WithConfig(ctx, &invalidConfig)
 
-	// 执行连接成功的回调函数
-	mqttConnector.connectHandler(mockClient)
-}
+			connector, err := NewMqttConnector(ctx)
 
-func TestMqttConnectorConnectLostHandler(t *testing.T) {
-	ctx := pkg.WithLogger(context.Background(), logger)
-	// 创建 MqttConnector 实例
-	mqttConnector := &MqttConnector{
-		ctx: ctx,
-	}
-
-	// 模拟连接丢失的错误
-	err := fmt.Errorf("测试：connection lost")
-
-	// 执行连接丢失的回调函数
-	mqttConnector.connectLostHandler(nil, err)
-
+			Convey("应该返回配置解析失败的错误", func() {
+				So(err, ShouldNotBeNil)
+				So(err.Error(), ShouldContainSubstring, "解析 MQTT 配置失败")
+				So(connector, ShouldBeNil)
+			})
+		})
+	})
 }

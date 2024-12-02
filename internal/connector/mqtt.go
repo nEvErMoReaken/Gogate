@@ -121,7 +121,7 @@ func NewMqttConnector(ctx context.Context) (Template, error) {
 }
 
 func (m *MqttConnector) messagePubHandler(_ mqtt.Client, msg mqtt.Message) {
-	pkg.LoggerFromContext(m.ctx).Info("Received message: %s from topic: %s\n", zap.String("payload", string(msg.Payload())), zap.String("topic", msg.Topic()))
+	pkg.LoggerFromContext(m.ctx).Info("Received message", zap.String("payload", string(msg.Payload())), zap.String("topic", msg.Topic()))
 
 	err := m.Sink.WriteOne(msg.Payload())
 	if err != nil {
