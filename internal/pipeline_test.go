@@ -135,7 +135,7 @@ func TestEager_StartPipeline(t *testing.T) {
 
 	// 替换 connector.New，为了返回我们的 mockConnector
 	originalConnectorNew := connector.New
-	connector.New = func(ctx context.Context) (connector.Connector, error) {
+	connector.New = func(ctx context.Context) (connector.Template, error) {
 		return mockConnector, nil
 	}
 	defer func() { connector.New = originalConnectorNew }()
@@ -147,8 +147,8 @@ func TestEager_StartPipeline(t *testing.T) {
 
 	// 替换 strategy.New，使其返回我们的 mockStrategy
 	originalStrategyNew := strategy.New
-	strategy.New = func(ctx context.Context) (strategy.MapSendStrategy, error) {
-		strategies := make(strategy.MapSendStrategy)
+	strategy.New = func(ctx context.Context) (strategy.TemplateCollection, error) {
+		strategies := make(strategy.TemplateCollection)
 		strategies["mock"] = mockStrategy
 		return strategies, nil
 	}
@@ -157,14 +157,14 @@ func TestEager_StartPipeline(t *testing.T) {
 	mp := new(mockParser)
 	mp.On("Start").Return()
 	originalParserNew := parser.New
-	parser.New = func(ctx context.Context, dataSource pkg.DataSource, mapChan map[string]chan pkg.Point) (parser.Parser, error) {
+	parser.New = func(ctx context.Context, dataSource pkg.DataSource, mapChan map[string]chan pkg.Point) (parser.Template, error) {
 		mp.dataSource = dataSource
 		mp.mapChan = mapChan
 		return mp, nil
 	}
 	defer func() { parser.New = originalParserNew }()
 	// 启动管道
-	go StartPipeline(ctx)
+	go NewPipeline(ctx)
 
 	// 模拟连接器准备就绪，发送数据源
 	ds, _ := mockConnector.GetDataSource()
@@ -208,7 +208,7 @@ func TestLazy_StartPipeline(t *testing.T) {
 
 	// 替换 connector.New，为了返回我们的 mockConnector
 	originalConnectorNew := connector.New
-	connector.New = func(ctx context.Context) (connector.Connector, error) {
+	connector.New = func(ctx context.Context) (connector.Template, error) {
 		return mockConnector, nil
 	}
 	defer func() { connector.New = originalConnectorNew }()
@@ -220,8 +220,8 @@ func TestLazy_StartPipeline(t *testing.T) {
 
 	// 替换 strategy.New，使其返回我们的 mockStrategy
 	originalStrategyNew := strategy.New
-	strategy.New = func(ctx context.Context) (strategy.MapSendStrategy, error) {
-		strategies := make(strategy.MapSendStrategy)
+	strategy.New = func(ctx context.Context) (strategy.TemplateCollection, error) {
+		strategies := make(strategy.TemplateCollection)
 		strategies["mock"] = mockStrategy
 		return strategies, nil
 	}
@@ -230,14 +230,14 @@ func TestLazy_StartPipeline(t *testing.T) {
 	mp := new(mockParser)
 	mp.On("Start").Return()
 	originalParserNew := parser.New
-	parser.New = func(ctx context.Context, dataSource pkg.DataSource, mapChan map[string]chan pkg.Point) (parser.Parser, error) {
+	parser.New = func(ctx context.Context, dataSource pkg.DataSource, mapChan map[string]chan pkg.Point) (parser.Template, error) {
 		mp.dataSource = dataSource
 		mp.mapChan = mapChan
 		return mp, nil
 	}
 	defer func() { parser.New = originalParserNew }()
 	// 启动管道
-	go StartPipeline(ctx)
+	go NewPipeline(ctx)
 
 	// 模拟连接器准备就绪，发送数据源
 	mockConnector.Ready() <- dataSource
