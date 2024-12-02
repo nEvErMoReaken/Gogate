@@ -72,7 +72,7 @@ func TestTcpServer2Mqtt(t *testing.T) {
 	}(mqttBroker) // 测试结束时关闭 Broker
 
 	// 启动流程
-	go internal.StartPipeline(h.ctx)
+	go internal.NewPipeline(h.ctx)
 
 	// 设置 MQTT 订阅
 	received := make(chan []byte, 1)

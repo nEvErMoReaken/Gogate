@@ -32,12 +32,12 @@ type InfluxDbStrategy struct {
 	client   influxdb2.Client
 	writeAPI api.WriteAPI
 	info     InfluxDbInfo
-	core     Core
+	ctx      context.Context
 	logger   *zap.Logger
 }
 
 // NewInfluxDbStrategy Step.0 构造函数
-func NewInfluxDbStrategy(ctx context.Context) (Strategy, error) {
+func NewInfluxDbStrategy(ctx context.Context) (Template, error) {
 	config := pkg.ConfigFromContext(ctx)
 
 	var info InfluxDbInfo
@@ -71,33 +71,28 @@ func NewInfluxDbStrategy(ctx context.Context) (Strategy, error) {
 		client:   client,
 		writeAPI: writeAPI,
 		info:     info,
-		core:     Core{StrategyType: "influxDB", PointChan: make(chan pkg.Point, 200), Ctx: ctx},
+		ctx:      ctx,
 	}, nil
 }
 
-// GetCore Step.1
-func (b *InfluxDbStrategy) GetCore() Core {
-	return b.core
+// GetType Step.1
+func (b *InfluxDbStrategy) GetType() string {
+	return "influxdb"
 }
 
-// GetChan Step.2
-func (b *InfluxDbStrategy) GetChan() chan pkg.Point {
-	return b.core.PointChan
-}
-
-// Start Step.3
-func (b *InfluxDbStrategy) Start() {
+// Start Step.2
+func (b *InfluxDbStrategy) Start(pointChan chan pkg.Point) {
 	defer b.client.Close()
-	pkg.LoggerFromContext(b.core.Ctx).Info("===InfluxDbStrategy started===")
+	pkg.LoggerFromContext(b.ctx).Info("===InfluxDbStrategy started===")
 	for {
 		select {
-		case <-b.core.Ctx.Done():
+		case <-b.ctx.Done():
 			b.Stop()
-			pkg.LoggerFromContext(b.core.Ctx).Info("===IoTDBStrategy stopped===")
-		case point := <-b.core.PointChan:
+			pkg.LoggerFromContext(b.ctx).Info("===IoTDBStrategy stopped===")
+		case point := <-pointChan:
 			err := b.Publish(point)
 			if err != nil {
-				pkg.ErrChanFromContext(b.core.Ctx) <- fmt.Errorf("IoTDBStrategy error occurred: %w", err)
+				pkg.ErrChanFromContext(b.ctx) <- fmt.Errorf("IoTDBStrategy error occurred: %w", err)
 			}
 		}
 	}

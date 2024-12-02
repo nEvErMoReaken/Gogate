@@ -20,7 +20,7 @@ func init() {
 // PrometheusStrategy 实现将数据发布到 Prometheus 的逻辑
 type PrometheusStrategy struct {
 	info    PrometheusInfo
-	core    Core
+	ctx     context.Context
 	logger  *zap.Logger
 	metrics map[string]*prometheus.GaugeVec // 使用 Prometheus 的 GaugeVec 作为指标类型
 }
@@ -32,7 +32,7 @@ type PrometheusInfo struct {
 }
 
 // NewPrometheusStrategy Step.0 构造函数
-func NewPrometheusStrategy(ctx context.Context) (Strategy, error) {
+func NewPrometheusStrategy(ctx context.Context) (Template, error) {
 	log := pkg.LoggerFromContext(ctx)
 	config := pkg.ConfigFromContext(ctx)
 	var info PrometheusInfo
@@ -60,35 +60,30 @@ func NewPrometheusStrategy(ctx context.Context) (Strategy, error) {
 
 	return &PrometheusStrategy{
 		info:    info,
-		core:    Core{StrategyType: "prometheus", PointChan: make(chan pkg.Point, 200), Ctx: ctx},
+		ctx:     ctx,
 		logger:  log,
 		metrics: metrics,
 	}, nil
 }
 
 // GetCore Step.1
-func (p *PrometheusStrategy) GetCore() Core {
-	return p.core
+func (p *PrometheusStrategy) GetType() string {
+	return "prometheus"
 }
 
-// GetChan Step.2
-func (p *PrometheusStrategy) GetChan() chan pkg.Point {
-	return p.core.PointChan
-}
-
-// Start Step.3
-func (p *PrometheusStrategy) Start() {
+// Start Step.2
+func (p *PrometheusStrategy) Start(pointChan chan pkg.Point) {
 	p.logger.Info("===PrometheusStrategy started===")
 
 	for {
 		select {
-		case <-p.core.Ctx.Done():
+		case <-p.ctx.Done():
 			p.Stop()
-			pkg.LoggerFromContext(p.core.Ctx).Info("===PrometheusStrategy stopped===")
-		case point := <-p.core.PointChan:
+			pkg.LoggerFromContext(p.ctx).Info("===PrometheusStrategy stopped===")
+		case point := <-pointChan:
 			err := p.Publish(point)
 			if err != nil {
-				pkg.ErrChanFromContext(p.core.Ctx) <- fmt.Errorf("PrometheusStrategy error occurred: %w", err)
+				pkg.ErrChanFromContext(p.ctx) <- fmt.Errorf("PrometheusStrategy error occurred: %w", err)
 			}
 		}
 	}

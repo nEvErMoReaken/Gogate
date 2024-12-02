@@ -29,7 +29,7 @@ strategy 接口定义了下游数据源的发送策略，包括：
 		Register("MyStrategy", NewMyStrategy)
 	}
 
-	// 实现 Strategy 接口
+	// 实现 Template 接口
 	// GetChan 返回通道
 	func (b *MyStrategy) GetChan() chan pkg.Point {
 

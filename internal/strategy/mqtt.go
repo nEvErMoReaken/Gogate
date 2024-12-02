@@ -30,7 +30,7 @@ type MQTTClientInterface interface {
 type MqttStrategy struct {
 	client MQTTClientInterface
 	info   MQTTInfo
-	core   Core
+	ctx    context.Context
 	logger *zap.Logger
 }
 
@@ -47,7 +47,7 @@ type MQTTInfo struct {
 }
 
 // NewMqttStrategy Step.0 构造函数
-func NewMqttStrategy(ctx context.Context) (Strategy, error) {
+func NewMqttStrategy(ctx context.Context) (Template, error) {
 	log := pkg.LoggerFromContext(ctx)
 	config := pkg.ConfigFromContext(ctx)
 	var info MQTTInfo
@@ -112,36 +112,31 @@ func NewMqttStrategy(ctx context.Context) (Strategy, error) {
 	return &MqttStrategy{
 		client: mqCLi,
 		info:   info,
-		core:   Core{StrategyType: "mqtt", PointChan: make(chan pkg.Point, 200), Ctx: ctx},
+		ctx:    ctx,
 		logger: log,
 	}, nil
 }
 
 // GetCore Step.1
-func (m *MqttStrategy) GetCore() Core {
-	return m.core
+func (m *MqttStrategy) GetType() string {
+	return "mqtt"
 }
 
-// GetChan Step.2
-func (m *MqttStrategy) GetChan() chan pkg.Point {
-	return m.core.PointChan
-}
-
-// Start Step.3
-func (m *MqttStrategy) Start() {
+// Start Step.2
+func (m *MqttStrategy) Start(pointChan chan pkg.Point) {
 	defer m.client.Disconnect(250)
 	m.logger.Info("===MqttStrategy started===")
 	// 发布网关上线的状态
 	m.client.Publish(m.info.WillTopic, 1, true, "online")
 	for {
 		select {
-		case <-m.core.Ctx.Done():
+		case <-m.ctx.Done():
 			m.Stop()
-			pkg.LoggerFromContext(m.core.Ctx).Info("===MqttStrategy stopped===")
-		case point := <-m.core.PointChan:
+			pkg.LoggerFromContext(m.ctx).Info("===MqttStrategy stopped===")
+		case point := <-pointChan:
 			err := m.Publish(point)
 			if err != nil {
-				pkg.ErrChanFromContext(m.core.Ctx) <- fmt.Errorf("MqttStrategy error occurred: %w", err)
+				pkg.ErrChanFromContext(m.ctx) <- fmt.Errorf("MqttStrategy error occurred: %w", err)
 			}
 		}
 	}

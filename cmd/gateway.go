@@ -36,7 +36,7 @@ func main() {
 	// 将logger挂载到ctx上
 	ctxWithConfigAndLogger := pkg.WithLogger(ctxWithConfig, log)
 
-	internal.StartPipeline(ctxWithConfigAndLogger)
+	internal.NewPipeline(ctxWithConfigAndLogger)
 
 	// 5. 主线程监听终止信号
 	si := make(chan os.Signal, 1)

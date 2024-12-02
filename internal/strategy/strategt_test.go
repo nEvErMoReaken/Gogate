@@ -29,7 +29,7 @@ func (m *MockStrategy) Start() {
 }
 
 // 模拟工厂函数
-func mockStrategyFactory(ctx context.Context) (strategy.Strategy, error) {
+func mockStrategyFactory(ctx context.Context) (strategy.Template, error) {
 	return &MockStrategy{
 		Core: strategy.Core{
 			StrategyType: "mock",
@@ -39,7 +39,7 @@ func mockStrategyFactory(ctx context.Context) (strategy.Strategy, error) {
 	}, nil
 }
 
-func failingStrategyFactory(ctx context.Context) (strategy.Strategy, error) {
+func failingStrategyFactory(ctx context.Context) (strategy.Template, error) {
 	_ = ctx
 	return nil, errors.New("failed to create strategy")
 }

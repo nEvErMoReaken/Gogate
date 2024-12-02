@@ -22,7 +22,7 @@ func init() {
 type IoTDBStrategy struct {
 	sessionPool SessionPoolInterface
 	info        IotDBInfo
-	core        Core
+	ctx         context.Context
 	logger      *zap.Logger
 }
 
@@ -89,7 +89,7 @@ type IotDBInfo struct {
 	BatchSize int32  `mapstructure:"batch_size"`
 }
 
-func NewIoTDBStrategy(ctx context.Context) (Strategy, error) {
+func NewIoTDBStrategy(ctx context.Context) (Template, error) {
 	c := pkg.ConfigFromContext(ctx)
 	var info IotDBInfo
 	for _, strategyConfig := range c.Strategy {
@@ -133,36 +133,27 @@ func NewIoTDBStrategy(ctx context.Context) (Strategy, error) {
 		logger:      pkg.LoggerFromContext(ctx),
 		sessionPool: sessionPool,
 		info:        info,
-		core: Core{
-			StrategyType: "iotdb",
-			PointChan:    make(chan pkg.Point, 200),
-			Ctx:          context.WithValue(ctx, "strategy", "iotdb"),
-		},
+		ctx:         ctx,
 	}, nil
 }
 
 // GetChan Step.1
-func (b *IoTDBStrategy) GetChan() chan pkg.Point {
-	return b.core.PointChan
+func (b *IoTDBStrategy) GetType() string {
+	return "iotdb"
 }
 
-// GetCore Step.2
-func (b *IoTDBStrategy) GetCore() Core {
-	return b.core
-}
-
-// Start Step.3 启动策略
-func (b *IoTDBStrategy) Start() {
+// Start Step.2 启动策略
+func (b *IoTDBStrategy) Start(pointChan chan pkg.Point) {
 	b.logger.Info("===IoTDBStrategy started===")
 	for {
 		select {
-		case <-b.core.Ctx.Done():
+		case <-b.ctx.Done():
 			b.Stop()
 			b.logger.Info("===IoTDBStrategy stopped===")
-		case point := <-b.core.PointChan:
+		case point := <-pointChan:
 			err := b.Publish(point)
 			if err != nil {
-				pkg.ErrChanFromContext(b.core.Ctx) <- fmt.Errorf("IoTDBStrategy error occurred: %w", err)
+				pkg.ErrChanFromContext(b.ctx) <- fmt.Errorf("IoTDBStrategy error occurred: %w", err)
 			}
 		}
 	}
