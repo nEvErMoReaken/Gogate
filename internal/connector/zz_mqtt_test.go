@@ -55,6 +55,7 @@ func (m *MockMQTTClient) Connect() mqtt.Token {
 // Disconnect 模拟 MQTT 客户端的断开连接
 func (m *MockMQTTClient) Disconnect(quiesce uint) {
 	m.Called(quiesce)
+
 }
 
 // SubscribeMultiple 模拟 MQTT 客户端的多主题订阅

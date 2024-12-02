@@ -43,6 +43,7 @@ func init() {
 func (m *MqttConnector) GetType() string {
 	return "message"
 }
+
 func (m *MqttConnector) Start(sourceChan chan pkg.DataSource) error {
 	source := pkg.NewMessageDataSource()
 	m.Sink = source

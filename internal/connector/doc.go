@@ -10,7 +10,7 @@ Template.go中为主接口，负责建立连接、监听数据源中的变化，
 
 - tcp(server|client)
 
-- udp(server|client)
+- udp
 
 - sql
 
