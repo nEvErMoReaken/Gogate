@@ -20,35 +20,43 @@ type DataSource interface {
 
 // StreamDataSource 实现了 StreamSource 接口
 type StreamDataSource struct {
-	reader *io.Reader
-	writer *io.Writer
+	MetaData map[string]string
+	Reader   io.Reader
+	Writer   io.Writer
 }
 
 // NewStreamDataSource 使用指定的 reader 和 writer 创建 StreamDataSource 实例
-func NewStreamDataSource(reader *io.Reader, writer *io.Writer) *StreamDataSource {
+func NewStreamDataSource() *StreamDataSource {
+	reader, writer := io.Pipe()
 	return &StreamDataSource{
-		reader: reader,
-		writer: writer,
+		Reader: reader,
+		Writer: writer,
 	}
 }
 
+// NewMessageDataSource 创建一个 MessageDataSource 实例
+func NewMessageDataSource() *MessageDataSource {
+	return &MessageDataSource{
+		DataChan: make(chan []byte, 200),
+	}
+}
 func (s *StreamDataSource) Type() string {
 	return "stream"
 }
 
 // ReadFully 阻塞读取直到缓冲区填满
 func (s *StreamDataSource) ReadFully(p []byte) (int, error) {
-	return io.ReadFull(*s.reader, p)
+	return io.ReadFull(s.Reader, p)
 }
 
 // WriteASAP 立即写入数据
 func (s *StreamDataSource) WriteASAP(data []byte) (int, error) {
-	return (*s.writer).Write(data)
+	return (s.Writer).Write(data)
 }
 
 // MessageDataSource 实现了 MessageSource 接口
 type MessageDataSource struct {
-	dataChan chan []byte
+	DataChan chan []byte
 }
 
 func (m *MessageDataSource) Type() string {
@@ -57,7 +65,7 @@ func (m *MessageDataSource) Type() string {
 
 // ReadOne 从通道中读取一个完整的数据包
 func (m *MessageDataSource) ReadOne() ([]byte, error) {
-	data, ok := <-m.dataChan
+	data, ok := <-m.DataChan
 	if !ok {
 		return nil, io.EOF
 	}
@@ -67,9 +75,17 @@ func (m *MessageDataSource) ReadOne() ([]byte, error) {
 // WriteOne 从通道中读取一个完整的数据包
 func (m *MessageDataSource) WriteOne(data []byte) error {
 	// 如果通道已关闭，返回 EOF
-	if m.dataChan == nil {
+	if m.DataChan == nil {
 		return io.EOF
 	}
-	m.dataChan <- data
+	m.DataChan <- data
 	return nil
+}
+
+type PointDataSource struct {
+	PointChan map[string]chan Point
+}
+
+func (p *PointDataSource) Type() string {
+	return "point"
 }
