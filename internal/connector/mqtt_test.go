@@ -108,7 +108,7 @@ func TestMqttConnectorStart(t *testing.T) {
 		},
 	}
 	ctx = pkg.WithConfig(ctx, config)
-	// 从 NewMqttConnector 返回的 Connector 接口进行类型断言
+	// 从 NewMqttConnector 返回的 Template 接口进行类型断言
 	connector, err := NewMqttConnector(ctx)
 	assert.NoError(t, err)
 

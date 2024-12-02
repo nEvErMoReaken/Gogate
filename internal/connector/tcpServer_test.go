@@ -91,7 +91,7 @@ func TestTcpServerStart(t *testing.T) {
 	wg.Wait() // 等待服务器关闭
 }
 
-// 测试 initConn 处理逻辑
+// 测试 handleConnection 处理逻辑
 func TestInitConn(t *testing.T) {
 	ctx := context.Background()
 
@@ -128,8 +128,8 @@ func TestInitConn(t *testing.T) {
 		assert.NoError(t, err, "服务器应成功接受连接")
 		defer conn.Close()
 
-		dataSource, err := tcpServer.initConn(conn)
-		assert.NoError(t, err, "initConn 不应出错")
+		dataSource, err := tcpServer.handleConnection(conn)
+		assert.NoError(t, err, "handleConnection 不应出错")
 		assert.Equal(t, "test-device", dataSource.MetaData["deviceId"], "设备 ID 应为 'test-device'")
 		assert.NotNil(t, dataSource.Source, "DataSource 的 Source 不应为 nil")
 

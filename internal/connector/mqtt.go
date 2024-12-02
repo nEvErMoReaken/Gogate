@@ -32,15 +32,22 @@ type MqttConfig struct {
 type MqttConnector struct {
 	ctx    context.Context
 	config *MqttConfig
-	Client MQTTClient            // MQTT 客户端
-	Sink   pkg.MessageDataSource // 数据通道
+	Client MQTTClient             // MQTT 客户端
+	Sink   *pkg.MessageDataSource // 数据通道
 }
 
 func init() {
 	Register("mqtt", NewMqttConnector)
 }
 
-func (m *MqttConnector) Start() {
+func (m *MqttConnector) GetType() string {
+	return "message"
+}
+func (m *MqttConnector) Start(sourceChan chan pkg.DataSource) error {
+	source := pkg.NewMessageDataSource()
+	m.Sink = source
+	// 立即返回数据源
+	sourceChan <- source
 	// 检查客户端是否已经连接
 	if token := m.Client.Connect(); token.Wait() && token.Error() != nil {
 		pkg.ErrChanFromContext(m.ctx) <- fmt.Errorf("MQTT连接失败: %v", token.Error())
@@ -55,19 +62,8 @@ func (m *MqttConnector) Start() {
 
 	// 持续运行监听消息
 	pkg.LoggerFromContext(m.ctx).Info("MQTT订阅成功，正在监听消息")
-}
 
-func (m *MqttConnector) SinkType() string {
-	return "message"
-}
-
-func (m *MqttConnector) SetSink(source *pkg.DataSource) {
-	// 确保接口断言类型是指针类型的 `MessageDataSource`
-	if sink, ok := (*source).(*pkg.MessageDataSource); ok {
-		m.Sink = *sink
-	} else {
-		pkg.LoggerFromContext(m.ctx).Error("Mqtt数据源类型错误, 期望pkg.MessageDataSource")
-	}
+	return nil
 }
 
 func (m *MqttConnector) Close() error {
@@ -80,7 +76,7 @@ func (m *MqttConnector) Close() error {
 	return fmt.Errorf("MQTT客户端未连接")
 }
 
-func NewMqttConnector(ctx context.Context) (connector Connector, err error) {
+func NewMqttConnector(ctx context.Context) (Template, error) {
 	// 1. 初始化配置文件
 	config := pkg.ConfigFromContext(ctx)
 	// 2. 处理 timeout 字段（从字符串解析为 time.Duration）
@@ -93,11 +89,11 @@ func NewMqttConnector(ctx context.Context) (connector Connector, err error) {
 	}
 
 	var mqttConfig MqttConfig
-	err = mapstructure.Decode(config.Connector.Para, &mqttConfig)
+	err := mapstructure.Decode(config.Connector.Para, &mqttConfig)
 	if err != nil {
 		return nil, fmt.Errorf("配置文件解析失败: %s", err)
 	}
-	// 2. 创建 MQTT Connector 实例
+	// 2. 创建 MQTT Template 实例
 	mqttConnector := &MqttConnector{
 		ctx:    ctx,
 		config: &mqttConfig,
@@ -120,7 +116,6 @@ func NewMqttConnector(ctx context.Context) (connector Connector, err error) {
 	// 创建 MQTT 客户端
 	client := mqtt.NewClient(opts)
 	mqttConnector.Client = client
-
 	return mqttConnector, nil
 }
 

@@ -103,7 +103,7 @@ func TestTcpClientDelayedServerStart(t *testing.T) {
 	// 启动本地 TCP 服务器，绑定动态端口
 	listener, err := net.Listen("tcp", "localhost:12224")
 	assert.NoError(t, err, "无法启动模拟服务器")
-	defer listener.Close()
+	defer listener.Close()listener.Close()
 
 	// 获取动态分配的端口并更新到客户端配置
 	addr := listener.Addr().String()

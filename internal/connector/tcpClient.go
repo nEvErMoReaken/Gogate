@@ -16,7 +16,6 @@ import (
 type TcpClientConnector struct {
 	ctx          context.Context
 	clientConfig *tcpClientConfig
-	Sink         pkg.StreamDataSource
 }
 
 func (t *TcpClientConnector) SinkType() string {
@@ -24,17 +23,13 @@ func (t *TcpClientConnector) SinkType() string {
 }
 
 func (t *TcpClientConnector) SetSink(source *pkg.DataSource) {
-	if sink, ok := (*source).(*pkg.StreamDataSource); ok {
-		t.Sink = *sink
-	} else {
-		pkg.LoggerFromContext(t.ctx).Error("TcpServer数据源类型错误, 期望pkg.StreamDataSource")
-	}
+
 }
 
 type tcpClientConfig struct {
 	ServerAddrs    []string      `mapstructure:"serverAddrs"`    // 服务器地址列表
 	Timeout        time.Duration `mapstructure:"timeout"`        // 超时时间
-	ReconnectDelay time.Duration `mapstructure:"reconnectDelay"` // 超时时间
+	ReconnectDelay time.Duration `mapstructure:"reconnectDelay"` // 重连间隔
 }
 
 // init 函数注册 TcpClientConnector
@@ -43,7 +38,7 @@ func init() {
 }
 
 // NewTcpClient 函数创建并初始化 TcpClientConnector
-func NewTcpClient(ctx context.Context) (Connector, error) {
+func NewTcpClient(ctx context.Context) (Template, error) {
 	// 获取配置
 	config := pkg.ConfigFromContext(ctx)
 
@@ -97,16 +92,24 @@ func NewTcpClient(ctx context.Context) (Connector, error) {
 	}, nil
 }
 
+func (t *TcpClientConnector) GetType() string {
+	return "stream"
+}
+
 // Start 方法启动客户端连接到服务器
-func (t *TcpClientConnector) Start() {
+func (t *TcpClientConnector) Start(sourceChan chan pkg.DataSource) error {
+
 	for _, serverAddr := range t.clientConfig.ServerAddrs {
+		ds := pkg.NewStreamDataSource()
+		sourceChan <- ds
 		// 对每个服务器地址启动一个协程
-		go t.manageConnection(serverAddr)
+		go t.manageConnection(serverAddr, ds)
 	}
+	return nil
 }
 
 // manageConnection 管理对单个服务器的连接，包括重连逻辑
-func (t *TcpClientConnector) manageConnection(serverAddr string) {
+func (t *TcpClientConnector) manageConnection(serverAddr string, ds *pkg.StreamDataSource) {
 	log := pkg.LoggerFromContext(t.ctx)
 	for {
 		// 检查全局关闭信号，避免不必要的重连尝试
@@ -160,7 +163,7 @@ func (t *TcpClientConnector) manageConnection(serverAddr string) {
 					}
 
 					// 将读取的数据写入到 Sink 的 writer 中
-					if _, err := t.Sink.WriteASAP(buffer[:n]); err != nil {
+					if _, err := ds.WriteASAP(buffer[:n]); err != nil {
 						log.Error("写入数据到 Sink 失败", zap.Error(err))
 						return // 写入失败，退出以重连
 					}
