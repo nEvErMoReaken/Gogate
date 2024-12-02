@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// MockConnector 是一个模拟的 Connector，用于测试
+// MockConnector 是一个模拟的 Template，用于测试
 type MockConnector struct{}
 
 func (m *MockConnector) Start() {}
@@ -26,7 +26,7 @@ func (m *MockConnector) GetDataSource() (pkg.DataSource, error) {
 }
 
 // MockFactoryFunc 是一个用于测试的工厂函数
-func MockFactoryFunc(ctx context.Context) (Connector, error) {
+func MockFactoryFunc(ctx context.Context) (Template, error) {
 	_ = ctx
 	return &MockConnector{}, nil
 }
@@ -42,10 +42,10 @@ func TestRegister(t *testing.T) {
 	factory, exists := Factories["mock"]
 	assert.True(t, exists, "应该成功注册数据源类型 'mock'")
 
-	// 调用注册的工厂函数，验证是否可以成功返回一个 Connector
+	// 调用注册的工厂函数，验证是否可以成功返回一个 Template
 	connector, err := factory(context.Background())
 	assert.NoError(t, err, "调用注册的工厂函数不应返回错误")
-	assert.NotNil(t, connector, "工厂函数返回的 Connector 不应为 nil")
+	assert.NotNil(t, connector, "工厂函数返回的 Template 不应为 nil")
 }
 
 func TestNew_Success(t *testing.T) {
@@ -66,11 +66,11 @@ func TestNew_Success(t *testing.T) {
 	// 调用 New 函数
 	connector, err := New(ctx)
 	assert.NoError(t, err, "New 函数应成功返回")
-	assert.NotNil(t, connector, "返回的 Connector 不应为 nil")
+	assert.NotNil(t, connector, "返回的 Template 不应为 nil")
 
-	// 验证返回的 Connector 是否为 MockConnector 类型
+	// 验证返回的 Template 是否为 MockConnector 类型
 	_, ok := connector.(*MockConnector)
-	assert.True(t, ok, "返回的 Connector 应为 MockConnector 类型")
+	assert.True(t, ok, "返回的 Template 应为 MockConnector 类型")
 }
 
 func TestNew_UnknownType(t *testing.T) {
@@ -96,7 +96,7 @@ func TestNew_FactoryError(t *testing.T) {
 	Factories = make(map[string]FactoryFunc)
 
 	// 注册一个工厂函数，它返回错误
-	Register("error", func(ctx context.Context) (Connector, error) {
+	Register("error", func(ctx context.Context) (Template, error) {
 		return nil, errors.New("factory error")
 	})
 

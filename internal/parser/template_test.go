@@ -287,7 +287,7 @@ func TestNew(t *testing.T) {
 	ctx = pkg.WithConfig(ctx, config)
 
 	// 注册一个简单的工厂函数
-	Register("test_parser", func(ds pkg.DataSource, mapCh map[string]chan pkg.Point, ctx context.Context) (Parser, error) {
+	Register("test_parser", func(ds pkg.DataSource, mapCh map[string]chan pkg.Point, ctx context.Context) (Template, error) {
 		return &mockParser{}, nil
 	})
 	// 测试 New 函数
@@ -296,7 +296,7 @@ func TestNew(t *testing.T) {
 	assert.NotNil(t, parser, "解析器应成功创建")
 }
 
-// 模拟一个 Parser
+// 模拟一个 Template
 type mockParser struct{}
 
 func (p *mockParser) Start() {}

@@ -12,13 +12,14 @@ import (
 	"time"
 )
 
-// Parser 定义一个通用的接口，用于处理各种数据源，并持续维护一个快照集合
-type Parser interface {
-	Start() // 启动解析器
+// Template 定义一个通用的接口，用于处理各种数据源，并持续维护一个快照集合
+type Template interface {
+	Start(source *pkg.DataSource, SinkMap *pkg.PointDataSource) // 启动解析器
+	GetType() string
 }
 
 // FactoryFunc 代表一个发送策略的工厂函数
-type FactoryFunc func(dataSource pkg.DataSource, mapChan map[string]chan pkg.Point, ctx context.Context) (Parser, error)
+type FactoryFunc func(ctx context.Context) (Template, error)
 
 // Factories 全局工厂映射，用于注册不同策略类型的构造函数  这里面可能包含了没有启用的数据源
 var Factories = make(map[string]FactoryFunc)
@@ -28,7 +29,7 @@ func Register(parserType string, factory FactoryFunc) {
 	Factories[parserType] = factory
 }
 
-var New = func(ctx context.Context, dataSource pkg.DataSource, mapChan map[string]chan pkg.Point) (Parser, error) {
+var New = func(ctx context.Context) (Template, error) {
 	config := pkg.ConfigFromContext(ctx)
 	factory, ok := Factories[config.Parser.Type]
 	if !ok {
@@ -50,7 +51,7 @@ var New = func(ctx context.Context, dataSource pkg.DataSource, mapChan map[strin
 	pkg.LoggerFromContext(ctx).Debug(fmt.Sprintf("===正在启动Parser: %s===", config.Parser.Type))
 
 	// 2. 直接调用工厂函数
-	parser, err := factory(dataSource, mapChan, ctx)
+	parser, err := factory(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("初始化解析器失败: %v", err)
 	}
@@ -246,7 +247,7 @@ func (dm *DeviceSnapshot) Equal(other *DeviceSnapshot) bool {
 }
 
 // launch 发射所有数据点
-func (dm *DeviceSnapshot) launch(ctx context.Context, mapChan map[string]chan pkg.Point) {
+func (dm *DeviceSnapshot) launch(ctx context.Context, sink *pkg.PointDataSource) {
 	pkg.LoggerFromContext(ctx).Info("launching device snapshot", zap.Any("snapshot", dm))
 	//fmt.Printf("launching device snapshot: %v\n", dm)
 	//fmt.Printf("mapChan: %v\n", mapChan)
@@ -255,7 +256,7 @@ func (dm *DeviceSnapshot) launch(ctx context.Context, mapChan map[string]chan pk
 	dm.Ts = ctx.Value("ts").(time.Time)
 	for st := range dm.DataSink {
 		select {
-		case mapChan[st] <- dm.makePoint(st):
+		case sink.PointChan[st] <- dm.makePoint(st):
 			//fmt.Printf("suucessfully sent\n")
 			// 成功发送
 		default:
@@ -283,8 +284,8 @@ func (dm *DeviceSnapshot) makePoint(st string) pkg.Point {
 }
 
 // LaunchALL 发射所有数据点
-func (sc *SnapshotCollection) LaunchALL(ctx context.Context, mapChan map[string]chan pkg.Point) {
+func (sc *SnapshotCollection) LaunchALL(ctx context.Context, Sink *pkg.PointDataSource) {
 	for _, dm := range *sc {
-		dm.launch(ctx, mapChan)
+		dm.launch(ctx, Sink)
 	}
 }
