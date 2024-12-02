@@ -7,13 +7,12 @@ import (
 	"gateway/internal/pkg"
 	"github.com/mitchellh/mapstructure"
 	"go.uber.org/zap"
+	"io"
 	"time"
 )
 
 type jParser struct {
-	dataSource         pkg.DataSource
 	SnapshotCollection SnapshotCollection // 快照集合
-	mapChan            map[string]chan pkg.Point
 	ctx                context.Context
 	jParserConfig      jParserConfig
 }
@@ -27,7 +26,7 @@ func init() {
 }
 
 // NewJsonParser 创建一个 JSON 解析器
-func NewJsonParser(dataSource pkg.DataSource, mapChan map[string]chan pkg.Point, ctx context.Context) (Parser, error) {
+func NewJsonParser(ctx context.Context) (Template, error) {
 	// 1. 初始化杂项配置文件
 	v := pkg.ConfigFromContext(ctx)
 	var jC jParserConfig
@@ -36,34 +35,46 @@ func NewJsonParser(dataSource pkg.DataSource, mapChan map[string]chan pkg.Point,
 		return nil, fmt.Errorf("配置文件解析失败: %s", err)
 	}
 	return &jParser{
-		dataSource:         dataSource,
-		mapChan:            mapChan,
 		ctx:                ctx,
 		SnapshotCollection: make(SnapshotCollection),
 		jParserConfig:      jC, // 确保赋值给 jParser 的 jParserConfig 字段
 	}, nil
 }
 
+func (j *jParser) GetType() string {
+	return "message"
+}
+
 // Start 启动 JSON 解析器
-func (j *jParser) Start() {
+func (j *jParser) Start(source *pkg.DataSource, sinkMap *pkg.PointDataSource) {
+	dataSource := (*source).(*pkg.MessageDataSource)
+
 	// 1. 获取数据源
-	dataChan := j.dataSource.Source.(chan string)
 	count := 0
 	for {
-		select {
-		case <-j.ctx.Done():
+		data, err := dataSource.ReadOne()
+		// 2. 处理从数据源读取的数据
+		if err != nil {
+			if err == io.EOF {
+				// 如果读取到 EOF，认为是正常结束，退出循环
+				//pkg.LoggerFromContext(j.ctx).Info("数据源读取完成，EOF")
+				return
+			}
+			// 如果读取发生错误，输出错误日志并退出
+			pkg.LoggerFromContext(j.ctx).Error("数据源读取失败", zap.Error(err))
 			return
-		// 2. 从数据源中读取数据
-		case data := <-dataChan:
-			// 3. 解析 JSON 数据
-			j.ConversionToSnapshot(data)
-			j.ctx = context.WithValue(j.ctx, "ts", time.Now())
-			// 4. 将解析后的数据发送到策略
-			j.SnapshotCollection.LaunchALL(j.ctx, j.mapChan)
-			// 5. 打印原始数据
-			count += 1
-			pkg.LoggerFromContext(j.ctx).Info("接收到数据", zap.Any("data", data), zap.Int("count", count))
 		}
+
+		// 3. 解析 JSON 数据
+		j.ConversionToSnapshot(string(data))
+		j.ctx = context.WithValue(j.ctx, "ts", time.Now())
+
+		// 4. 将解析后的数据发送到策略
+		j.SnapshotCollection.LaunchALL(j.ctx, sinkMap)
+
+		// 5. 打印原始数据
+		count += 1
+		pkg.LoggerFromContext(j.ctx).Info("接收到数据", zap.Any("data", data), zap.Int("count", count))
 	}
 }
 

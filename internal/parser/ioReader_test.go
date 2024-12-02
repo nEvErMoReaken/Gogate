@@ -88,7 +88,7 @@ func TestFixedLengthChunk_Process(t *testing.T) {
 	}
 
 	// 处理数据
-	changedCtx, err := fixedChunk.Process(reader, &frame, &snapshotCollection, ctx)
+	changedCtx, err := fixedChunk.Process(ctx, reader, &frame, &snapshotCollection)
 	assert.NoError(t, err, "应成功处理定长数据块")
 	assert.NotNil(t, changedCtx, "上下文应被更新")
 

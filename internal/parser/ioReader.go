@@ -1,7 +1,6 @@
 package parser
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"gateway/internal/pkg"
@@ -15,10 +14,8 @@ import (
 )
 
 type IoReader struct {
-	Reader             io.Reader
 	Chunks             []Chunk            `mapstructure:"chunks"`
 	SnapshotCollection SnapshotCollection // 快照集合
-	mapChan            map[string]chan pkg.Point
 	ctx                context.Context
 }
 
@@ -62,7 +59,7 @@ type ToConfig struct {
 
 // Chunk 处理器接口
 type Chunk interface {
-	Process(reader io.Reader, frame *[]byte, handler *SnapshotCollection, ctx context.Context) (changedCtx context.Context, err error)
+	Process(ctx context.Context, dataSource *pkg.StreamDataSource, frame *[]byte, handler *SnapshotCollection) (changedCtx context.Context, err error)
 	String() string // 添加 String 方法
 }
 
@@ -71,12 +68,8 @@ func init() {
 	Register("ioReader", NewIoReader)
 }
 
-func NewIoReader(dataSource pkg.DataSource, mapChan map[string]chan pkg.Point, ctx context.Context) (Parser, error) {
-	reader, ok := dataSource.Source.(io.Reader)
-	if !ok {
-		pkg.LoggerFromContext(ctx).Error("数据源类型错误")
-		return nil, fmt.Errorf("数据源类型错误")
-	}
+func NewIoReader(ctx context.Context) (Template, error) {
+
 	// 1. 初始化杂项配置文件
 	v := pkg.ConfigFromContext(ctx)
 	var c ioReaderConfig
@@ -98,7 +91,7 @@ func NewIoReader(dataSource pkg.DataSource, mapChan map[string]chan pkg.Point, c
 		return nil, fmt.Errorf("协议文件格式错误")
 	}
 	// 初始化 IoReader
-	ioReader, err := createIoParser(c, ctx, chunks["chunks"].([]interface{}), mapChan, reader, dataSource.MetaData)
+	ioReader, err := createIoParser(ctx, c, chunks["chunks"].([]interface{}))
 	if err != nil {
 		pkg.LoggerFromContext(ctx).Error("未找到协议文件", zap.Error(err))
 		return nil, fmt.Errorf("初始化IoReader失败: %s", err)
@@ -106,9 +99,15 @@ func NewIoReader(dataSource pkg.DataSource, mapChan map[string]chan pkg.Point, c
 	return &ioReader, nil
 }
 
+func (r *IoReader) GetType() string {
+	return "stream"
+}
+
 // Start 方法用于启动 IoReader
-func (r *IoReader) Start() {
+func (r *IoReader) Start(source *pkg.DataSource, sinkMap *pkg.PointDataSource) {
 	pkg.LoggerFromContext(r.ctx).Info("===IoReader 开始处理数据===")
+	dataSource := (*source).(*pkg.StreamDataSource)
+
 	for {
 		count := 0
 		select {
@@ -123,7 +122,7 @@ func (r *IoReader) Start() {
 			// ** 此处是完整的一帧的开始 **
 			for index, chunk := range r.Chunks {
 				var err error
-				ctx, err = chunk.Process(r.Reader, &frame, &r.SnapshotCollection, ctx)
+				ctx, err = chunk.Process(ctx, dataSource, &frame, &r.SnapshotCollection)
 				if err != nil {
 					if err == io.EOF {
 						pkg.LoggerFromContext(r.ctx).Info("读取到 EOF，等待更多数据")
@@ -139,7 +138,7 @@ func (r *IoReader) Start() {
 			//fmt.Println("Frame", frame)
 			//fmt.Println(r.SnapshotCollection.GetDeviceSnapshot("device1", "type1"))
 			// 4.3 发射所有的快照
-			r.SnapshotCollection.LaunchALL(ctx, r.mapChan)
+			r.SnapshotCollection.LaunchALL(ctx, sinkMap)
 			// 4.4 打印原始报文
 			hexString := ""
 			for _, b := range frame {
@@ -217,7 +216,7 @@ func (f *FixedLengthChunk) String() string {
 	return fmt.Sprintf("FixedLengthChunk:\n  Length=%s\n  Sections:\n%s", lengthVal, sectionsStr)
 }
 
-func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte, handler *SnapshotCollection, ctx context.Context) (changedCtx context.Context, err error) {
+func (f *FixedLengthChunk) Process(ctx context.Context, dataSource *pkg.StreamDataSource, frame *[]byte, handler *SnapshotCollection) (changedCtx context.Context, err error) {
 	log := pkg.LoggerFromContext(ctx)
 	// ～～～ 定长块的处理逻辑 ～～～
 	chunkLen, err := getIntVar(ctx, f.length)
@@ -225,21 +224,33 @@ func (f *FixedLengthChunk) Process(reader io.Reader, frame *[]byte, handler *Sna
 		return ctx, fmt.Errorf("获取FixedLengthChunk长度错误: %v", err)
 	}
 	// 1. 读取固定长度数据
-	// 包装 reader 为 bufio.Reader，缓冲读取
-	bufReader := bufio.NewReader(reader)
 	data := make([]byte, chunkLen)
-	n, err := io.ReadFull(bufReader, data) // 使用 bufio.Reader 缓冲读取数据
-	if err != nil {
-		// 处理 EOF 错误
-		if err == io.EOF {
-			return ctx, err
-		}
-		return ctx, fmt.Errorf("读取错误: %v", err)
-	}
-	// 处理部分读取
+	n, err := dataSource.ReadFully(data)
 	if n < chunkLen {
-		return ctx, fmt.Errorf("读取到的数据长度不足: %d < %d", n, chunkLen)
+		// 设置超时时间 10 秒
+		timeoutCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+
+		for n < chunkLen {
+			select {
+			case <-timeoutCtx.Done():
+				// 超时退出
+				return ctx, fmt.Errorf("读取超时: %v", timeoutCtx.Err())
+			default:
+				additionalData := make([]byte, chunkLen-n)
+				m, err := dataSource.ReadFully(additionalData)
+				if err != nil {
+					if err == io.EOF {
+						return ctx, err // EOF 可以认为是正常结束
+					}
+					return ctx, fmt.Errorf("读取错误: %v", err) // 其他错误直接返回
+				}
+				data = append(data, additionalData[:m]...)
+				n += m
+			}
+		}
 	}
+
 	// 定长Chunk可以直接追加到frame中
 	*frame = append(*frame, data...)
 	// 2. 解析数据
@@ -343,10 +354,9 @@ type ConditionalChunk struct {
 	Sections       []Section
 }
 
-func (c *ConditionalChunk) Process(reader io.Reader, frame *[]byte, handler *SnapshotCollection, ctx context.Context) (changedCtx context.Context, err error) {
+func (c *ConditionalChunk) Process(ctx context.Context, dataSource *pkg.StreamDataSource, frame *[]byte, handler *SnapshotCollection) (changedCtx context.Context, err error) {
 	fmt.Println("Processing ConditionalChunk")
-	// 打印一下所有字段 避免sonar检测
-	fmt.Println(reader, frame, handler, ctx)
+
 	// 动态选择下一个 Chunk 解析逻辑
 	return ctx, nil
 }
@@ -416,20 +426,14 @@ func (s *Section) parseToDeviceName(context context.Context) (string, error) {
 }
 
 // createIoParser 从配置文件初始化 Chunk
-func createIoParser(c ioReaderConfig, ctx context.Context, chunks []interface{}, mapChan map[string]chan pkg.Point, reader io.Reader, metadata map[string]interface{}) (IoReader, error) {
+func createIoParser(ctx context.Context, c ioReaderConfig, chunks []interface{}) (IoReader, error) {
 	log := pkg.LoggerFromContext(ctx)
 	log.Info("当前启用的协议文件: %s", zap.String("protocol", c.ProtoFile))
-	// 初始化 SnapshotCollection
-	ctx = context.WithValue(ctx, "deviceId", metadata["deviceId"])
-	ctx = context.WithValue(ctx, "ts", metadata["ts"])
 	var chunkSequence = IoReader{
-		reader,
 		make([]Chunk, 0),
 		make(SnapshotCollection),
-		mapChan,
 		ctx,
 	}
-
 	for _, chunk := range chunks {
 		// 动态处理不同的 chunkType，生成chunkSequence
 		tmpChunk, err := createChunk(chunk.(map[string]interface{}))
