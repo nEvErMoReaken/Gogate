@@ -18,14 +18,6 @@ type TcpClientConnector struct {
 	clientConfig *tcpClientConfig
 }
 
-func (t *TcpClientConnector) SinkType() string {
-	return "stream"
-}
-
-func (t *TcpClientConnector) SetSink(source *pkg.DataSource) {
-
-}
-
 type tcpClientConfig struct {
 	ServerAddrs    []string      `mapstructure:"serverAddrs"`    // 服务器地址列表
 	Timeout        time.Duration `mapstructure:"timeout"`        // 超时时间
@@ -111,28 +103,28 @@ func (t *TcpClientConnector) Start(sourceChan chan pkg.DataSource) error {
 // manageConnection 管理对单个服务器的连接，包括重连逻辑
 func (t *TcpClientConnector) manageConnection(serverAddr string, ds *pkg.StreamDataSource) {
 	log := pkg.LoggerFromContext(t.ctx)
+
 	for {
-		// 检查全局关闭信号，避免不必要的重连尝试
 		select {
 		case <-t.ctx.Done():
-			log.Info("收到停止信号，终止重连循环", zap.String("serverAddr", serverAddr))
+			log.Info("收到停止信号，关闭连接", zap.String("serverAddr", serverAddr))
 			return
 		default:
+
 		}
 		// 尝试连接到服务器
 		conn, err := net.DialTimeout("tcp", serverAddr, t.clientConfig.ReconnectDelay)
 
 		if err != nil {
-			log.Warn("无法连接到服务器，5秒后重试", zap.String("serverAddr", serverAddr), zap.Error(err))
-			time.Sleep(5 * time.Second)
+			log.Warn(fmt.Sprintf("无法连接到服务器 ，%s 秒后重试", t.clientConfig.ReconnectDelay), zap.String("serverAddr", serverAddr), zap.Error(err))
+			time.Sleep(t.clientConfig.ReconnectDelay)
 			continue
 		}
-
 		log.Info("成功连接到服务器", zap.String("serverAddr", serverAddr))
 		// 在退出循环前确保关闭连接
-		func() {
+		func(conn net.Conn) {
 			defer func(conn net.Conn) {
-				err := conn.Close()
+				err = conn.Close()
 				if err != nil {
 					log.Error("关闭连接失败", zap.String("serverAddr", serverAddr), zap.Error(err))
 				}
@@ -152,7 +144,9 @@ func (t *TcpClientConnector) manageConnection(serverAddr string, ds *pkg.StreamD
 					return
 				default:
 					// 从 TCP 连接读取数据
-					n, err := conn.Read(buffer)
+					var n int
+					n, err = conn.Read(buffer)
+					log.Debug("读取到数据", zap.String("buffer", string(buffer[:n])))
 					if err != nil {
 						if err == io.EOF {
 							log.Info("服务器关闭连接", zap.String("serverAddr", serverAddr))
@@ -163,13 +157,13 @@ func (t *TcpClientConnector) manageConnection(serverAddr string, ds *pkg.StreamD
 					}
 
 					// 将读取的数据写入到 Sink 的 writer 中
-					if _, err := ds.WriteASAP(buffer[:n]); err != nil {
+					if _, err = ds.WriteASAP(buffer[:n]); err != nil {
 						log.Error("写入数据到 Sink 失败", zap.Error(err))
 						return // 写入失败，退出以重连
 					}
 				}
 			}
-		}()
+		}(conn)
 		// 等待再重连
 		log.Info("正在尝试重连", zap.String("serverAddr", serverAddr))
 		time.Sleep(t.clientConfig.ReconnectDelay)

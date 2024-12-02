@@ -1,133 +1,144 @@
-package connector_test
+package connector
 
 import (
 	"context"
+	"fmt"
 	"gateway/internal/pkg"
-	"github.com/stretchr/testify/assert"
+	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/zap"
 	"net"
-	"sync"
 	"testing"
 	"time"
 )
 
-// Mock Logger for capturing log outputs
-var logger, _ = zap.NewDevelopment()
+func TestNewTcpClient_ConfigParsing(t *testing.T) {
 
-// 测试成功连接到服务器
-func TestTcpClientStart(t *testing.T) {
-	ctx := context.Background()
-
-	// 创建模拟配置
-	config := &pkg.Config{
-		Connector: pkg.ConnectorConfig{
-			Para: map[string]interface{}{
-				"serverAddr": "localhost:12223",
-				"timeout":    "5s",
+	Convey("测试配置解析", t, func() {
+		ctx := pkg.WithConfig(pkg.WithLogger(context.Background(), logger), &pkg.Config{
+			Connector: pkg.ConnectorConfig{
+				Type: "tcpclient",
+				Para: map[string]interface{}{
+					"serverAddrs":    "127.0.0.1:8080,127.0.0.2:8080",
+					"timeout":        "5s",
+					"reconnectDelay": "2s",
+				},
 			},
-		},
-	}
-	ctx = pkg.WithConfig(ctx, config)
-	ctx = pkg.WithErrChan(ctx, make(chan error))
-	ctx = pkg.WithLogger(ctx, logger) // 请确保在外部初始化你的 logger
+		})
 
-	// 初始化 TcpClientConnector
-	connector, err := NewTcpClient(ctx)
-	assert.NoError(t, err, "初始化 TcpClientConnector 不应出错")
-	tcpClient := connector.(*TcpClientConnector)
+		connector, err := NewTcpClient(ctx)
+		Convey("解析应无错误", func() {
+			So(err, ShouldBeNil)
+		})
 
-	// 启动一个本地 TCP 服务器，模拟远程服务
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		listener, err := net.Listen("tcp", "localhost:12223")
-		if err != nil {
-			t.Fatalf("无法启动模拟服务器: %v", err)
-		}
-		defer listener.Close()
-
-		// 等待客户端连接
-		conn, err := listener.Accept()
-		assert.NoError(t, err, "服务器应成功接受客户端连接")
-		defer conn.Close()
-	}()
-
-	// 后启动 TcpClientConnector， 确保一启动就有数据可以进行验证
-	go tcpClient.Start()
-
-	// 确认客户端连接成功，等待数据源准备就绪
-	select {
-	case dataSource := <-tcpClient.Ready():
-		assert.NotNil(t, dataSource.Source, "DataSource 的 Source 不应为 nil")
-	case err = <-pkg.ErrChanFromContext(ctx):
-		t.Fatal(err) // 如果有错误，记录错误信息并终止测试
-	case <-time.After(3 * time.Second): // 超时处理
-		t.Fatal("客户端未能连接到服务器")
-	}
-
-	// 确保客户端关闭连接
-	err = tcpClient.Close()
-	assert.NoError(t, err, "关闭客户端连接不应出错")
-
-	wg.Wait() // 等待服务器协程结束
+		tcpClient := connector.(*TcpClientConnector)
+		Convey("配置应正确解析", func() {
+			So(tcpClient.clientConfig.ServerAddrs, ShouldResemble, []string{"127.0.0.1:8080", "127.0.0.2:8080"})
+			So(tcpClient.clientConfig.Timeout, ShouldEqual, 5*time.Second)
+			So(tcpClient.clientConfig.ReconnectDelay, ShouldEqual, 2*time.Second)
+		})
+	})
 }
 
-func TestTcpClientDelayedServerStart(t *testing.T) {
-	ctx := context.Background()
+func TestTcpClientConnector_Start(t *testing.T) {
+	Convey("测试 Start 方法", t, func() {
+		ctx := pkg.WithLogger(context.Background(), zap.NewExample())
 
-	// 创建模拟配置
-	config := &pkg.Config{
-		Connector: pkg.ConnectorConfig{
-			Para: map[string]interface{}{
-				"serverAddr": "localhost:12224", // 使用动态端口
-				"timeout":    "2s",
+		client := &TcpClientConnector{
+			ctx: ctx,
+			clientConfig: &tcpClientConfig{
+				ServerAddrs: []string{"127.0.0.1:8080"},
 			},
-		},
+		}
+
+		sourceChan := make(chan pkg.DataSource, 1)
+
+		err := client.Start(sourceChan)
+		Convey("Start 应该成功返回", func() {
+			So(err, ShouldBeNil)
+		})
+
+		Convey("应向 channel 发送数据源", func() {
+			So(len(sourceChan), ShouldEqual, 1)
+		})
+	})
+}
+
+// Mock TCP Server
+func startMockTCPServer(t *testing.T, port string) net.Listener {
+	// 启动一个 mock TCP 服务器
+	ln, err := net.Listen("tcp", ":"+port)
+	if err != nil {
+		t.Fatalf("无法启动 mock TCP 服务器: %v", err)
 	}
-	ctx = pkg.WithConfig(ctx, config)
-	ctx = pkg.WithErrChan(ctx, make(chan error))
-	ctx = pkg.WithLogger(ctx, logger) // 请确保在外部初始化你的 logger
-
-	// 初始化 TcpClientConnector
-	connector, err := NewTcpClient(ctx)
-	assert.NoError(t, err, "初始化 TcpClientConnector 不应出错")
-	tcpClient := connector.(*TcpClientConnector)
-
-	// 启动 TcpClientConnector，立即尝试连接
-	go tcpClient.Start()
-
-	// 延迟启动服务器
-	time.Sleep(3 * time.Second) // 延迟 3 秒以触发客户端的重连逻辑
-
-	// 启动本地 TCP 服务器，绑定动态端口
-	listener, err := net.Listen("tcp", "localhost:12224")
-	assert.NoError(t, err, "无法启动模拟服务器")
-	defer listener.Close()listener.Close()
-
-	// 获取动态分配的端口并更新到客户端配置
-	addr := listener.Addr().String()
-	config.Connector.Para["serverAddr"] = addr
-
-	// 模拟服务器接受客户端连接
-	reconnected := make(chan struct{}) // 用于确认重连成功
 	go func() {
-		conn, err := listener.Accept() // 等待客户端连接
-		assert.NoError(t, err, "服务器应成功接受客户端重连请求")
-		defer conn.Close()
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
 
-		reconnected <- struct{}{}
+			// 模拟接收到客户端连接，向客户端发送数据
+			go func(conn net.Conn) {
+				defer func(conn net.Conn) {
+					err = conn.Close()
+					if err != nil {
+						fmt.Println("关闭连接失败:", err)
+					}
+				}(conn)
+				message := []byte("hello from server")
+				_, err := conn.Write(message)
+				if err != nil {
+					fmt.Println("发送数据失败:", err)
+				}
+			}(conn)
+		}
 	}()
+	return ln
+}
 
-	// 等待重连成功
-	select {
-	case <-reconnected:
-		t.Log("客户端成功重连到服务器")
-	case <-time.After(10 * time.Second): // 超时检查
-		t.Fatal("客户端未能在预期时间内重连到服务器")
-	}
+func TestTcpClientConnector_manageConnection(t *testing.T) {
+	// 初始化测试用例
+	Convey("Given a TcpClientConnector", t, func() {
 
-	// 关闭客户端连接
-	err = tcpClient.Close()
-	assert.NoError(t, err, "关闭客户端连接不应出错")
+		ln := startMockTCPServer(t, "8080")
+		defer ln.Close()
+
+		// 模拟创建 TcpClientConnector
+		Convey("When I create a new TcpClientConnector", func() {
+			// 创建一个模拟的 TcpClientConnector 实例
+			clientConfig := &tcpClientConfig{
+				ServerAddrs:    []string{"127.0.0.1:8080"},
+				Timeout:        5 * time.Second,
+				ReconnectDelay: 1 * time.Second,
+			}
+
+			// 传递 mock 的配置数据
+			client := &TcpClientConnector{
+				ctx:          commonCtx,
+				clientConfig: clientConfig,
+			}
+
+			Convey("Then the connector should be initialized", func() {
+				// 确保 connector 已被正确初始化
+				So(client, ShouldNotBeNil)
+				So(client.clientConfig.ServerAddrs, ShouldResemble, []string{"127.0.0.1:8080"})
+			})
+
+			// 启动客户端连接
+			ds := pkg.NewStreamDataSource()
+			go client.manageConnection("127.0.0.1:"+"8080", ds)
+
+			Convey("When the client connects to the mock server", func() {
+				buffer := make([]byte, 17)
+				length, err := ds.ReadFully(buffer)
+				if err != nil {
+					t.Fatalf("读取数据失败: %v", err)
+				}
+				Convey("Then the client should receive the message from the server", func() {
+					// 确保客户端从服务器接收到了消息
+					So(string(buffer[:length]), ShouldEqual, "hello from server")
+				})
+			})
+		})
+	})
 }
