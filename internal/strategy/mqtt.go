@@ -117,7 +117,7 @@ func NewMqttStrategy(ctx context.Context) (Template, error) {
 	}, nil
 }
 
-// GetCore Step.1
+// GetType Step.1
 func (m *MqttStrategy) GetType() string {
 	return "mqtt"
 }
@@ -128,15 +128,17 @@ func (m *MqttStrategy) Start(pointChan chan pkg.Point) {
 	m.logger.Info("===MqttStrategy started===")
 	// 发布网关上线的状态
 	m.client.Publish(m.info.WillTopic, 1, true, "online")
+OuterLoop:
 	for {
 		select {
 		case <-m.ctx.Done():
 			m.Stop()
 			pkg.LoggerFromContext(m.ctx).Info("===MqttStrategy stopped===")
+			break OuterLoop
 		case point := <-pointChan:
 			err := m.Publish(point)
 			if err != nil {
-				pkg.ErrChanFromContext(m.ctx) <- fmt.Errorf("MqttStrategy error occurred: %w", err)
+				pkg.LoggerFromContext(m.ctx).Error("MqttStrategy error occurred", zap.Error(err))
 			}
 		}
 	}
@@ -160,7 +162,7 @@ func (m *MqttStrategy) Publish(point pkg.Point) error {
 	}
 	topic := fmt.Sprintf("gateway/%s/%s/fields", point.DeviceType, point.DeviceName)
 	m.client.Publish(topic, 0, true, jsonData)
-	m.logger.Debug("[MqttStrategy]发布消息到 %s: %s", zap.String("topic", topic), zap.String("data", string(jsonData)))
+	m.logger.Debug("[MqttStrategy]发布消息", zap.String("topic", topic), zap.String("data", string(jsonData)))
 	return nil
 }
 

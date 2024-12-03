@@ -29,7 +29,7 @@ type TemplateCollection map[string]Template
 
 func (c *TemplateCollection) Start(pointChan *pkg.PointDataSource) {
 	for key, strategy := range *c {
-		strategy.Start(pointChan.PointChan[key])
+		go strategy.Start(pointChan.PointChan[key])
 	}
 }
 

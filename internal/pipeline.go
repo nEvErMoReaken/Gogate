@@ -22,7 +22,10 @@ func (p *Pipeline) Start() {
 	if err != nil {
 		return
 	}
-	source02 := pkg.PointDataSource{PointChan: make(map[string]chan pkg.Point, 200)}
+	source02 := pkg.PointDataSource{PointChan: make(map[string]chan pkg.Point)}
+	for key := range p.strategy {
+		source02.PointChan[key] = make(chan pkg.Point, 200)
+	}
 	// 可接受的资源泄露
 	go func() {
 		for {
@@ -36,6 +39,7 @@ func (p *Pipeline) Start() {
 }
 
 func NewPipeline(ctx context.Context) (*Pipeline, error) {
+	// 非阻塞方法
 	// 0. 校验流程合法性
 	var err error
 	// 1. 初始化Connector

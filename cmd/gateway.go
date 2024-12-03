@@ -36,7 +36,14 @@ func main() {
 	// 将logger挂载到ctx上
 	ctxWithConfigAndLogger := pkg.WithLogger(ctxWithConfig, log)
 
-	internal.NewPipeline(ctxWithConfigAndLogger)
+	pipeline, err := internal.NewPipeline(ctxWithConfigAndLogger)
+	if err != nil {
+		log.Error("创建管道失败", zap.Error(err))
+		cancel()
+		return
+	}
+	// 4. 启动管道
+	pipeline.Start()
 
 	// 5. 主线程监听终止信号
 	si := make(chan os.Signal, 1)

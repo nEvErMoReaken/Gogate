@@ -1,11 +1,9 @@
 package test
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"gateway/internal"
-	"gateway/internal/pkg"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/mochi-co/mqtt/server"
 	"github.com/mochi-co/mqtt/server/listeners"
@@ -17,43 +15,6 @@ import (
 	"testing"
 	"time"
 )
-
-type helper struct {
-	config  *pkg.Config
-	log     *zap.Logger
-	ctx     context.Context
-	cancel  context.CancelFunc
-	errChan chan error
-}
-
-func chooseConfig(subject string) (*helper, error) {
-	// 1. 初始化common yaml
-	var h helper
-	var err error
-	// 打印当前路径
-
-	h.config, err = pkg.InitCommon("yaml/" + subject)
-	if err != nil {
-		fmt.Printf("加载配置失败: %s", err)
-		return nil, err
-	}
-	// 2. 初始化log
-	h.log = pkg.NewLogger(&h.config.Log)
-
-	h.log.Info("测试程序启动", zap.String("version", h.config.Version))
-	h.log.Info("配置信息", zap.Any("common", h.config))
-	h.log.Info("*** 初始化流程开始 ***")
-	// 3. 创建上下文
-	var c context.Context
-	c, h.cancel = context.WithCancel(context.Background())
-	h.errChan = make(chan error, 10) // 创建一个只写的全局错误通道, 缓存大小为10
-	c = pkg.WithErrChan(c, h.errChan)
-	// 将config挂载到ctx上
-	c = pkg.WithConfig(c, h.config)
-	// 将logger挂载到ctx上
-	h.ctx = pkg.WithLogger(c, h.log)
-	return &h, nil
-}
 
 func TestTcpServer2Mqtt(t *testing.T) {
 	h, err := chooseConfig("tcpServer2mqtt")
@@ -72,10 +33,13 @@ func TestTcpServer2Mqtt(t *testing.T) {
 	}(mqttBroker) // 测试结束时关闭 Broker
 
 	// 启动流程
-	go internal.NewPipeline(h.ctx)
-
+	pipeLine, err := internal.NewPipeline(h.ctx)
+	if err != nil {
+		t.Fatalf("流程初始化失败: %v", err)
+	}
+	pipeLine.Start()
 	// 设置 MQTT 订阅
-	received := make(chan []byte, 1)
+	received := make(chan []byte, 20)
 	client, err := subscribeMqtt("gateway/traction_system/status/fields", func(client mqtt.Client, msg mqtt.Message) {
 		received <- msg.Payload()
 	})
@@ -185,7 +149,6 @@ func startEmbeddedMqttBroker(t *testing.T) *server.Server {
 			t.Errorf("MQTT 服务器启动失败: %v", err)
 			return
 		}
-		fmt.Printf("test mqtt broker 启动成功")
 	}()
 
 	return srv

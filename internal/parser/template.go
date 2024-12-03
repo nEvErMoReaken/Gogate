@@ -216,9 +216,9 @@ func (dm *DeviceSnapshot) SetField(ctx context.Context, fieldName string, value 
 	// 如果fileds中已经不存在该字段，则初始化
 	if _, exists := dm.Fields[fieldName]; !exists {
 		dm.Fields[fieldName] = value
-
 		// 初始化该字段的DataSink
 		err := dm.InitDataSink(fieldName, &pkg.ConfigFromContext(ctx).Strategy)
+		//pkg.LoggerFromContext(ctx).Debug(dm.toJSON())
 		if err != nil {
 			return err
 		}
@@ -260,9 +260,9 @@ func (dm *DeviceSnapshot) launch(ctx context.Context, sink *pkg.PointDataSource)
 			//fmt.Printf("suucessfully sent\n")
 			// 成功发送
 		default:
-			fmt.Sprintln("channel blocked")
 			// 打印通道堵塞警告，避免影响其他通道
-			pkg.LoggerFromContext(ctx).Warn("channel blocked", zap.String("strategy", st))
+			pkg.LoggerFromContext(ctx).Warn("channel blocked", zap.String("strategy", st), zap.Any("point", dm.makePoint(st)), zap.Any("lenChan", len(sink.PointChan[st])))
+
 		}
 	}
 	// 清空设备快照
@@ -284,8 +284,8 @@ func (dm *DeviceSnapshot) makePoint(st string) pkg.Point {
 }
 
 // LaunchALL 发射所有数据点
-func (sc *SnapshotCollection) LaunchALL(ctx context.Context, Sink *pkg.PointDataSource) {
+func (sc *SnapshotCollection) LaunchALL(ctx context.Context, sink *pkg.PointDataSource) {
 	for _, dm := range *sc {
-		dm.launch(ctx, Sink)
+		dm.launch(ctx, sink)
 	}
 }

@@ -124,7 +124,7 @@ func (t *TcpServerConnector) handleConn(conn net.Conn, connID string, source *pk
 		}
 		log.Info("连接已正确关闭", zap.String("remote", connID))
 	}()
-
+OuterLoop:
 	for {
 		select {
 		case <-t.ctx.Done():
@@ -134,17 +134,17 @@ func (t *TcpServerConnector) handleConn(conn net.Conn, connID string, source *pk
 			n, err := conn.Read(buffer)
 			if err != nil {
 				if err == io.EOF {
-					log.Info("连接已断开", zap.String("remote", connID))
-					break
+					log.Info("收到EOF,连接断开", zap.String("remote", connID))
+					break OuterLoop
 				}
 				log.Error("读取数据失败", zap.Error(err))
-				break
+				break OuterLoop
 			}
 
 			// 将读取的数据写入到 Sink 的 writer 中
 			if _, err = source.WriteASAP(buffer[:n]); err != nil {
 				log.Error("写入数据到 Sink 失败", zap.Error(err))
-				break
+				break OuterLoop
 			}
 		}
 	}
