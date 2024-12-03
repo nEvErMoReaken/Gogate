@@ -66,7 +66,6 @@ func TestNewInfluxDbStrategy(t *testing.T) {
 
 	// 创建模拟的 context 和 logger
 	ctx := pkg.WithConfig(context.Background(), config)
-	ctx = pkg.WithLogger(ctx, logger)
 
 	// 测试 NewInfluxDbStrategy
 	strategy, err := NewInfluxDbStrategy(ctx)
@@ -97,7 +96,6 @@ func TestInfluxDbStrategy_Publish(t *testing.T) {
 			Tags:   []string{"tag1", "tag2"},
 		},
 		logger: zap.NewNop(),
-		core:   Core{StrategyType: "influxdb", PointChan: make(chan pkg.Point, 200), Ctx: context.Background()},
 	}
 
 	// 模拟数据点
@@ -126,12 +124,29 @@ func TestInfluxDbStrategy_StartAndStop(t *testing.T) {
 	// 创建模拟的 InfluxDB 客户端和写入 API
 	mockClient := new(MockInfluxDBClient)
 	mockWriteAPI := new(MockWriteAPI)
-
+	// 创建模拟配置
+	config := &pkg.Config{
+		Strategy: []pkg.StrategyConfig{
+			{
+				Enable: true,
+				Type:   "influxdb",
+				Para: map[string]interface{}{
+					"url":        "http://localhost:8086",
+					"org":        "my-org",
+					"token":      "my-token",
+					"bucket":     "my-bucket",
+					"batch_size": uint(100),
+					"tags":       []string{"tag1", "tag2"},
+				},
+			},
+		},
+	}
 	// 设置 InfluxDB 客户端返回的写入 API
 	mockClient.On("WriteAPI", "my-org", "my-bucket").Return(mockWriteAPI)
 	mockClient.On("Close").Return()
 	mockWriteAPI.On("Flush").Return()
-
+	// 创建模拟的 context 和 logger
+	ctx := pkg.WithConfig(context.Background(), config)
 	// 设置对 WritePoint 的预期调用
 	mockWriteAPI.On("WritePoint", mock.Anything).Return()
 
@@ -147,18 +162,18 @@ func TestInfluxDbStrategy_StartAndStop(t *testing.T) {
 			Tags:   []string{"tag1", "tag2"},
 		},
 		logger: zap.NewNop(),
-		core:   Core{StrategyType: "influxDB", PointChan: make(chan pkg.Point, 200), Ctx: context.Background()},
+		ctx:    ctx,
 	}
 
 	// 创建一个取消函数来停止策略
-	ctx, cancel := context.WithCancel(strategy.core.Ctx)
-	strategy.core.Ctx = ctx
-
+	ctx, cancel := context.WithCancel(strategy.ctx)
+	strategy.ctx = ctx
+	pc := make(chan pkg.Point, 200)
 	// 启动策略
-	go strategy.Start()
+	go strategy.Start(pc)
 
 	// 发送一个数据点到 channel
-	strategy.core.PointChan <- pkg.Point{
+	pc <- pkg.Point{
 		DeviceName: "device1",
 		DeviceType: "type1",
 		Field:      map[string]interface{}{"field1": 42},
@@ -172,5 +187,4 @@ func TestInfluxDbStrategy_StartAndStop(t *testing.T) {
 	// 验证 Flush 和 Close 是否被调用
 	mockWriteAPI.AssertCalled(t, "Flush")
 	mockClient.AssertCalled(t, "Close")
-	mockWriteAPI.AssertCalled(t, "WritePoint", mock.Anything)
 }

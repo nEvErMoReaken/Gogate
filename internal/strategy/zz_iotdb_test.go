@@ -107,12 +107,8 @@ func TestIoTDBStrategy_Publish(t *testing.T) {
 	iotdbStrategy := &IoTDBStrategy{
 		sessionPool: mockSessionPool,
 		info:        IotDBInfo{},
-		core: Core{
-			StrategyType: "iotdb",
-			PointChan:    make(chan pkg.Point, 200),
-			Ctx:          ctx,
-		},
-		logger: zap.NewNop(),
+		logger:      zap.NewNop(),
+		ctx:         ctx,
 	}
 
 	point := pkg.Point{
@@ -161,12 +157,8 @@ func TestIoTDBStrategy_Publish_Error(t *testing.T) {
 	iotdbStrategy := &IoTDBStrategy{
 		sessionPool: mockSessionPool,
 		info:        IotDBInfo{},
-		core: Core{
-			StrategyType: "iotdb",
-			PointChan:    make(chan pkg.Point, 200),
-			Ctx:          ctx,
-		},
-		logger: zap.NewNop(),
+		logger:      zap.NewNop(),
+		ctx:         ctx,
 	}
 
 	point := pkg.Point{
@@ -193,17 +185,13 @@ func TestIoTDBStrategy_StartStop(t *testing.T) {
 	iotdbStrategy := &IoTDBStrategy{
 		sessionPool: mockSessionPool,
 		info:        IotDBInfo{},
-		core: Core{
-			StrategyType: "iotdb",
-			PointChan:    make(chan pkg.Point, 1),
-			Ctx:          ctx,
-		},
-		logger: zap.NewNop(),
+		logger:      zap.NewNop(),
+		ctx:         ctx,
 	}
-
+	ph := make(chan pkg.Point, 200)
 	// 在单独的 goroutine 中启动策略
 	go func() {
-		iotdbStrategy.Start()
+		iotdbStrategy.Start(ph)
 	}()
 
 	// 发送一个点
@@ -212,7 +200,7 @@ func TestIoTDBStrategy_StartStop(t *testing.T) {
 		Field:      map[string]interface{}{"temperature": 25.0},
 		Ts:         time.Now(),
 	}
-	iotdbStrategy.core.PointChan <- point
+	ph <- point
 
 	// 停止策略
 	cancel()

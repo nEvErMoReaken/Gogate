@@ -88,11 +88,12 @@ func (b *InfluxDbStrategy) Start(pointChan chan pkg.Point) {
 		select {
 		case <-b.ctx.Done():
 			b.Stop()
-			pkg.LoggerFromContext(b.ctx).Info("===IoTDBStrategy stopped===")
+			pkg.LoggerFromContext(b.ctx).Info("===InfluxDbStrategy stopped===")
+			return
 		case point := <-pointChan:
 			err := b.Publish(point)
 			if err != nil {
-				pkg.ErrChanFromContext(b.ctx) <- fmt.Errorf("IoTDBStrategy error occurred: %w", err)
+				pkg.ErrChanFromContext(b.ctx) <- fmt.Errorf("InfluxDbStrategy error occurred: %w", err)
 			}
 		}
 	}

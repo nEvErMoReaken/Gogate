@@ -89,9 +89,9 @@ func TestNewMqttStrategy_Success(t *testing.T) {
 	assert.Equal(t, "user", strategy.info.UserName)
 	assert.Equal(t, "pass", strategy.info.Password)
 	assert.Equal(t, "gateway/status", strategy.info.WillTopic)
-
+	ph := make(chan pkg.Point)
 	// 启动策略
-	go strategy.Start()
+	go strategy.Start(ph)
 	defer strategy.Stop()
 
 	// 等待策略连接
@@ -108,7 +108,7 @@ func TestNewMqttStrategy_Success(t *testing.T) {
 	}
 
 	// 将点发送到策略的通道
-	strategy.GetChan() <- point
+	ph <- point
 
 	// 设置一个 MQTT 客户端来订阅并验证发布的消息
 	subscriberOpts := MQTT.NewClientOptions()
