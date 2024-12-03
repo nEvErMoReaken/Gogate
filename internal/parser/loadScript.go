@@ -62,14 +62,14 @@ func extractAndCacheFunctions(ctx context.Context, i *interp.Interpreter, path s
 			// 尝试强制转换为 ByteScriptFunc
 			if fnFunc, ok := v.Interface().(func([]byte) ([]interface{}, error)); ok {
 				ByteScriptFuncCache[funcName] = fnFunc // 隐式转换
-				log.Info("%s 方法已缓存为 ByteScriptFunc", zap.String("funcName", funcName))
+				log.Info("方法已缓存为 ByteScriptFunc", zap.String("funcName", funcName))
 				continue
 			}
 
 			// 尝试强制转换为 JsonScriptFunc
 			if fnFunc, ok := v.Interface().(func(map[string]interface{}) (string, string, map[string]interface{}, error)); ok {
 				JsonScriptFuncCache[funcName] = fnFunc // 隐式转换
-				log.Info("%s 方法已缓存为 JsonScriptFunc", zap.String("funcName", funcName))
+				log.Info("方法已缓存为 JsonScriptFunc", zap.String("funcName", funcName))
 				continue
 			}
 

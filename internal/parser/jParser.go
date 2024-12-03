@@ -58,15 +58,19 @@ func (j *jParser) Start(source *pkg.DataSource, sinkMap *pkg.PointDataSource) {
 			if err == io.EOF {
 				// 如果读取到 EOF，认为是正常结束，退出循环
 				//pkg.LoggerFromContext(j.ctx).Info("数据源读取完成，EOF")
-				return
+				continue
 			}
 			// 如果读取发生错误，输出错误日志并退出
 			pkg.LoggerFromContext(j.ctx).Error("数据源读取失败", zap.Error(err))
-			return
+			continue
 		}
 
 		// 3. 解析 JSON 数据
-		j.ConversionToSnapshot(string(data))
+		err = j.ConversionToSnapshot(string(data))
+		if err != nil {
+			pkg.LoggerFromContext(j.ctx).Error("解析 JSON 数据失败", zap.Error(err))
+			continue
+		}
 		j.ctx = context.WithValue(j.ctx, "ts", time.Now())
 
 		// 4. 将解析后的数据发送到策略
@@ -78,33 +82,34 @@ func (j *jParser) Start(source *pkg.DataSource, sinkMap *pkg.PointDataSource) {
 	}
 }
 
-func (j *jParser) ConversionToSnapshot(js string) {
+func (j *jParser) ConversionToSnapshot(js string) (err error) {
 	// 1. 拿到解析函数
 	convertFunc, exist := JsonScriptFuncCache[j.jParserConfig.Method]
 	if !exist {
-		pkg.ErrChanFromContext(j.ctx) <- fmt.Errorf("未找到解析函数: %s", j.jParserConfig.Method)
+		return fmt.Errorf("未找到解析函数: %s", j.jParserConfig.Method)
 	}
 	// 2. 将 JSON 字符串解析为 map
 	var result map[string]interface{}
-	var err error
+
 	err = json.Unmarshal([]byte(js), &result)
 	if err != nil {
-		pkg.ErrChanFromContext(j.ctx) <- fmt.Errorf("unmarshal JSON 失败: %v", err)
+		return fmt.Errorf("unmarshal JSON 失败: %v", err)
 	}
 	// 3. 调用解析函数
 	devName, devType, fields, err := convertFunc(result)
 	if err != nil {
-		pkg.ErrChanFromContext(j.ctx) <- fmt.Errorf("解析 JSON 失败: %v, 请检查脚本是否正确", err)
+		return fmt.Errorf("解析 JSON 失败: %v, 请检查脚本是否正确", err)
 	}
 	// 3. 更新 DeviceSnapshot
 	snapshot, err := j.SnapshotCollection.GetDeviceSnapshot(devName, devType)
 	if err != nil {
-		pkg.ErrChanFromContext(j.ctx) <- fmt.Errorf("获取快照失败: %v", err)
+		return fmt.Errorf("获取快照失败: %v", err)
 	}
 	for key, value := range fields {
 		err = snapshot.SetField(j.ctx, key, value)
 		if err != nil {
-			pkg.ErrChanFromContext(j.ctx) <- fmt.Errorf("设置字段失败: %v", err)
+			return fmt.Errorf("设置字段失败: %v", err)
 		}
 	}
+	return nil
 }
