@@ -38,6 +38,7 @@ func NewStreamDataSource() *StreamDataSource {
 func NewMessageDataSource() *MessageDataSource {
 	return &MessageDataSource{
 		DataChan: make(chan []byte, 200),
+		MetaData: make(map[string]string),
 	}
 }
 func (s *StreamDataSource) Type() string {
@@ -62,6 +63,7 @@ func (s *StreamDataSource) WriteASAP(data []byte) (int, error) {
 // MessageDataSource 实现了 MessageSource 接口
 type MessageDataSource struct {
 	DataChan chan []byte
+	MetaData map[string]string
 }
 
 func (m *MessageDataSource) Type() string {

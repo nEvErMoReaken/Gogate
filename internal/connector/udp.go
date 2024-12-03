@@ -8,7 +8,6 @@ import (
 	"github.com/mitchellh/mapstructure"
 	"go.uber.org/zap"
 	"net"
-	"strings"
 	"sync"
 	"time"
 )
@@ -21,10 +20,12 @@ type UdpConnector struct {
 }
 
 type UdpConfig struct {
-	ServerAddrs    []string      `mapstructure:"serverAddrs"`    // 服务器地址列表
-	Timeout        time.Duration `mapstructure:"timeout"`        // 超时时间
-	ReconnectDelay time.Duration `mapstructure:"reconnectDelay"` // 重连延迟
-	BufferSize     int           `mapstructure:"bufferSize"`     // 缓冲区大小
+	Url            string            `mapstructure:"url"`            // 监听地址
+	WhiteList      bool              `mapstructure:"whiteList"`      // 是否启用白名单
+	IPAlias        map[string]string `mapstructure:"ipAlias"`        // ip别名
+	Timeout        time.Duration     `mapstructure:"timeout"`        // 超时时间
+	ReconnectDelay time.Duration     `mapstructure:"reconnectDelay"` // 重连延迟
+	BufferSize     int               `mapstructure:"bufferSize"`     // 缓冲区大小
 }
 
 func init() {
@@ -54,23 +55,11 @@ func NewUdpConnector(ctx context.Context) (Template, error) {
 		}
 		config.Connector.Para["reconnectDelay"] = duration
 	}
-	// 处理 serverAddrs 字段
-	var serverAddrs []string
-	switch addrs := config.Connector.Para["serverAddrs"].(type) {
-	case []interface{}:
-		for _, addr := range addrs {
-			if addrStr, ok := addr.(string); ok {
-				serverAddrs = append(serverAddrs, addrStr)
-			}
-		}
-	case string:
-		serverAddrs = strings.Split(addrs, ",")
-	default:
-		pkg.LoggerFromContext(ctx).Error("解析服务器地址列表失败")
-		return nil, fmt.Errorf("解析服务器地址列表失败")
-	}
-	config.Connector.Para["serverAddrs"] = serverAddrs
 
+	// 给bufferSize字段设置默认值
+	if _, ok := config.Connector.Para["bufferSize"]; !ok {
+		config.Connector.Para["bufferSize"] = 1024
+	}
 	// 初始化配置结构
 	var udpConfig UdpConfig
 	err := mapstructure.Decode(config.Connector.Para, &udpConfig)
@@ -101,7 +90,15 @@ func (u *UdpConnector) GetType() string {
 func (u *UdpConnector) Start(sourceChan chan pkg.DataSource) error {
 
 	log := pkg.LoggerFromContext(u.ctx)
-	conn, err := net.ListenUDP("udp", nil)
+	// 配置本地UDP监听地址
+	addr, err := net.ResolveUDPAddr("udp", u.config.Url)
+	if err != nil {
+		log.Error("解析 UDP 地址失败", zap.Error(err))
+		return fmt.Errorf("解析 UDP 地址失败: %s\n", err)
+	}
+
+	conn, err := net.ListenUDP("udp", addr)
+
 	if err != nil {
 		log.Error("UDP监听程序启动失败", zap.Error(err))
 		return fmt.Errorf("UDP监听程序启动失败: %s\n", err)
@@ -124,8 +121,10 @@ func (u *UdpConnector) Start(sourceChan chan pkg.DataSource) error {
 	go func() {
 		for {
 			buffer := u.bufferPool.Get().([]byte) // 缓冲区
+			//bf := make([]byte, 200)
 			// 从 UDP 服务器接收数据
-			n, addr, e := conn.ReadFromUDP(buffer)
+			n, ddr, e := conn.ReadFromUDP(buffer)
+
 			if e != nil {
 				u.bufferPool.Put(buffer)
 				// 如果连接已关闭，则退出循环
@@ -137,10 +136,19 @@ func (u *UdpConnector) Start(sourceChan chan pkg.DataSource) error {
 				log.Error("从 UDP 服务器接收数据失败", zap.Error(err))
 				continue
 			}
-			addrStr := addr.String()
+			//log.Debug(string(buffer[:n]))
+			addrStr := ddr.String()
+			if u.config.WhiteList {
+				if _, exists := u.config.IPAlias[addrStr]; !exists {
+					log.Warn("白名单启用，拒绝未在白名单中的连接", zap.String("remote", addrStr))
+				}
+			}
+
 			dataSource, exists := dataSourceMap[addrStr]
 			if !exists {
+				log.Info("接收到新的数据源", zap.String("addr", addrStr))
 				ds := pkg.NewMessageDataSource()
+				ds.MetaData["remote"] = addrStr
 				dataSourceMap[addrStr] = ds
 				sourceChan <- ds
 				dataSource = ds
