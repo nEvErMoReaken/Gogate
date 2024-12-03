@@ -227,28 +227,19 @@ func (f *FixedLengthChunk) Process(ctx context.Context, dataSource *pkg.StreamDa
 	data := make([]byte, chunkLen)
 	n, err := dataSource.ReadFully(data)
 	if n < chunkLen {
-		// 设置超时时间 10 秒
-		timeoutCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		defer cancel()
-
 		for n < chunkLen {
-			select {
-			case <-timeoutCtx.Done():
-				// 超时退出
-				return ctx, fmt.Errorf("读取超时: %v", timeoutCtx.Err())
-			default:
-				additionalData := make([]byte, chunkLen-n)
-				m, err := dataSource.ReadFully(additionalData)
-				if err != nil {
-					if err == io.EOF {
-						return ctx, err // EOF 可以认为是正常结束
-					}
-					return ctx, fmt.Errorf("读取错误: %v", err) // 其他错误直接返回
+			additionalData := make([]byte, chunkLen-n)
+			m, err := dataSource.ReadFully(additionalData)
+			if err != nil {
+				if err == io.EOF {
+					return ctx, err // EOF 可以认为是正常结束
 				}
-				data = append(data, additionalData[:m]...)
-				n += m
+				return ctx, fmt.Errorf("读取错误: %v", err) // 其他错误直接返回
 			}
+			data = append(data, additionalData[:m]...)
+			n += m
 		}
+
 	}
 
 	// 定长Chunk可以直接追加到frame中

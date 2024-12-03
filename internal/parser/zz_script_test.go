@@ -5,15 +5,11 @@ import (
 	"gateway/internal/pkg"
 	"github.com/stretchr/testify/assert"
 	"github.com/traefik/yaegi/interp"
-	"go.uber.org/zap"
 	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
 )
-
-// Mock Logger for capturing log outputs
-var logger, _ = zap.NewDevelopment()
 
 func TestLoadAllScripts_Success(t *testing.T) {
 	ctx := pkg.WithLogger(context.Background(), logger)
