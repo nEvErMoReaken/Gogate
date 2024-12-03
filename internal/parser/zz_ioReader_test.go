@@ -336,7 +336,7 @@ func (r *MockReader) Read(p []byte) (n int, err error) {
 func TestIoReader_Start(t *testing.T) {
 	Convey("测试 IoReader.Start 方法", t, func() {
 		// 模拟日志上下文
-		ctx := context.Background()
+		ctx := pkg.WithErrChan(context.Background(), make(chan error, 5))
 
 		// 模拟一个 IoReader
 		ioReader := &IoReader{

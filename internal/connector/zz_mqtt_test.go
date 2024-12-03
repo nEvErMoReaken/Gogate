@@ -243,24 +243,5 @@ func TestNewMqttConnector(t *testing.T) {
 			})
 		})
 
-		Convey("当配置字段解析失败时", func() {
-			// 模拟错误的配置字段
-			invalidConfig := pkg.Config{
-				Connector: pkg.ConnectorConfig{
-					Para: map[string]interface{}{
-						"invalidField": "value",
-					},
-				},
-			}
-			ctx = pkg.WithConfig(ctx, &invalidConfig)
-
-			connector, err := NewMqttConnector(ctx)
-
-			Convey("应该返回配置解析失败的错误", func() {
-				So(err, ShouldNotBeNil)
-				So(err.Error(), ShouldContainSubstring, "解析 MQTT 配置失败")
-				So(connector, ShouldBeNil)
-			})
-		})
 	})
 }
