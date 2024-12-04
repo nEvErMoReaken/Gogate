@@ -1,4 +1,4 @@
-## Intro
+# GoGate
 
 一个零代码、完全依赖配置驱动的数据网关。
 
@@ -16,31 +16,22 @@
 ## DataSource 数据源模块
 
 拟支持多种类型的数据源
-- Json类型数据源
+- Message 类型数据源
     - Mqtt 
     - Kafka
-- Byte类型数据源
-    - TcpServer (作为TcpServer接收报文) (已完成)
-    - TcpClient (作为TcpClient主动fetch报文)
-    - UdpServer (作为TcpServer接收报文)
-    - UdpClient (作为UdpClient主动fetch报文)
-- Protobuf (?)
-- Sql 通过轮询sql获取数据
-  - oracle
-  - mysql
-  - postgres
+- Stream 类型数据源
+    - TcpServer 
+    - TcpClient 
+    - Udp
+
 - 其他形式数据源
 
-dataSource 仅需要满足两点：
-- 接收数据
-- 转换为deviceSnapshot的
-所以可以无限扩展
 
 ## Parser 解析模块
 
 不同数据源解析逻辑不同，共有思路是通过读取配置的解析流程，灵活的对不同协议进行解析。
 
-以Tcp Byte为例：
+以Tcp解析为例：
 
 特点：Tcp协议需要指定包的起始与末尾，需要有一份配置文件指示报文中的偏移量和解码逻辑。
 
