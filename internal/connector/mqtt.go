@@ -81,14 +81,15 @@ func NewMqttConnector(ctx context.Context) (Template, error) {
 	// 1. 初始化配置文件
 	config := pkg.ConfigFromContext(ctx)
 	// 2. 处理 timeout 字段（从字符串解析为 time.Duration）
-	if timeoutStr, ok := config.Connector.Para["maxReconnectInterval"].(string); ok {
+	fmt.Println(config.Connector.Para["maxreconnectinterval"])
+	if timeoutStr, ok := config.Connector.Para["maxreconnectinterval"].(string); ok {
 		duration, err := time.ParseDuration(timeoutStr)
 		if err != nil {
 			return nil, fmt.Errorf("解析超时配置失败: %s", err)
 		}
-		config.Connector.Para["maxReconnectInterval"] = duration // 替换为 time.Duration
+		fmt.Println("ok")
+		config.Connector.Para["maxreconnectinterval"] = duration // 替换为 time.Duration
 	}
-
 	var mqttConfig MqttConfig
 	err := mapstructure.Decode(config.Connector.Para, &mqttConfig)
 	if err != nil {

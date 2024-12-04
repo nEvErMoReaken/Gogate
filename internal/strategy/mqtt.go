@@ -51,6 +51,7 @@ func NewMqttStrategy(ctx context.Context) (Template, error) {
 	log := pkg.LoggerFromContext(ctx)
 	config := pkg.ConfigFromContext(ctx)
 	var info MQTTInfo
+
 	for _, strategyConfig := range config.Strategy {
 		if strategyConfig.Enable && strategyConfig.Type == "mqtt" {
 			// 将 map 转换为结构体

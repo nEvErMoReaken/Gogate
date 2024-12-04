@@ -44,17 +44,17 @@ func NewTcpClient(ctx context.Context) (Template, error) {
 		config.Connector.Para["timeout"] = duration
 	}
 	// 处理 timeout 字段
-	if timeoutStr, ok := config.Connector.Para["reconnectDelay"].(string); ok {
+	if timeoutStr, ok := config.Connector.Para["reconnectdelay"].(string); ok {
 		duration, err := time.ParseDuration(timeoutStr)
 		if err != nil {
 			pkg.LoggerFromContext(ctx).Error("解析超时配置失败", zap.Error(err))
 			return nil, fmt.Errorf("解析超时配置失败: %s", err)
 		}
-		config.Connector.Para["reconnectDelay"] = duration
+		config.Connector.Para["reconnectdelay"] = duration
 	}
 	// 处理 serverAddrs 字段，支持字符串列表或逗号分隔的字符串
 	var serverAddrs []string
-	switch addrs := config.Connector.Para["serverAddrs"].(type) {
+	switch addrs := config.Connector.Para["serveraddrs"].(type) {
 	case []interface{}:
 		for _, addr := range addrs {
 			if addrStr, ok := addr.(string); ok {
@@ -67,7 +67,7 @@ func NewTcpClient(ctx context.Context) (Template, error) {
 		pkg.LoggerFromContext(ctx).Error("解析服务器地址列表失败")
 		return nil, fmt.Errorf("解析服务器地址列表失败")
 	}
-	config.Connector.Para["serverAddrs"] = serverAddrs
+	config.Connector.Para["serveraddrs"] = serverAddrs
 
 	// 初始化配置结构
 	var clientConfig tcpClientConfig

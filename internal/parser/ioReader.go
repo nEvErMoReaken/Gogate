@@ -532,7 +532,7 @@ func (s *Section) parseToDeviceName(context context.Context) (string, error) {
 // createIoParser 从配置文件初始化 Chunk
 func createIoParser(ctx context.Context, c ioReaderConfig, chunks []interface{}) (IoReader, error) {
 	log := pkg.LoggerFromContext(ctx)
-	log.Info("当前启用的协议文件: %s", zap.String("protocol", c.ProtoFile))
+	log.Info("当前启用的协议文件", zap.String("protocol", c.ProtoFile))
 	var chunkSequence = IoReader{
 		make([]Chunk, 0),
 		make(SnapshotCollection),
@@ -547,7 +547,7 @@ func createIoParser(ctx context.Context, c ioReaderConfig, chunks []interface{})
 
 		chunkSequence.Chunks = append(chunkSequence.Chunks, tmpChunk)
 	}
-	log.Info("IoReader 初始化成功")
+	log.Debug("IoReader 初始化成功")
 	return chunkSequence, nil
 }
 

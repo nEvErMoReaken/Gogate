@@ -42,6 +42,14 @@ func NewTcpServer(ctx context.Context) (Template, error) {
 		}
 		config.Connector.Para["timeout"] = duration // 替换为 time.Duration
 	}
+	//
+	if timeoutStr, ok := config.Connector.Para["timeout"].(string); ok {
+		duration, err := time.ParseDuration(timeoutStr)
+		if err != nil {
+			return nil, fmt.Errorf("配置文件解析失败: %s", err)
+		}
+		config.Connector.Para["timeout"] = duration // 替换为 time.Duration
+	}
 
 	// 3. 初始化配置结构
 	var serverConfig TcpServerConfig
