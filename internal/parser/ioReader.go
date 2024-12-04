@@ -13,10 +13,17 @@ import (
 	"time"
 )
 
+// IoReader 用于解析二进制数据流
 type IoReader struct {
 	Chunks             []Chunk            `mapstructure:"chunks"`
 	SnapshotCollection SnapshotCollection // 快照集合
 	ctx                context.Context
+}
+type ConditionalChunkConfig struct {
+	Type     string                            `mapstructure:"type"`
+	Length   int                               `mapstructure:"length"`
+	Sections []SectionConfig                   `mapstructure:"sections"`
+	Choices  map[string]map[string]interface{} `mapstructure:"choices"`
 }
 
 type FixedChunkConfig struct {
@@ -37,6 +44,7 @@ type SectionConfig struct {
 	For      ForConfig  `mapstructure:"for"`  // 赋值变量
 	To       ToConfig   `mapstructure:"to"`   // 字段转换配置
 	Desc     string     `mapstructure:"desc"` // 字段说明
+	Tag      string     `mapstructure:"tag"`
 }
 
 type ForConfig struct {
@@ -55,6 +63,18 @@ type ToConfig struct {
 	DeviceName string   `mapstructure:"device"`
 	DeviceType string   `mapstructure:"type"`
 	Fields     []string `mapstructure:"fields"`
+}
+
+type Section struct {
+	Repeat       interface{}
+	Bit          int
+	Length       int
+	Decoding     ByteScriptFunc
+	Tag          []string
+	ToDeviceName string // 这里的设备名称是带模板的，需要解析。例如 ecc_{vobc_id}
+	ToDeviceType string
+	ToVarNames   []string // 解码后变量的最终去向
+	ToFieldNames []string // 解码后字段的最终去向
 }
 
 // Chunk 处理器接口
@@ -163,7 +183,7 @@ func (r *IoReader) String() string {
 
 // FixedLengthChunk 实现
 type FixedLengthChunk struct {
-	length   interface{} // 为长度或者是变量名
+	Length   interface{} // 为长度或者是变量名
 	Sections []Section
 }
 
@@ -171,7 +191,7 @@ type FixedLengthChunk struct {
 func (f *FixedLengthChunk) String() string {
 	// 打印 Length 指针的值（解引用）
 
-	lengthVal := fmt.Sprintf("%d", f.length)
+	lengthVal := fmt.Sprintf("%d", f.Length)
 
 	// 打印 Sections 指针中的值
 	sectionsStr := ""
@@ -213,33 +233,27 @@ func (f *FixedLengthChunk) String() string {
 	}
 
 	// 打印整个结构体信息
-	return fmt.Sprintf("FixedLengthChunk:\n  Length=%s\n  Sections:\n%s", lengthVal, sectionsStr)
+	return fmt.Sprintf("FixedLengthChunk:  Length=%s  Sections:%s", lengthVal, sectionsStr)
 }
 
 func (f *FixedLengthChunk) Process(ctx context.Context, dataSource *pkg.StreamDataSource, frame *[]byte, handler *SnapshotCollection) (changedCtx context.Context, err error) {
 	log := pkg.LoggerFromContext(ctx)
 	// ～～～ 定长块的处理逻辑 ～～～
-	chunkLen, err := getIntVar(ctx, f.length)
+	chunkLen, err := getIntVar(ctx, f.Length)
 	if err != nil {
 		return ctx, fmt.Errorf("获取FixedLengthChunk长度错误: %v", err)
 	}
 	// 1. 读取固定长度数据
 	data := make([]byte, chunkLen)
 	n, err := dataSource.ReadFully(data)
-	if n < chunkLen {
-		for n < chunkLen {
-			additionalData := make([]byte, chunkLen-n)
-			m, err := dataSource.ReadFully(additionalData)
-			if err != nil {
-				if err == io.EOF {
-					return ctx, err // EOF 可以认为是正常结束
-				}
-				return ctx, fmt.Errorf("读取错误: %v", err) // 其他错误直接返回
-			}
-			data = append(data, additionalData[:m]...)
-			n += m
+	if err != nil {
+		if err == io.EOF {
+			// 如果已读取部分数据，可以继续处理
+			data = data[:n]
+		} else {
+			// 其他错误直接返回
+			return ctx, fmt.Errorf("读取错误: %v", err)
 		}
-
 	}
 
 	// 定长Chunk可以直接追加到frame中
@@ -249,122 +263,221 @@ func (f *FixedLengthChunk) Process(ctx context.Context, dataSource *pkg.StreamDa
 	log.Debug("FixedLengthChunk", zap.Any("fix", f))
 	byteCursor := 0
 	for _, sec := range f.Sections {
-		var parsedToDeviceName string
-		var tarSnapshot *DeviceSnapshot
-		repeat, err := getIntVar(ctx, sec.Repeat)
+		// FixLengthChunk 的处理逻辑, 不需要返回 handoff
+		ctx, byteCursor, _, err = processSection(ctx, data, sec, handler, byteCursor)
 		if err != nil {
 			return ctx, err
 		}
-		for i := 0; i < repeat; i++ {
-
-			// 2.1. 根据Sec的length解码
-			if sec.Decoding == nil {
-				// 如果没有解码函数，直接跳过
-				byteCursor += sec.Length
-				continue
-			}
-
-			if byteCursor+sec.Length > len(data) {
-				return ctx, fmt.Errorf("游标超出数据长度")
-			}
-			var decoded []interface{}
-			var err1 error
-			// 这样设计的的目的是解决1个字节中有多个设备数据的情况， 即长度为0时不移动游标，而继续解析当前字节
-			if sec.Length == 0 {
-				decoded, err1 = sec.Decoding(data[byteCursor : byteCursor+1])
-			} else {
-				decoded, err1 = sec.Decoding(data[byteCursor : byteCursor+sec.Length])
-			}
-
-			if err1 != nil {
-				return ctx, err1
-			}
-			// 2.2 移动游标
-			byteCursor += sec.Length
-
-			// 2.3 保存解码后的数据到对应的 VarName下标内
-			// sec.VarName[i] = decoded[i]
-			// 假设解码后有三个速度值： v1,v2,v3 分别对应变量名为 vobc_speed1, vobc_speed2, vobc_speed3
-			// v1 -> vobc_speed1,
-			// v2 -> vobc_speed2,
-			// v3 -> vobc_speed3
-			// 变量后续用于For(如果有的话）, 供后续Section使用
-			if len(sec.ToVarNames) != 0 && len(sec.ToVarNames) != len(decoded) {
-				return ctx, fmt.Errorf("解码后的数据长度与VarNames长度不匹配, %d != %d", len(decoded), len(sec.ToVarNames))
-			}
-			for i, pt := range sec.ToVarNames {
-				// 解码后放入到变量池中
-				ctx = context.WithValue(ctx, pt, decoded[i])
-			}
-			// 2.4 设备快照更新逻辑
-			// 注，这里的ToDeviceName是可能包含${}的，需要解析
-			if sec.ToDeviceType == "" || sec.ToDeviceName == "" {
-				continue
-			}
-			// 避免重复解析
-			if parsedToDeviceName == "" {
-				parsedToDeviceName, err = sec.parseToDeviceName(ctx)
-				if err != nil {
-					return ctx, err
-				}
-			}
-
-			tarSnapshot, err = handler.GetDeviceSnapshot(parsedToDeviceName, sec.ToDeviceType)
-			if err != nil {
-				return ctx, err
-			}
-
-			if len(sec.ToFieldNames) != 0 && len(sec.ToFieldNames) != len(decoded) {
-				return ctx, fmt.Errorf("解码后的数据长度与FieldNames长度不匹配, %d != %d", len(decoded), len(sec.ToFieldNames))
-			}
-			for ii, de := range decoded {
-				//fmt.Println("sec.ToFieldNames[ii]:", sec.ToFieldNames[ii], "de:", de)
-				err := tarSnapshot.SetField(ctx, sec.ToFieldNames[ii], de)
-				if err != nil {
-					return ctx, err
-				}
-			}
-
-			// data_source对于客户端应该是常驻变量， TODO 后续考虑是否用配置文件配置
-			err := tarSnapshot.SetField(ctx, "data_source", ctx.Value("data_source"))
-			if err != nil {
-				return ctx, err
-			}
-		}
 	}
-	//if cursor != len(data) {
-	//	common.Log.Warnf("游标未到达数据末尾，有漏数据的风险。游标位置：%d，数据长度：%d", cursor, len(data))
-	//}
 	return ctx, nil
 }
 
-// ConditionalChunk 实现
+// ConditionalChunk 用于处理带条件的 Chunk
 type ConditionalChunk struct {
-	ConditionField string           `mapstructure:"condition_field"`
-	Choices        map[string]Chunk `mapstructure:"choices"`
-	Sections       []Section
+	Length   interface{}
+	Handoff  string
+	Choices  map[string]Chunk
+	Sections []Section
 }
 
 func (c *ConditionalChunk) Process(ctx context.Context, dataSource *pkg.StreamDataSource, frame *[]byte, handler *SnapshotCollection) (changedCtx context.Context, err error) {
-	fmt.Println("Processing ConditionalChunk")
+	log := pkg.LoggerFromContext(ctx)
+	// ～～～ 定长块的处理逻辑 ～～～
+	chunkLen, err := getIntVar(ctx, c.Length)
+	if err != nil {
+		return ctx, fmt.Errorf("获取ConditionalChunk长度错误: %v", err)
+	}
+	// 1. 读取固定长度数据
+	data := make([]byte, chunkLen)
+	n, err := dataSource.ReadFully(data)
+	if err != nil {
+		if err == io.EOF {
+			// 如果已读取部分数据，可以继续处理
+			data = data[:n]
+		} else {
+			// 其他错误直接返回
+			return ctx, fmt.Errorf("读取错误: %v", err)
+		}
+	}
 
-	// 动态选择下一个 Chunk 解析逻辑
+	// 定长Chunk可以直接追加到frame中
+	*frame = append(*frame, data...)
+	// 2. 解析数据
+	log.Debug("===Processing ConditionalChunk===")
+	//log.Debug(fmt.Sprintf("frame: %v", frame))
+	log.Debug("ConditionalChunk", zap.Any("Condition", c))
+	byteCursor := 0
+	for _, sec := range c.Sections {
+		log.Debug(fmt.Sprintf("=== sec: %v", sec))
+		ctx, byteCursor, c.Handoff, err = processSection(ctx, data, sec, handler, byteCursor)
+		if err != nil {
+			return ctx, err
+		}
+	}
+
+	choices, exist := c.Choices[c.Handoff]
+	if !exist {
+		return ctx, fmt.Errorf("未找到对应的 Choice: %s", c.Handoff)
+	}
+	ctx, err = choices.Process(ctx, dataSource, frame, handler)
+	if err != nil {
+		return ctx, err
+	}
+
 	return ctx, nil
 }
 
-func (c *ConditionalChunk) String() string {
-	return fmt.Sprintf("ConditionalChunk (ConditionField: %s, Choices: %d)", c.ConditionField, len(c.Choices))
+// processSection 处理 Section
+func processSection(
+	ctx context.Context,
+	data []byte,
+	sec Section,
+	handler *SnapshotCollection,
+	byteCursor int,
+) (updatedCtx context.Context, updatedCursor int, handoff string, err error) {
+	var parsedToDeviceName string
+	var tarSnapshot *DeviceSnapshot
+	// 获取 Repeat 值
+	repeat, err := getIntVar(ctx, sec.Repeat)
+	if err != nil {
+		return ctx, byteCursor, handoff, err
+	}
+
+	for i := 0; i < repeat; i++ {
+		// 2.1. 根据 Sec 的 length 解码
+		if sec.Decoding == nil {
+			// 如果没有解码函数，直接跳过
+			byteCursor += sec.Length
+			continue
+		}
+
+		if byteCursor+sec.Length > len(data) {
+			return ctx, byteCursor, handoff, fmt.Errorf("游标超出数据长度")
+		}
+		// 按照动态方法解码
+		var decoded []interface{}
+		if sec.Length == 0 {
+			decoded, err = sec.Decoding(data[byteCursor : byteCursor+1])
+		} else {
+			decoded, err = sec.Decoding(data[byteCursor : byteCursor+sec.Length])
+		}
+		if err != nil {
+			return ctx, byteCursor, handoff, err
+		}
+
+		// 2.2 移动游标
+		byteCursor += sec.Length
+
+		// 2.3 保存解码后的数据到对应的 VarName 下标内
+		if len(sec.ToVarNames) != 0 && len(sec.ToVarNames) != len(decoded) {
+			return ctx, byteCursor, handoff, fmt.Errorf(
+				"解码后的数据长度与 VarNames 长度不匹配, %d != %d",
+				len(decoded), len(sec.ToVarNames),
+			)
+		}
+
+		for i, pt := range sec.ToVarNames {
+			ctx = context.WithValue(ctx, pt, decoded[i])
+		}
+		// 2.4 更新Choice
+		if ContainsTag(sec.Tag, "handoff") {
+			handoff = decoded[0].(string)
+		}
+
+		// 2.5 设备快照更新逻辑
+		if sec.ToDeviceType == "" || sec.ToDeviceName == "" {
+			continue
+		}
+
+		if parsedToDeviceName == "" {
+			parsedToDeviceName, err = sec.parseToDeviceName(ctx)
+			if err != nil {
+				return ctx, byteCursor, handoff, err
+			}
+		}
+
+		tarSnapshot, err = handler.GetDeviceSnapshot(parsedToDeviceName, sec.ToDeviceType)
+		if err != nil {
+			return ctx, byteCursor, handoff, err
+		}
+
+		if len(sec.ToFieldNames) != 0 && len(sec.ToFieldNames) != len(decoded) {
+			return ctx, byteCursor, handoff, fmt.Errorf(
+				"解码后的数据长度与 FieldNames 长度不匹配, %d != %d",
+				len(decoded), len(sec.ToFieldNames),
+			)
+		}
+
+		for ii, de := range decoded {
+			if err = tarSnapshot.SetField(ctx, sec.ToFieldNames[ii], de); err != nil {
+				return ctx, byteCursor, handoff, err
+			}
+		}
+
+		if err = tarSnapshot.SetField(ctx, "data_source", ctx.Value("data_source")); err != nil {
+			return ctx, byteCursor, handoff, err
+		}
+	}
+
+	return ctx, byteCursor, handoff, nil
 }
 
-type Section struct {
-	Repeat       interface{}
-	Bit          int
-	Length       int
-	Decoding     ByteScriptFunc
-	ToDeviceName string // 这里的设备名称是带模板的，需要解析。例如 ecc_{vobc_id}
-	ToDeviceType string
-	ToVarNames   []string // 解码后变量的最终去向
-	ToFieldNames []string // 解码后字段的最终去向
+func (c *ConditionalChunk) String() string {
+	// 打印 Length 的值
+	lengthVal := fmt.Sprintf("%v", c.Length)
+
+	// 打印 Handoff 的信息
+	handoffStr := ""
+	handoffStr += fmt.Sprintf(c.Handoff)
+
+	// 打印 Choices 的信息
+	choicesStr := ""
+	for key, chunk := range c.Choices {
+		choicesStr += fmt.Sprintf("  Choice %s: %v\n", key, chunk)
+	}
+
+	// 打印 Sections 的信息
+	sectionsStr := ""
+	for i, sec := range c.Sections {
+		// 打印 Repeat 指针的值
+		repeatVal := fmt.Sprintf("%d", sec.Repeat)
+
+		// 打印 Decoding 的地址
+		decodingAddr := "nil"
+		if sec.Decoding != nil {
+			decodingAddr = fmt.Sprintf("%p", sec.Decoding)
+		}
+
+		// 打印 ToVarNames 列表
+		varNameStr := "["
+		for j, pt := range sec.ToVarNames {
+			varNameStr += pt
+			if j < len(sec.ToVarNames)-1 {
+				varNameStr += ", "
+			}
+		}
+		varNameStr += "]"
+
+		// 打印 ToFieldNames 列表
+		fieldTargetStr := "["
+		for j, field := range sec.ToFieldNames {
+			fieldTargetStr += field
+			if j < len(sec.ToFieldNames)-1 {
+				fieldTargetStr += ", "
+			}
+		}
+		fieldTargetStr += "]"
+
+		// 拼接 Section 的详细信息
+		sectionsStr += fmt.Sprintf(
+			"  Section %d: Repeat=%s, Length=%d, Decoding Addr=%s, DeviceName=%s, DeviceType=%s, VarName=%s, FieldTarget=%s\n",
+			i+1, repeatVal, sec.Length, decodingAddr, sec.ToDeviceName, sec.ToDeviceType, varNameStr, fieldTargetStr)
+	}
+
+	// 拼接整个 ConditionalChunk 的字符串信息
+	return fmt.Sprintf(
+		"ConditionalChunk:  Length=%s  Handoff: %s  Choices: %s  Sections: %s",
+		lengthVal, handoffStr, choicesStr, sectionsStr)
 }
 
 func getIntVar(ctx context.Context, key interface{}) (int, error) {
@@ -493,9 +606,10 @@ func createChunk(chunkMap map[string]interface{}) (Chunk, error) {
 
 		// 初始化 FixedLengthChunk(不包含Section)
 		var fixedChunk = FixedLengthChunk{
-			length:   fixedChunkConfig.Length,
+			Length:   fixedChunkConfig.Length,
 			Sections: make([]Section, 0),
 		}
+
 		// 初始化Section
 		for _, section := range fixedChunkConfig.Sections {
 			var tmpSec = Section{
@@ -506,6 +620,7 @@ func createChunk(chunkMap map[string]interface{}) (Chunk, error) {
 				ToDeviceType: section.To.DeviceType,
 				ToVarNames:   section.For.VarName,
 				ToFieldNames: make([]string, 0),
+				Tag:          strings.Split(section.Tag, ":"),
 			}
 			for i := 0; i < len(section.To.Fields); i++ {
 				// 如果 section.To.Fields 中是 "field${1..8}" 形式
@@ -538,8 +653,69 @@ func createChunk(chunkMap map[string]interface{}) (Chunk, error) {
 		return &fixedChunk, nil
 
 	case "ConditionalChunk":
-		var conditionalChunk ConditionalChunk
-		// TODO: 解析 ConditionalChunk
+		var conditionalChunkConfig ConditionalChunkConfig
+		err := mapstructure.Decode(chunkMap, &conditionalChunkConfig) // 将配置解码为 FixedLengthChunk 结构体
+		if err != nil {
+			return nil, fmt.Errorf("[createChunk]failed to mapstructure conditionalChunk: %v", err)
+		}
+		// 设置默认值: 若 Repeat 未设置，则设置为 1
+		for i, section := range conditionalChunkConfig.Sections {
+			if section.From.Repeat == nil { // 检查是否为空
+				conditionalChunkConfig.Sections[i].From.Repeat = 1 // 设置默认值
+			}
+		}
+
+		// 初始化 ConditionalChunkConfig
+		conditionalChunk := ConditionalChunk{
+			Length:   conditionalChunkConfig.Length,
+			Sections: make([]Section, 0),
+			Choices:  make(map[string]Chunk),
+		}
+		// 将Choice中涉及到的Chunk递归初始化
+		for key, value := range conditionalChunkConfig.Choices {
+			chunk, err := createChunk(value)
+			if err != nil {
+				return nil, fmt.Errorf("创建 ConditionalChunk 失败: %v", err)
+			}
+			conditionalChunk.Choices[key] = chunk
+		}
+		// 初始化Section
+		for _, section := range conditionalChunkConfig.Sections {
+			var tmpSec = Section{
+				Repeat:       section.From.Repeat,
+				Length:       section.From.Byte,
+				Decoding:     nil,
+				ToDeviceName: section.To.DeviceName,
+				ToDeviceType: section.To.DeviceType,
+				ToVarNames:   section.For.VarName,
+				ToFieldNames: make([]string, 0),
+				Tag:          strings.Split(section.Tag, ":"),
+			}
+			for i := 0; i < len(section.To.Fields); i++ {
+				// 如果 section.To.Fields 中是 "field${1..8}" 形式
+				if len(section.To.Fields) != 0 && strings.Contains(section.To.Fields[0], "{") && strings.Contains(section.To.Fields[0], "..") && strings.Contains(section.To.Fields[0], "}") {
+					// 解析模板 "field${1..8}"
+					fields, err := expandFieldTemplate(section.To.Fields[0])
+					if err != nil {
+						return nil, fmt.Errorf("解析模板失败: %v\n", err)
+					}
+					// 展开结果追加 FieldTarget
+					tmpSec.ToFieldNames = append(tmpSec.ToFieldNames, fields...)
+				} else {
+					// 否则直接追加
+					tmpSec.ToFieldNames = append(tmpSec.ToFieldNames, section.To.Fields[i])
+				}
+			}
+			if section.Decoding.Method != "" {
+				tmpDecoding, exist := GetScriptFunc(section.Decoding.Method)
+				if exist {
+					tmpSec.Decoding = tmpDecoding
+				} else {
+					return nil, fmt.Errorf("未找到解码函数: %s", section.Decoding.Method)
+				}
+			}
+			conditionalChunk.Sections = append(conditionalChunk.Sections, tmpSec)
+		}
 		return &conditionalChunk, nil
 
 	default:
@@ -562,4 +738,14 @@ func parseVariable(value interface{}) (isVariable bool, Variable string, err err
 		}
 	}
 	return true, "", fmt.Errorf("UnKnown Type: %v", value)
+}
+
+// ContainsTag checks if a slice contains a specific tag.
+func ContainsTag(slice []string, tag string) bool {
+	for _, v := range slice {
+		if v == tag {
+			return true
+		}
+	}
+	return false
 }
