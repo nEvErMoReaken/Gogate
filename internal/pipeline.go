@@ -7,6 +7,7 @@ import (
 	"gateway/internal/parser"
 	"gateway/internal/pkg"
 	"gateway/internal/strategy"
+	"go.uber.org/zap"
 )
 
 // Pipeline 为函数的主逻辑
@@ -16,7 +17,8 @@ type Pipeline struct {
 	strategy  strategy.TemplateCollection
 }
 
-func (p *Pipeline) Start() {
+func (p *Pipeline) Start(ctx context.Context) {
+	pkg.LoggerFromContext(ctx).Info("=== Starting Pipeline ===")
 	sourceChan := make(chan pkg.DataSource, 20)
 	err := p.connector.Start(sourceChan)
 	if err != nil {
@@ -36,9 +38,12 @@ func (p *Pipeline) Start() {
 		}
 	}()
 	p.strategy.Start(&source02)
+	pkg.LoggerFromContext(ctx).Info("=== Pipeline Start Success ===")
+
 }
 
 func NewPipeline(ctx context.Context) (*Pipeline, error) {
+	pkg.LoggerFromContext(ctx).Info("=== Building Pipeline ===")
 	// 非阻塞方法
 	// 0. 校验流程合法性
 	var err error
@@ -60,6 +65,14 @@ func NewPipeline(ctx context.Context) (*Pipeline, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Startegy, %s ", err)
 	}
+	pkg.LoggerFromContext(ctx).Info("=== Pipeline Build Success ===")
+	var showList []string
+	for _, config := range pkg.ConfigFromContext(ctx).Strategy {
+		if config.Enable {
+			showList = append(showList, config.Type)
+		}
+	}
+	pkg.LoggerFromContext(ctx).Info(" Pipeline Info ", zap.Any("connector", pkg.ConfigFromContext(ctx).Connector.Type), zap.Any("parser", pkg.ConfigFromContext(ctx).Parser.Type), zap.Any("strategy", showList))
 	return &Pipeline{
 		connector: c,
 		parser:    p,

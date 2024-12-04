@@ -13,6 +13,7 @@ import (
 )
 
 func main() {
+
 	// 1. 初始化common yaml
 	config, err := pkg.InitCommon("yaml")
 	if err != nil {
@@ -25,7 +26,7 @@ func main() {
 
 	log.Info("程序启动", zap.String("version", config.Version))
 	log.Info("配置信息", zap.Any("common", config))
-	log.Info("*** 初始化流程开始 ***")
+	log.Info("==== 初始化流程开始 ====")
 
 	// 3. 创建上下文
 	ctx, cancel := context.WithCancel(context.Background())
@@ -42,8 +43,9 @@ func main() {
 		cancel()
 		return
 	}
+	printStartupLogo()
 	// 4. 启动管道
-	pipeline.Start()
+	pipeline.Start(ctxWithConfigAndLogger)
 
 	// 5. 主线程监听终止信号
 	si := make(chan os.Signal, 1)
@@ -55,7 +57,7 @@ func main() {
 			log.Info("Exiting gateway...")
 			cancel()                    // 取消上下文
 			time.Sleep(1 * time.Second) // 给其他协程时间处理取消
-			err := log.Sync()
+			err = log.Sync()
 			if err != nil {
 				log.Error("程序退出时同步日志失败: %s", zap.Error(err))
 			}
@@ -70,11 +72,25 @@ func main() {
 				}
 			}()
 			time.Sleep(1 * time.Second) // 确保日志输出完整
-			err := log.Sync()
+			err = log.Sync()
 			if err != nil {
 				log.Error("程序退出时同步日志失败: %s", zap.Error(err))
 			}
 			os.Exit(1)
 		}
 	}
+}
+
+func printStartupLogo() {
+	logo := `
+		 ________  ________  ________  ________  _________  _______      
+		|\   ____\|\   __  \|\   ____\|\   __  \|\___   ___\\  ___ \     
+		\ \  \___|\ \  \|\  \ \  \___|\ \  \|\  \|___ \  \_\ \   __/|    
+		 \ \  \  __\ \  \\\  \ \  \  __\ \   __  \   \ \  \ \ \  \_|/__  
+		  \ \  \|\  \ \  \\\  \ \  \|\  \ \  \ \  \   \ \  \ \ \  \_|\ \ 
+		   \ \_______\ \_______\ \_______\ \__\ \__\   \ \__\ \ \_______\
+			\|_______|\|_______|\|_______|\|__|\|__|    \|__|  \|_______|
+
+`
+	fmt.Print(logo)
 }

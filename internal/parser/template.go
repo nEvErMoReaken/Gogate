@@ -46,9 +46,9 @@ var New = func(ctx context.Context) (Template, error) {
 	if err != nil {
 		return nil, fmt.Errorf("加载脚本失败: %+v ", zap.Error(err))
 	}
-	pkg.LoggerFromContext(ctx).Info("已加载Byte脚本", zap.Any("ByteScripts", ByteScriptFuncCache))
-	pkg.LoggerFromContext(ctx).Info("已加载Json脚本", zap.Any("JsonScripts", JsonScriptFuncCache))
-	pkg.LoggerFromContext(ctx).Debug(fmt.Sprintf("===正在启动Parser: %s===", config.Parser.Type))
+	pkg.LoggerFromContext(ctx).Info("已加载Byte脚本", zap.Any("ByteScripts", GetKeys(ByteScriptFuncCache)))
+	pkg.LoggerFromContext(ctx).Info("已加载Json脚本", zap.Any("JsonScripts", GetKeys(JsonScriptFuncCache)))
+	pkg.LoggerFromContext(ctx).Info(fmt.Sprintf("===正在启动Parser: %s===", config.Parser.Type))
 
 	// 2. 直接调用工厂函数
 	parser, err := factory(ctx)
@@ -288,4 +288,13 @@ func (sc *SnapshotCollection) LaunchALL(ctx context.Context, sink *pkg.PointData
 	for _, dm := range *sc {
 		dm.launch(ctx, sink)
 	}
+}
+
+// GetKeys 获取 map 的所有 key
+func GetKeys[T any](m map[string]T) []string {
+	keys := make([]string, 0, len(m))
+	for key := range m {
+		keys = append(keys, key)
+	}
+	return keys
 }

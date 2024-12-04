@@ -6,6 +6,7 @@ import (
 	"go.uber.org/zap/zapcore"
 	"gopkg.in/natefinch/lumberjack.v2"
 	"os"
+	"time"
 )
 
 // 定义一个不导出的 key 类型，避免 context key 冲突
@@ -31,9 +32,13 @@ func LoggerFromContext(ctx context.Context) *zap.Logger {
 	return zap.NewNop() // 返回一个 no-op logger，避免 nil pointer 错误
 }
 
+func CustomTimeEncoder(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
+	// 格式化为没有时区信息的时间字符串
+	enc.AppendString(t.Format("2006-01-02T15:04:05.000"))
+}
+
 // NewLogger initializes the common
 func NewLogger(config *LogConfig) *zap.Logger {
-
 	lumberJackLogger := &lumberjack.Logger{
 		Filename:   config.LogPath,    // 日志文件路径
 		MaxSize:    config.MaxSize,    // megabytes
@@ -43,7 +48,6 @@ func NewLogger(config *LogConfig) *zap.Logger {
 		LocalTime:  true,
 	}
 
-	// 创建编码器配置
 	encoderConfig := zapcore.EncoderConfig{
 		TimeKey:        "timestamp",
 		LevelKey:       "level",
@@ -53,27 +57,31 @@ func NewLogger(config *LogConfig) *zap.Logger {
 		StacktraceKey:  "trace",
 		LineEnding:     zapcore.DefaultLineEnding,
 		EncodeLevel:    zapcore.CapitalLevelEncoder,
-		EncodeTime:     zapcore.ISO8601TimeEncoder,     // ISO8601时间格式
-		EncodeDuration: zapcore.SecondsDurationEncoder, // 时间格式
-		EncodeCaller:   zapcore.ShortCallerEncoder,     // 简短的调用者编码器 (文件名和行号)
+		EncodeTime:     CustomTimeEncoder,
+		EncodeDuration: zapcore.SecondsDurationEncoder,
+		EncodeCaller:   zapcore.ShortCallerEncoder,
 	}
 
-	// 创建一个控制台编码器，带有自定义的日志格式
 	encoder := zapcore.NewJSONEncoder(encoderConfig)
 
-	// 通过level参数创建zapcore
-	// 解析日志级别
 	var level zapcore.Level
 	if err := level.UnmarshalText([]byte(config.Level)); err != nil {
-		level = zap.InfoLevel // 默认日志级别为 InfoLevel
+		level = zap.InfoLevel
 	}
-	// 创建一个核心，它将所有日志写入 combinedSyncer
+
 	core := zapcore.NewCore(
 		encoder,
 		zapcore.NewMultiWriteSyncer(zapcore.AddSync(os.Stdout), zapcore.AddSync(lumberJackLogger)),
 		level,
 	)
-	// 创建 Logger 并添加调用者信息和堆栈跟踪
-	logger := zap.New(core, zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel))
+
+	// 根据日志级别添加 `zap.AddCaller` 或不添加
+	var options []zap.Option
+	options = append(options, zap.AddStacktrace(zapcore.ErrorLevel)) // 堆栈跟踪从 ErrorLevel 开始
+	if level < zap.InfoLevel {                                       // Info 或更低级别不显示 Caller
+		options = append(options, zap.AddCaller())
+	}
+
+	logger := zap.New(core, options...)
 	return logger
 }

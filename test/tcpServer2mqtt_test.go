@@ -37,7 +37,7 @@ func TestTcpServer2Mqtt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("流程初始化失败: %v", err)
 	}
-	pipeLine.Start()
+	pipeLine.Start(h.ctx)
 	// 设置 MQTT 订阅
 	received := make(chan []byte, 20)
 	client, err := subscribeMqtt("gateway/traction_system/status/fields", func(client mqtt.Client, msg mqtt.Message) {

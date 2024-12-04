@@ -96,7 +96,7 @@ func InitCommon(configDir string) (*Config, error) {
 			v.SetConfigFile(filePath)
 
 			// 读取并合并配置文件 (会覆盖之前的配置)
-			if err := v.MergeInConfig(); err != nil {
+			if err = v.MergeInConfig(); err != nil {
 				return fmt.Errorf("读取配置文件失败 %s: %w", filePath, err)
 			}
 		}
@@ -110,7 +110,7 @@ func InitCommon(configDir string) (*Config, error) {
 	v.AutomaticEnv()
 	var common Config
 	// 反序列化到结构体
-	if err := v.Unmarshal(&common); err != nil {
+	if err = v.Unmarshal(&common); err != nil {
 		return nil, fmt.Errorf("反序列化配置失败: %w", err)
 	}
 	return &common, nil

@@ -47,18 +47,18 @@ func NewUdpConnector(ctx context.Context) (Template, error) {
 		config.Connector.Para["timeout"] = duration
 	}
 	// 处理 timeout 字段
-	if timeoutStr, ok := config.Connector.Para["reconnectDelay"].(string); ok {
+	if timeoutStr, ok := config.Connector.Para["reconnectdelay"].(string); ok {
 		duration, err := time.ParseDuration(timeoutStr)
 		if err != nil {
 			pkg.LoggerFromContext(ctx).Error("解析超时配置失败", zap.Error(err))
 			return nil, fmt.Errorf("解析超时配置失败: %s", err)
 		}
-		config.Connector.Para["reconnectDelay"] = duration
+		config.Connector.Para["reconnectdelay"] = duration
 	}
 
 	// 给bufferSize字段设置默认值
-	if _, ok := config.Connector.Para["bufferSize"]; !ok {
-		config.Connector.Para["bufferSize"] = 1024
+	if _, ok := config.Connector.Para["buffersize"]; !ok {
+		config.Connector.Para["buffersize"] = 1024
 	}
 	// 初始化配置结构
 	var udpConfig UdpConfig

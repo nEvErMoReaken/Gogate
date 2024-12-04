@@ -46,7 +46,7 @@ var New = func(ctx context.Context) (TemplateCollection, error) {
 	pkg.LoggerFromContext(ctx).Debug("Template Factory:", zap.Strings("Factories", factoryTypes))
 	for _, strategyConfig := range pkg.ConfigFromContext(ctx).Strategy {
 		if strategyConfig.Enable {
-			pkg.LoggerFromContext(ctx).Debug(fmt.Sprintf("===正在启动Strategy: %s===", strategyConfig.Type))
+			pkg.LoggerFromContext(ctx).Info(fmt.Sprintf("===正在启动Strategy: %s===", strategyConfig.Type))
 			if factory, exists := Factories[strategyConfig.Type]; exists {
 				strategy, err := factory(ctx)
 				if err != nil {

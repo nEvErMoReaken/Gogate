@@ -723,23 +723,6 @@ func createChunk(chunkMap map[string]interface{}) (Chunk, error) {
 	}
 }
 
-// @Desperate parseVariable 从字符串中提取变量名, 若无变量则返回原始值
-func parseVariable(value interface{}) (isVariable bool, Variable string, err error) {
-	// 假设占位符格式为 ${var_name}，我们去掉 "${" 和 "}" 并返回中间的部分
-	switch value.(type) {
-	case int:
-		return false, "", nil
-	case string:
-		var sValue = value.(string)
-		if strings.HasPrefix(sValue, "${") && strings.HasSuffix(sValue, "}") {
-			return true, sValue[2 : len(sValue)-1], nil
-		} else {
-			return true, "", fmt.Errorf("failed to parse int variable: %v", value)
-		}
-	}
-	return true, "", fmt.Errorf("UnKnown Type: %v", value)
-}
-
 // ContainsTag checks if a slice contains a specific tag.
 func ContainsTag(slice []string, tag string) bool {
 	for _, v := range slice {

@@ -16,8 +16,6 @@ import (
 // Mock Logger for capturing log outputs
 var logger, _ = zap.NewDevelopment()
 
-var commonCtx, cancel = context.WithCancel(pkg.WithErrChan(pkg.WithLogger(context.Background(), logger), make(chan error, 5)))
-
 func TestExpandFieldTemplate(t *testing.T) {
 	Convey("测试 expandFieldTemplate 函数", t, func() {
 		Convey("正常展开模板", func() {

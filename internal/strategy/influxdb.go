@@ -83,12 +83,12 @@ func (b *InfluxDbStrategy) GetType() string {
 // Start Step.2
 func (b *InfluxDbStrategy) Start(pointChan chan pkg.Point) {
 	defer b.client.Close()
-	pkg.LoggerFromContext(b.ctx).Info("===InfluxDbStrategy started===")
+	pkg.LoggerFromContext(b.ctx).Debug("===InfluxDbStrategy started===")
 	for {
 		select {
 		case <-b.ctx.Done():
 			b.Stop()
-			pkg.LoggerFromContext(b.ctx).Info("===InfluxDbStrategy stopped===")
+			pkg.LoggerFromContext(b.ctx).Debug("===InfluxDbStrategy stopped===")
 			return
 		case point := <-pointChan:
 			err := b.Publish(point)
@@ -153,7 +153,7 @@ func (b *InfluxDbStrategy) Publish(point pkg.Point) error {
 	)
 	// 写入到 InfluxDB
 	b.writeAPI.WritePoint(p)
-	b.logger.Debug("InfluxDBStrategy published", zap.Any("point", point))
+	b.logger.Info("InfluxDBStrategy published", zap.Any("point", point))
 	return nil
 }
 
