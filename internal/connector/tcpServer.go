@@ -91,7 +91,7 @@ func (t *TcpServerConnector) Start(sourceChan chan pkg.DataSource) error {
 			if err != nil {
 				// 检查错误是否由于监听器已关闭
 				if errors.Is(err, net.ErrClosed) {
-					log.Info("监听器已关闭，停止接受连接")
+					log.Debug("监听器已关闭，停止接受连接")
 					return
 				} else if errors.Is(err, io.EOF) {
 					log.Info("收到 EOF 信号，停止接受连接")

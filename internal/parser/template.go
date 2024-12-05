@@ -252,7 +252,8 @@ func (dm *DeviceSnapshot) launch(ctx context.Context, sink *pkg.PointDataSource)
 	//fmt.Printf("launching device snapshot: %v\n", dm)
 	//fmt.Printf("mapChan: %v\n", mapChan)
 	//fmt.Printf("DataSink: %v\n", dm.DataSink)
-	// 发射时统一更新时间， 确保一帧的时间是一致的
+	// 发射时统一更新时间， 确保一帧的时间是一致的、
+	//fmt.Println(sink)
 	dm.Ts = ctx.Value("ts").(time.Time)
 	for st := range dm.DataSink {
 		select {

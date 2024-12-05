@@ -2,12 +2,15 @@ package internal
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"gateway/internal/connector"
 	"gateway/internal/parser"
 	"gateway/internal/pkg"
 	"gateway/internal/strategy"
 	"go.uber.org/zap"
+	"io"
+	"time"
 )
 
 // Pipeline 为函数的主逻辑
@@ -17,6 +20,58 @@ type Pipeline struct {
 	strategy  strategy.TemplateCollection
 }
 
+// ShootOne 发射-回执一条数据，用于cli和测试
+func ShootOne(ctx context.Context, oriFrame string) (res string, err error) {
+	pkg.LoggerFromContext(ctx).Info("=== Shoot One ===")
+	tempParser, err := parser.New(pkg.WithLoggerAndModule(ctx, pkg.LoggerFromContext(ctx), "Parser"))
+	if err != nil {
+		return "", fmt.Errorf("failed to create Parser, %s ", err)
+	}
+
+	// 1. 判断当前环境类型
+	if tempParser.GetType() == "stream" {
+		reader, writer := io.Pipe()
+		source := pkg.StreamDataSource{
+			Reader: reader,
+			Writer: writer,
+		}
+		var ds pkg.DataSource = &source
+		ps := pkg.PointDataSource{PointChan: make(map[string]chan pkg.Point)}
+		for _, StrategyConfig := range pkg.ConfigFromContext(ctx).Strategy {
+			ps.PointChan[StrategyConfig.Type] = make(chan pkg.Point, 10)
+		}
+		go tempParser.Start(&ds, &ps)
+		var data []byte
+		data, err = hex.DecodeString(oriFrame)
+		if err != nil {
+			return "", err
+		}
+		_, err = writer.Write(data)
+		if err != nil {
+			return "", err
+		}
+		time.Sleep(400 * time.Millisecond)
+		// 2. 监听、汇总所有管道信息
+		for key, value := range ps.PointChan {
+		loop:
+			for {
+				select {
+				case v := <-value:
+					res += fmt.Sprintf("%s: %s\n", key, v.String())
+				default:
+					break loop
+				}
+			}
+		}
+
+	} else if tempParser.GetType() == "message" {
+		return "", fmt.Errorf("only stream parser is supported")
+	}
+
+	return res, err
+}
+
+// Start 启动管道
 func (p *Pipeline) Start(ctx context.Context) {
 	pkg.LoggerFromContext(ctx).Info("=== Starting Pipeline ===")
 	sourceChan := make(chan pkg.DataSource, 20)
@@ -71,6 +126,10 @@ func NewPipeline(ctx context.Context) (*Pipeline, error) {
 		if config.Enable {
 			showList = append(showList, config.Type)
 		}
+	}
+	// 4. 简单校验
+	if c.GetType() != p.GetType() {
+		return nil, fmt.Errorf("connector and parser type mismatch, %s != %s", c.GetType(), p.GetType())
 	}
 	pkg.LoggerFromContext(ctx).Info(" Pipeline Info ", zap.Any("connector", pkg.ConfigFromContext(ctx).Connector.Type), zap.Any("parser", pkg.ConfigFromContext(ctx).Parser.Type), zap.Any("strategy", showList))
 	return &Pipeline{

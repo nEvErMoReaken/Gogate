@@ -16,6 +16,22 @@ import (
 	"time"
 )
 
+func TestShootOne(t *testing.T) {
+	h, err := chooseConfig("tcpServer2mqtt")
+	if err != nil {
+		// 触发测试失败
+		t.Fatalf("配置初始化失败: %v", err)
+		return
+	}
+	// 启动流程
+	one, err := internal.ShootOne(h.ctx, "FF")
+
+	if err != nil {
+		t.Fatalf("shoot失败: %v", err)
+	}
+	assert.Contains(t, one, "RIOM_sta_1")
+}
+
 func TestTcpServer2Mqtt(t *testing.T) {
 	h, err := chooseConfig("tcpServer2mqtt")
 	if err != nil {

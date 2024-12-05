@@ -1,6 +1,7 @@
 package pkg
 
 import (
+	"fmt"
 	"io"
 	"time"
 )
@@ -23,6 +24,24 @@ type StreamDataSource struct {
 	MetaData map[string]string
 	Reader   io.Reader
 	Writer   io.Writer
+}
+
+// String 方法实现
+func (p *Point) String() string {
+	// 格式化 Field 映射为字符串
+	fieldStr := "{"
+	for key, value := range p.Field {
+		fieldStr += fmt.Sprintf("%s: %v, ", key, value)
+	}
+	// 去掉最后的逗号和空格
+	if len(p.Field) > 0 {
+		fieldStr = fieldStr[:len(fieldStr)-2]
+	}
+	fieldStr += "}"
+
+	// 格式化整个 Point
+	return fmt.Sprintf("Point(DeviceName=%s, DeviceType=%s, Field=%s, Ts=%s)",
+		p.DeviceName, p.DeviceType, fieldStr, p.Ts.Format(time.RFC3339))
 }
 
 // NewStreamDataSource 使用指定的 reader 和 writer 创建 StreamDataSource 实例

@@ -2,7 +2,7 @@ version: "1.0.0"
 
 #  日志
 log:
-  log_path: ./logs
+  log_path: ./gateway.log
   # MaxSize：在进行切割之前，日志文件的最大大小（以MB为单位）
   max_size: 512
   # MaxBackups：保留旧文件的最大个数
@@ -11,7 +11,7 @@ log:
   max_age: 365
   # Compress：是否压缩/归档旧文件
   compress: true
-  level: info
+  level: debug
 
 
 
@@ -78,7 +78,7 @@ parser:
   type: ioReader # ioReader|json
   config:
     dir: ./script
-    protoFile: test
+    protoFile: test # 启用哪一份协议
 #    method: "ConvertOldGatewayTelemetry"
 
 
