@@ -2,16 +2,10 @@
 
 一个零代码、完全依赖配置驱动的数据网关。
 
-示意图：
+cli 工具：
+![show_cli.gif](asset/show_cli.gif)
 
-![img.png](asset/img.png)
 
-解析状态机：
-
-![img.png](asset/img3.png)
-
-使用pipeline责任链模式构建三个核心模块：
-![img_1.png](asset/img_1.png)
 
 ## DataSource 数据源模块
 
@@ -262,3 +256,14 @@ type SendStrategy interface {
 ![img.png](asset/img4.png)
 ## 使用
 项目打包为镜像后，仅需要通过配置来指定所有流程。
+
+示意图：
+
+![img.png](asset/img.png)
+
+解析状态机：
+
+![img.png](asset/img3.png)
+
+使用pipeline责任链模式构建三个核心模块：
+![img_1.png](asset/img_1.png)

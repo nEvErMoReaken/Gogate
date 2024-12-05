@@ -4,6 +4,7 @@ go 1.23.4
 
 require (
 	github.com/apache/iotdb-client-go v1.3.2
+	github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e
 	github.com/eclipse/paho.mqtt.golang v1.5.0
 	github.com/google/uuid v1.4.0
 	github.com/influxdata/influxdb-client-go/v2 v2.14.0

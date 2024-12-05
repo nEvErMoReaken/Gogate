@@ -11,6 +11,7 @@ import (
 
 // NewRootCommand 创建根命令
 func NewRootCommand() *cobra.Command {
+	// 创建根命令
 	rootCmd := &cobra.Command{
 		Use:   "gateway-cli",
 		Short: "Gateway CLI for testing and managing frames",
@@ -18,7 +19,7 @@ func NewRootCommand() *cobra.Command {
 	}
 
 	// 添加子命令
-	rootCmd.AddCommand(NewShootOneCommand())
+	rootCmd.AddCommand(NewShootOneCommand()) // 确保子命令正确添加
 
 	return rootCmd
 }
@@ -31,7 +32,11 @@ func NewShootOneCommand() *cobra.Command {
 		Use:   "shootone",
 		Short: "Send a single frame and get a response",
 		Long:  `Send a single frame to the gateway and receive a response for testing purposes.`,
+		Args:  cobra.ExactArgs(1), // 规定必须接受一个参数
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// 获取位置参数 frame
+			oriFrame = args[0]
+
 			// 初始化上下文和日志
 			// 1. 初始化common yaml
 			config, err := pkg.InitCommon("yaml")
@@ -60,13 +65,6 @@ func NewShootOneCommand() *cobra.Command {
 			fmt.Println("Result:", result)
 			return nil
 		},
-	}
-
-	// 添加标志（参数）
-	cmd.Flags().StringVarP(&oriFrame, "frame", "f", "", "Original frame to be processed (required)")
-	err := cmd.MarkFlagRequired("frame")
-	if err != nil {
-		return nil
 	}
 
 	return cmd
