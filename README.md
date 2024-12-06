@@ -2,6 +2,7 @@
 
 一个零代码、完全依赖配置驱动的数据网关。
 
+ 
 cli 工具：
 ![show_cli.gif](asset/show_cli.gif)
 
@@ -11,12 +12,12 @@ cli 工具：
 
 拟支持多种类型的数据源
 - Message 类型数据源
-    - Mqtt 
-    - Kafka
+    - Mqtt
+    - Udp
 - Stream 类型数据源
     - TcpServer 
     - TcpClient 
-    - Udp
+    
 
 - 其他形式数据源
 

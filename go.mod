@@ -3,21 +3,20 @@ module gateway
 go 1.23.4
 
 require (
-	github.com/apache/iotdb-client-go v1.3.2
-	github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e
-	github.com/eclipse/paho.mqtt.golang v1.5.0
-	github.com/google/uuid v1.4.0
-	github.com/influxdata/influxdb-client-go/v2 v2.14.0
-	github.com/mitchellh/mapstructure v1.5.0
-	github.com/mochi-co/mqtt v1.3.2
-	github.com/prometheus/client_golang v1.20.5
-	github.com/smartystreets/goconvey v1.8.1
-	github.com/spf13/cobra v1.2.1
-	github.com/spf13/viper v1.19.0
-	github.com/stretchr/testify v1.9.0
-	github.com/traefik/yaegi v0.16.1
-	go.uber.org/zap v1.27.0
-	gopkg.in/natefinch/lumberjack.v2 v2.2.1
+	github.com/apache/iotdb-client-go v1.3.2 // iotdb连接sdk
+	github.com/eclipse/paho.mqtt.golang v1.5.0 //  mqtt client
+	github.com/google/uuid v1.4.0 // gen uuid
+	github.com/influxdata/influxdb-client-go/v2 v2.14.0 // influxdb连接sdk
+	github.com/mitchellh/mapstructure v1.5.0 // map转struct
+	github.com/mochi-co/mqtt v1.3.2 // mock mqtt broker
+	github.com/prometheus/client_golang v1.20.5 // prometheus 相关
+	github.com/smartystreets/goconvey v1.8.1  // 单测
+	github.com/spf13/cobra v1.2.1 // cli程序
+	github.com/spf13/viper v1.19.0 // 配置读取
+	github.com/stretchr/testify v1.9.0 // 其他测试
+	github.com/traefik/yaegi v0.16.1 // 动态脚本解析
+	go.uber.org/zap v1.27.0 // 日志
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // 日志切割
 )
 
 require (
