@@ -7,7 +7,7 @@
 
 ---
 ```shell
-docker run -d -v /path/to/config.yaml:/config.yaml -v /path/to/script:/script -v /path/to/data:/data -p 8080:8080 gogate:latest
+docker run -d -v /path/to/config.yaml:/config.yaml -v /path/to/script:/script -v /path/to/log:/log -p 8080:8080 gogate:latest
 ```
 
 # How to Use
@@ -59,21 +59,21 @@ type Point struct {
 假设有一个TcpServer数据源，其有数据FF(1111 1111)需要将数据解析后发送到InfluxDb与Mqtt, 配置如下：
 ```yaml
 connector:
-  #  tcpServer配置.ex：
   type: tcpserver
   config:
     url: :8080
+    
 parser:
   type: ioReader
   config:
     dir: ./script # 脚本路径
     protoFile: proto-train2sam-v0.0.1 # 启用哪一份协议
+    
 strategy:
   - type: influxdb
     enable: true
-    filter: # 格式<设备类型>:<设备名称>:<遥测名称>
-      - ".*:.*:.*"
-    #       - "vobc\\.info:vobc.*:RIOM_sta_3"
+    filter: 
+      - ".*"
     config:
       #    以下是自定义配置项
       url: http://10.17.191.107:8086
@@ -85,8 +85,6 @@ strategy:
         - "data_source"
   - type: mqtt
     enable: false
-    filter: # 格式<设备类型>:<设备名称>:<遥测名称>
-      - ".*:.*:.*"
     config:
       url: tcp://
       clientID:
@@ -132,7 +130,6 @@ gogate-cli
 
 ## Pipeline
 
----
 主流程从pipeline开始，通过配置自动构造四个模块。得益于工厂模式设计，三个模块均符合开闭原则，可以方便的拓展及测试。
 
 ### Connector
@@ -143,12 +140,15 @@ gogate-cli
 - 有BufferPool的应用
 - 统一简洁的日志输出
 
-## Parser
+### Parser
 
 负责从Connector中读取数据，解析后生成Point。Parser的设计思路是：
 1. 区分流数据(Stream)和离散数据(Message)，但是其声明是自动化的保证使用者使用时是无感的
 2. 解析规则可拓展可配置，可实现配置+脚本方式，0代码编写解析流程
 3. 可通过Cli工具测试解析流程
+
+![img.png](_asset/img_5.png)
+
 
 ### Aggregator
 
