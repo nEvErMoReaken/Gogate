@@ -66,8 +66,8 @@ func NewTcpServer(ctx context.Context) (Template, error) {
 }
 
 func (t *TcpServerConnector) Start(sourceChan chan pkg.DataSource) error {
-
 	log := pkg.LoggerFromContext(t.ctx)
+	log.Info("===正在启动Connector: TcpServer===")
 	// 1. 监听指定的端口
 	log.Debug("TCPServer listening on: " + t.serverConfig.Url)
 	listener, err := net.Listen("tcp", t.serverConfig.Url)
@@ -87,7 +87,8 @@ func (t *TcpServerConnector) Start(sourceChan chan pkg.DataSource) error {
 			// 该循环会一直阻塞，直到有新地连接到来
 			// 只有两种情况会退出循环：1.监听器关闭 2.接受连接失败
 			// 所以需要该循环理论上无法自我逃逸，必须依赖外部的 Close 方法来关闭监听器
-			conn, err := listener.Accept()
+			var conn net.Conn
+			conn, err = listener.Accept()
 			if err != nil {
 				// 检查错误是否由于监听器已关闭
 				if errors.Is(err, net.ErrClosed) {
@@ -107,13 +108,14 @@ func (t *TcpServerConnector) Start(sourceChan chan pkg.DataSource) error {
 			err = t.initConn(conn)
 			if err != nil {
 				pkg.LoggerFromContext(t.ctx).Error("初始化连接失败，关闭连接", zap.String("remote", conn.RemoteAddr().String()), zap.Error(err))
-				err := conn.Close()
+				err = conn.Close()
 				if err != nil {
 					pkg.LoggerFromContext(t.ctx).Warn("关闭连接失败", zap.String("remote", conn.RemoteAddr().String()), zap.Error(err))
 				}
 			}
 			ds := pkg.NewStreamDataSource()
 			sourceChan <- ds
+
 			go t.handleConn(conn, connID, ds)
 		}
 	}()

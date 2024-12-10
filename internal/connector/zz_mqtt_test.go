@@ -204,7 +204,7 @@ func TestNewMqttConnector(t *testing.T) {
 						"clientID":             "test-client",
 						"username":             "user",
 						"password":             "password",
-						"maxReconnectInterval": "10s",
+						"maxreconnectinterval": "10s",
 						"topics":               map[string]byte{"test/topic": 0},
 					},
 				},
@@ -228,7 +228,7 @@ func TestNewMqttConnector(t *testing.T) {
 			invalidConfig := pkg.Config{
 				Connector: pkg.ConnectorConfig{
 					Para: map[string]interface{}{
-						"maxReconnectInterval": "invalid_duration",
+						"maxreconnectinterval": "invalid_duration",
 					},
 				},
 			}

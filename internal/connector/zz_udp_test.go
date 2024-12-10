@@ -17,7 +17,7 @@ func mockConfigFromContextUdp(url string) *pkg.Config {
 			Para: map[string]interface{}{
 				"url":            url, // 使用自动分配端口
 				"timeout":        "5s",
-				"reconnectDelay": "1s",
+				"reconnectdelay": "1s",
 				"whitelist":      false,
 			},
 		},

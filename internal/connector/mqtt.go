@@ -81,7 +81,6 @@ func NewMqttConnector(ctx context.Context) (Template, error) {
 	// 1. 初始化配置文件
 	config := pkg.ConfigFromContext(ctx)
 	// 2. 处理 timeout 字段（从字符串解析为 time.Duration）
-	fmt.Println(config.Connector.Para["maxreconnectinterval"])
 	if timeoutStr, ok := config.Connector.Para["maxreconnectinterval"].(string); ok {
 		duration, err := time.ParseDuration(timeoutStr)
 		if err != nil {

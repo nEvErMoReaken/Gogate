@@ -18,9 +18,9 @@ func TestNewTcpClient_ConfigParsing(t *testing.T) {
 			Connector: pkg.ConnectorConfig{
 				Type: "tcpclient",
 				Para: map[string]interface{}{
-					"serverAddrs":    "127.0.0.1:8080,127.0.0.2:8080",
+					"serveraddrs":    "127.0.0.1:8080,127.0.0.2:8080",
 					"timeout":        "5s",
-					"reconnectDelay": "2s",
+					"reconnectdelay": "2s",
 				},
 			},
 		})
