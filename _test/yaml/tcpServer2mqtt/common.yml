@@ -32,8 +32,8 @@ parser:
 strategy:
   - type: mqtt
     enable: true
-    filter: # 格式<设备类型>:<设备名称>:<遥测名称>
-      - ".*:.*:.*"
+    filter:
+      - ".*"
     config:
       url: tcp://localhost:1883
       clientID: helloMqtt

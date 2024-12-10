@@ -22,22 +22,14 @@ import (
 	"fmt"
 	"strconv"
 )
-/*
-JsonType的脚本
-遵循格式: type JsonScriptFunc func(jsonMap map[string]interface{}) (string, string, map[string]interface{}, error)
-*/
 
-// ConvertOldGatewayTelemetry 将旧网关遥测数据转换为新格式
-func ConvertOldGatewayTelemetry(jsonMap map[string]interface{}) (string, string, map[string]interface{}, error) {
+func ConvertOldGatewayTelemetry(jsonMap map[string]interface{}) ([]map[string]interface{}, error) {
 	devName := jsonMap["deviceName"].(string)
 	devType := jsonMap["deviceType"].(string)
 	fields := jsonMap["fields"].(map[string]interface{})
-	return devName, devType, fields, nil
+	return []map[string]interface{}{{"device": devName + devType, "fields": fields}}, nil
 }
 
-/*  ByteType的脚本
-遵循格式: type ByteScriptFunc func([]byte) ([]interface{}, error)
-*/
 
 // DecodeByteToLittleEndianBits 将字节数组解析为小端序位数组
 func DecodeByteToLittleEndianBits(data []byte) ([]interface{}, error) {

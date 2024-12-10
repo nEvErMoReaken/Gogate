@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"gateway/internal/pkg"
 	"go.uber.org/zap"
+	"strings"
 	"time"
 
 	MQTT "github.com/eclipse/paho.mqtt.golang"
@@ -161,7 +162,15 @@ func (m *MqttStrategy) Publish(point pkg.Point) error {
 	if err != nil {
 		return fmt.Errorf("序列化 JSON 失败: %+v", err)
 	}
-	topic := fmt.Sprintf("gateway/%s/%s/fields", point.DeviceType, point.DeviceName)
+	// 分割device.vobc.123.1.1这样的设备名称，填入mqtt话题格式中
+	split := strings.Split(point.Device, ".")
+	topic := "gateway"
+	for i := 0; i < len(split); i++ {
+		topic += "/"
+		topic += split[i]
+	}
+	topic += "/fields"
+	// final topic like that: /gateway/device/vobc/123/1/1
 	m.client.Publish(topic, 0, true, jsonData)
 	m.logger.Debug("[MqttStrategy]发布消息", zap.String("topic", topic), zap.String("data", string(jsonData)))
 	return nil

@@ -8,8 +8,7 @@ test:
           decoding:
             method: "DecodeByteToBigEndianBits"
           to:
-            device: "status"
-            type: "traction_system"
+            device: "traction_system.status"
             fields:
               - RIOM_sta_{1..8}
 

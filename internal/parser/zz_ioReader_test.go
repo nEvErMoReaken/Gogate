@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"gateway/internal/pkg"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/zap"
@@ -40,32 +41,32 @@ func TestExpandFieldTemplate(t *testing.T) {
 }
 
 func TestParseToDeviceName(t *testing.T) {
-	Convey("测试 Section.parseToDeviceName 函数", t, func() {
+	Convey("测试 Section.parseToDevice 函数", t, func() {
 		ctx := context.WithValue(context.Background(), "vobc_id", "123")
 
 		Convey("正确解析模板变量", func() {
 			section := Section{
-				ToDeviceName: "ecc_${vobc_id}",
+				ToDevice: "device.${vobc_id}",
 			}
-			result, err := section.parseToDeviceName(ctx)
+			result, err := section.parseToDevice(ctx)
 			So(err, ShouldBeNil)
-			So(result, ShouldEqual, "ecc_123")
+			So(result, ShouldEqual, "device.123")
 		})
 
 		Convey("模板变量不存在", func() {
 			section := Section{
-				ToDeviceName: "ecc_${unknown_var}",
+				ToDevice: "device.${unknown_var}",
 			}
-			_, err := section.parseToDeviceName(ctx)
+			_, err := section.parseToDevice(ctx)
 			So(err, ShouldNotBeNil)
 			So(err.Error(), ShouldContainSubstring, "未找到模板变量")
 		})
 
 		Convey("不包含模板变量的设备名称", func() {
 			section := Section{
-				ToDeviceName: "static_device",
+				ToDevice: "static_device",
 			}
-			result, err := section.parseToDeviceName(ctx)
+			result, err := section.parseToDevice(ctx)
 			So(err, ShouldBeNil)
 			So(result, ShouldEqual, "static_device")
 		})
@@ -231,6 +232,7 @@ func TestConditionalChunk_Process(t *testing.T) {
 	Convey("测试 ConditionalChunk.Process 方法", t, func() {
 		ctx := pkg.WithLogger(context.Background(), zap.NewExample())
 		ctx = pkg.WithErrChan(ctx, make(chan error, 5))
+		ctx = context.WithValue(ctx, "ts", time.Now())
 		Convey("处理成功 - 正常数据", func() {
 			// 模拟一个简单的 ConditionalChunk
 			chunk := &ConditionalChunk{
@@ -242,9 +244,8 @@ func TestConditionalChunk_Process(t *testing.T) {
 						Decoding: func(data []byte) ([]interface{}, error) {
 							return []interface{}{int(data[0])}, nil
 						},
-						ToDeviceType: "conditionalSectionType",
-						ToDeviceName: "conditionalSectionName",
-						ToFieldNames: []string{"field1"},
+						ToDevice: "conditionalSectionDevice",
+						ToFields: []string{"field1"},
 					},
 					{
 						Repeat: 1,
@@ -260,15 +261,14 @@ func TestConditionalChunk_Process(t *testing.T) {
 						Length: 3, // 数据块长度
 						Sections: []Section{
 							{
-								Repeat: 1,
-								Length: 3,
+								Repeat: 3,
+								Length: 1,
 								Decoding: func(data []byte) ([]interface{}, error) {
 									return []interface{}{int(data[0]), int(data[1]), int(data[2])}, nil
 								},
-								ToVarNames:   []string{"var1", "var2", "var3"},
-								ToDeviceType: "fix1DevType",
-								ToDeviceName: "fix1DevType",
-								ToFieldNames: []string{"field1", "field2", "field3"},
+								ToVars:   []string{"var1", "var2", "var3"},
+								ToDevice: "fix1Dev",
+								ToFields: []string{"field1", "field2", "field3"},
 							},
 						},
 					},
@@ -281,10 +281,9 @@ func TestConditionalChunk_Process(t *testing.T) {
 								Decoding: func(data []byte) ([]interface{}, error) {
 									return []interface{}{int(data[0]), int(data[1]), int(data[2])}, nil
 								},
-								ToVarNames:   []string{"var1", "var2", "var3"},
-								ToDeviceType: "fix2DevType",
-								ToDeviceName: "fix2DevName",
-								ToFieldNames: []string{"field1", "field2", "field3"},
+								ToVars:   []string{"var1", "var2", "var3"},
+								ToDevice: "fix2Dev",
+								ToFields: []string{"field1", "field2", "field3"},
 							},
 						},
 					},
@@ -305,10 +304,9 @@ func TestConditionalChunk_Process(t *testing.T) {
 
 			// 模拟帧和快照集合
 			frame := make([]byte, 0)
-			handler := SnapshotCollection{}
-
+			datasource03 := pkg.AggregatorDataSource{PointChan: make(chan pkg.Point, 20)}
 			// 执行 Process
-			changedCtx, err := chunk.Process(ctx, dataSource, &frame, &handler)
+			changedCtx, err := chunk.Process(ctx, dataSource, &frame, &datasource03)
 			// 检查帧完整性
 			So(err, ShouldBeNil)
 			So(frame, ShouldResemble, []byte{1, 2, 3, 4, 5})
@@ -317,23 +315,32 @@ func TestConditionalChunk_Process(t *testing.T) {
 			So(changedCtx.Value("var2"), ShouldEqual, 4)
 			So(changedCtx.Value("var3"), ShouldEqual, 5)
 			// 检查Condition的设备是否存在
-			So(handler, ShouldNotBeNil)
-			So(handler, ShouldNotBeEmpty)
-			snapshot, err := handler.GetDeviceSnapshot("conditionalSectionName", "conditionalSectionType")
+			So(changedCtx, ShouldNotBeNil)
+			So(changedCtx, ShouldNotBeEmpty)
+			resMap := make(map[string]pkg.Point)
+		Outer:
+			for {
+				select {
+				case <-time.After(1 * time.Second):
+					break Outer
+				case temp := <-datasource03.PointChan:
+					fmt.Println(temp)
+					resMap[temp.Device] = temp
+				}
+			}
 			So(err, ShouldBeNil)
-			So(snapshot.Fields, ShouldNotBeNil)
-			So(snapshot.Fields, ShouldContainKey, "field1")
-			So(snapshot.Fields["field1"], ShouldEqual, 1)
+			So(resMap, ShouldNotBeNil)
+			So(resMap, ShouldContainKey, "conditionalSectionDevice")
+			So(resMap["conditionalSectionDevice"].Field["field1"], ShouldEqual, 1)
 			// 检查Fix1的设备是否存在（不应该存在）
-			So(handler, ShouldNotContainKey, "fix1DevName:fix1DevType")
+			So(resMap, ShouldNotContainKey, "fix1Dev")
 			// 检查Fix2的设备是否存在（应该存在）
-			snapshot, err = handler.GetDeviceSnapshot("fix2DevName", "fix2DevType")
 			So(err, ShouldBeNil)
-			So(snapshot.Fields, ShouldNotBeNil)
-			So(snapshot.Fields, ShouldContainKey, "field1")
-			So(snapshot.Fields["field1"], ShouldEqual, 3)
-			So(snapshot.Fields["field2"], ShouldEqual, 4)
-			So(snapshot.Fields["field3"], ShouldEqual, 5)
+			So(resMap, ShouldNotBeNil)
+			So(resMap, ShouldContainKey, "fix2Dev")
+			So(resMap["fix2Dev"].Field["field1"], ShouldEqual, 3)
+			So(resMap["fix2Dev"].Field["field2"], ShouldEqual, 4)
+			So(resMap["fix2Dev"].Field["field3"], ShouldEqual, 5)
 		})
 	})
 }
@@ -341,7 +348,7 @@ func TestFixedLengthChunk_Process(t *testing.T) {
 	Convey("测试 FixedLengthChunk.Process 方法", t, func() {
 		// 模拟日志上下文
 		ctx := pkg.WithLogger(context.Background(), zap.NewExample())
-
+		ctx = context.WithValue(ctx, "ts", time.Now())
 		Convey("处理成功 - 正常数据", func() {
 			// 模拟一个简单的 FixedLengthChunk
 			chunk := &FixedLengthChunk{
@@ -353,10 +360,9 @@ func TestFixedLengthChunk_Process(t *testing.T) {
 						Decoding: func(data []byte) ([]interface{}, error) {
 							return []interface{}{int(data[0]), int(data[1]), int(data[2])}, nil
 						},
-						ToVarNames:   []string{"var1", "var2", "var3"},
-						ToDeviceType: "deviceType",
-						ToDeviceName: "deviceName",
-						ToFieldNames: []string{"field1", "field2", "field3"},
+						ToVars:   []string{"var1", "var2", "var3"},
+						ToDevice: "device",
+						ToFields: []string{"field1", "field2", "field3"},
 					},
 				},
 			}
@@ -376,10 +382,10 @@ func TestFixedLengthChunk_Process(t *testing.T) {
 
 			// 模拟帧和快照集合
 			frame := make([]byte, 0)
-			handler := &SnapshotCollection{}
+			source03 := pkg.AggregatorDataSource{PointChan: make(chan pkg.Point, 20)}
 
 			// 执行 Process
-			changedCtx, err := chunk.Process(ctx, dataSource, &frame, handler)
+			changedCtx, err := chunk.Process(ctx, dataSource, &frame, &source03)
 
 			So(err, ShouldBeNil)
 			So(frame, ShouldResemble, []byte{1, 2, 3, 4, 5, 6})
@@ -416,9 +422,9 @@ func TestFixedLengthChunk_Process(t *testing.T) {
 			}
 
 			frame := make([]byte, 0)
-			handler := &SnapshotCollection{}
+			source03 := pkg.AggregatorDataSource{PointChan: make(chan pkg.Point, 20)}
 
-			_, err := chunk.Process(ctx, dataSource, &frame, handler)
+			_, err := chunk.Process(ctx, dataSource, &frame, &source03)
 			So(err, ShouldNotBeNil)
 			So(err.Error(), ShouldContainSubstring, "解码失败")
 		})
@@ -446,12 +452,11 @@ func TestIoReader_Start(t *testing.T) {
 	Convey("测试 IoReader.Start 方法", t, func() {
 		// 模拟日志上下文
 		ctx := pkg.WithErrChan(context.Background(), make(chan error, 5))
-
+		ctx = context.WithValue(ctx, "ts", time.Now())
 		// 模拟一个 IoReader
 		ioReader := &IoReader{
-			ctx:                ctx,
-			Chunks:             nil, // 使用 chunk
-			SnapshotCollection: SnapshotCollection{},
+			ctx:    ctx,
+			Chunks: nil, // 使用 chunk
 		}
 
 		// 模拟 DataSource 和 SinkMap
@@ -460,8 +465,6 @@ func TestIoReader_Start(t *testing.T) {
 			Reader:   nil, // 可以用模拟的 Reader
 			Writer:   nil, // 这里不使用 Writer
 		}
-
-		sinkMap := &pkg.PointDataSource{}
 
 		Convey("正常处理数据", func() {
 			// 模拟数据源的 Reader
@@ -481,22 +484,20 @@ func TestIoReader_Start(t *testing.T) {
 								// 假设解码返回这些数据
 								return []interface{}{int(data[0]), int(data[1]), int(data[2])}, nil
 							},
-							ToDeviceName: "device1",
-							ToDeviceType: "type1",
-							ToFieldNames: []string{"field1", "field2", "field3"},
+							ToDevice: "device1",
+							ToFields: []string{"field1", "field2", "field3"},
 						},
 					},
 				},
 			}
 			var ds pkg.DataSource = dataSource
+			source03 := pkg.AggregatorDataSource{PointChan: make(chan pkg.Point, 20)}
 			// 让 Start 方法执行一次
-			go ioReader.Start(&ds, sinkMap)
-			deviceSnapshot, err := ioReader.SnapshotCollection.GetDeviceSnapshot("device1", "type1")
-			So(err, ShouldBeNil)
-			So(deviceSnapshot, ShouldNotBeNil)
-			So(deviceSnapshot.DeviceName, ShouldEqual, "device1")
-			So(deviceSnapshot.DeviceType, ShouldEqual, "type1")
-			So(deviceSnapshot.Fields, ShouldNotBeNil)
+			go ioReader.Start(&ds, &source03)
+			rawPoint := <-source03.PointChan
+			So(rawPoint, ShouldNotBeNil)
+			So(rawPoint.Device, ShouldEqual, "device1")
+			So(rawPoint.Field, ShouldNotBeNil)
 		})
 
 		Convey("读取到 EOF 后退出", func() {
@@ -505,9 +506,9 @@ func TestIoReader_Start(t *testing.T) {
 				data: nil, // 模拟 EOF
 			}
 			var ds pkg.DataSource = dataSource
-
+			source03 := pkg.AggregatorDataSource{PointChan: make(chan pkg.Point, 20)}
 			// 让 Start 方法执行一次
-			go ioReader.Start(&ds, sinkMap)
+			go ioReader.Start(&ds, &source03)
 
 			// 等待一段时间，确保方法执行完毕
 			time.Sleep(1 * time.Second)
@@ -535,8 +536,9 @@ func TestIoReader_Start(t *testing.T) {
 				data: []byte{1, 2, 3, 4, 5, 6},
 			}
 			var ds pkg.DataSource = dataSource
+			source03 := pkg.AggregatorDataSource{PointChan: make(chan pkg.Point, 20)}
 			// 让 Start 方法执行一次
-			go ioReader.Start(&ds, sinkMap)
+			go ioReader.Start(&ds, &source03)
 
 			// 等待一段时间，确保方法执行完毕
 			time.Sleep(1 * time.Second)
