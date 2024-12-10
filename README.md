@@ -2,215 +2,87 @@
 
 一个零代码、完全依赖配置驱动的数据网关。
 
- 
-cli 工具：
-![show_cli.gif](asset/show_cli.gif)
 
+# Quick Start
 
+---
+```shell
+docker run -d -v /path/to/config.yaml:/config.yaml -v /path/to/script:/script -v /path/to/data:/data -p 8080:8080 gogate:latest
+```
 
-## DataSource 数据源模块
+# How to Use
 
-拟支持多种类型的数据源
+---
+#### Step.1 明确数据源（Connector）
+
+---
+支持多种类型的数据源
 - Message 类型数据源
     - Mqtt
     - Udp
+    - Sql (todo)
+    - Kafka (todo)
 - Stream 类型数据源
-    - TcpServer 
-    - TcpClient 
-    
+    - TcpServer
+    - TcpClient
+  
+#### Step.2 明确解析流程（Parser）
 
-- 其他形式数据源
-
-
-## Parser 解析模块
-
-不同数据源解析逻辑不同，共有思路是通过读取配置的解析流程，灵活的对不同协议进行解析。
-
-以Tcp解析为例：
-
-特点：Tcp协议需要指定包的起始与末尾，需要有一份配置文件指示报文中的偏移量和解码逻辑。
-
-实现思路：
-
-1. 完整的报文可以拆分为多个堆叠的Chunk组成的ChunkSequence，每个Chunk中可以有多个Section。会在后续流程中顺序解析。
-
-   - FixedLengthChunk （定长Chunk） 用于可以确定整个报文长度的协议
-   - ConditionalChunk （条件Chunk） 用于需要通过上下文得知协议类型后的动态Chunk
-   - DelimiterChunk (分隔符Chunk) 用于通过固定的帧头帧尾分隔符指示报文结尾的Chunk
-   - DynamicChunk (不定长Chunk) 以上Chunk所需信息都没有，只能完全依赖Section解析的动态Chunk（性能有所降低）
-2. 每个Chunk中理应维护一个Section数组，一个Section为一个最小的不可分割的部分，它指示了几个字节长度的解析生命周期的完整逻辑，结构如下：
-    ```go
-    // SectionConfig 定义
-    type SectionConfig struct {
-        From     FromConfig `mapstructure:"from"` // 偏移量
-        Decoding Decoding   `mapstructure:"decoding"`
-        For      ForConfig  `mapstructure:"for"`  // 赋值变量
-        To       ToConfig   `mapstructure:"to"`   // 字段转换配置
-        Desc     string     `mapstructure:"desc"` // 字段说明
-    }
-    ```
-- From 数据来源
-  ```go
-  type FromConfig struct {
-      Byte   int         `mapstructure:"byte"` // 字节长度
-      Repeat interface{} `mapstructure:"repeat"` // 重复次数
-  }
-  ```
-- Decoding 数据解码
-  ```go
-   type Decoding struct {
-       Method string `mapstructure:"method"` // 方法名，定义在./script下
-   }
-  ```
-- To 数据去向
-  ```go
-   type ToConfig struct {
-       DeviceName string   `mapstructure:"device"` // 目的设备名称
-       DeviceType string   `mapstructure:"type"`   // 目的设备类型
-       Fields     []string `mapstructure:"fields"` // 目的字段名
-   }
-   ```
-
-总之，通过内部的动态执行的特点，外部仅需要配置：
-1. 数据从哪几个字节来
-2. 数据如何解码
-3. 数据去向
-就可以完成字节流数据的解析
-
-以上只是Tcp类型的解析逻辑展示，udp不需要控制帧头与帧尾，内容会简单的多。
-json只需要配置字段转换规则即可。
-
-## varField 动态化变量
-
-协议中有这样的场景：
-
-场景1：
-...
-- 第67个Section解析内容变量
-- 第68个Section需要重复n次，重复次数为第67个块解析的值
-
-场景2：
-...
-- 第10个Section解析内容变量
-- 后续的Chunk需要根据第10个Section的内容来指示帧类型
-
-场景3：
-...
-- TcpServer Fetch到了一条tcp连接
-- 创建的设备快照名称需要根据配置好的TcpIp花名对照表来动态生成名字
-  - 例如：根据配置，ip 10.17.191.100 代表了集中站第1号电源屏
-  - 后续需要根据电源屏id来动态创建设备快照名：例如power0001
-
-由于协议的标准不统一的特点，这样变量的动态化解析是通用网关实现的难点所在。本项目通过一个变量池解决了该问题，实现思路如下：
-
-变量池（帧上下文）实际上就是一个map
-
-原则为：
-- 上下文的生命周期为一帧发送结束时。
-- 变量可在任意时间赋值，但是赋值后，必须只能在后面的帧解析流程中使用。例如：在第65Section中，解析出了变量repeatTimes，在(66, ∞)的帧解析流程中都可以使用。**否则会引起空指针问题**。其实很好理解，变量还未解析出来，怎么使用？
-
-回到上面的例子，看变量池如何解决这三个问题：
-
-场景1：
-...
-- 第67个Section解析内容变量，解析后的值放入Context中，变量名为RepeatTimes
-- 第68个Section需要重复n次，重复次数为RepeatTimes的值
-
-场景2：
-...
-- 第10个Section解析内容变量，放入Context中，变量名为FrameType
-- 后续的Chunk需要根据FrameType值来指示帧类型
-
-场景3：
-...
-- TcpServer Fetch到了一条tcp连接
-- 创建的设备快照名称需要根据配置好的TcpIp花名对照表找到其花名，放入Context的DevId中
-- 创建快照流程，将设备名称拼接DevId即可
-
-在配置中只需要这样指定：
-- 通过for字段指示该字段放入哪些变量名之中
-- 受Kotlin启发，使用${}模板字符串即可使用上文中的变量名
-
-例：
-```yaml
-  - from:
-      byte: 1
-      repeat: ${RepeatTimes}
-    decoding:
-      method: "DecodeByteToLittleEndianBits"
-    for:
-      varName:
-        - type
-```
-
-## Script 脚本
-
-脚本采用动态化模式，牺牲些许性能来保证通用性。
-上述Decoding字段仅配置了解码函数名称，真正的函数实现追加到./script下的script.go下即可。
-该目录会挂载到容器内部，程序启动后，会智能读取协议中用到的函数名称进行动态调用。
-
-所有脚本仅需要实现如下接口即可：
+---
+核心逻辑是，将数据源中的数据转为Point, Point为一个数据点，其定义很简单。
 ```go
-type ScriptFunc func([]byte) ([]interface{}, error)
-```
-
-解析后的`[]interface{}list`会和配置中的field或是varName一一匹配
-
-## DeviceSnapshot 快照
-快照即为`物模型在某时刻的状态`，其被时间戳驱动。本网关的过程即为通过不断创建新的设备快照，每个设备快照根据配置会发往不同的终点。
-
-而iot后续的监控流程也是通过无数个快照还原设备的现实状态。
-
-一个设备快照：
-```go
-// DeviceSnapshot 代表一个设备的物模型在某时刻的快照
-type DeviceSnapshot struct {
-Id         uuid.UUID           `json:"id"`          // 设备 ID
-DeviceName string              `json:"device_name"` // 设备名称，例如 "vobc0001.abc"
-DeviceType string              `json:"device_type"` // 设备类型，例如 "vobc.info"
-Fields     map[string]any      `json:"fields"`      // 字段存储，key 为字段名称，value 为字段值
-DataSink   map[string][]string `json:"sink_map"`    // 指示策略-字段名的映射关系
-Ts         time.Time           `json:"timestamp"`   // 时间戳
+type Point struct {
+    Device string                 // 设备标识
+    Field  map[string]interface{} // 字段名称
+    Ts     time.Time              // 时间戳
 }
-
 ```
+受Iotdb启发， 设备标识遵守vobc.vobc0001.speed的格式。
 
-本项目中将数据的去向称为`Strategy`，代表数据后续的处理与发送策略。
-上面快照中其他字段很好理解，着重讲解PointMap。
+假设有两个设备：
+- vobc.vobc0001
+- vobc.vobc0002
+他们有相同的主设备vobc
+#### Step.3 明确数据去向（Strategy）
 
-有时我们的下游数据源不止有一个，例如，网关可能有这样的需求：
-- 某些设备属性信息，放入kafka，用于其他服务
-- 遥测信息发往mqtt的某话题之中
-- 一些协议中不常变动的版本信息，存入关系型数据库
+---
+支持多种数据发送策略，例如：
+- InfluxDb
+- Iotdb
+- Mqtt
+- Promethues
+- Udp (Todo)
 
-也就是Snapshot与Strategy并不是1-1对应的，我们需要一个指示器指示哪些字段需要使用哪些Strategy。 PointMap就是这个作用，但是这里并不需要自己维护该指示器，只需要在配置文件中的filter字段中这样指定：
+数据源与策略是**一对多**的关系，一个数据源可以有多个策略。
 
-不用担心同样的数据会因为多个策略而赋值多次增大开销，PointMap存入的是Fields中字段值的指针，会完全跟随字段值的变化而同步变化。
-
-## Strategy 策略
-
-策略的配置也非常简单，只需要通过语法：
-
-拟支持的策略有：
-- influxdb （已完成）
-- iotdb (Todo)
-- sql
-- mqtt
-- kafka
-- mq
-- redis
-- prometheus
-- 其他策略
-
+# Example
+假设有一个TcpServer数据源，其有数据FF(1111 1111)需要将数据解析后发送到InfluxDb与Mqtt, 配置如下：
 ```yaml
+connector:
+  #  tcpServer配置.ex：
+  type: tcpserver
+  config:
+    url: :8080
+parser:
+  type: ioReader
+  config:
+    dir: ./script # 脚本路径
+    protoFile: proto-train2sam-v0.0.1 # 启用哪一份协议
 strategy:
-  - type: iotdb
-    enable: false
+  - type: influxdb
+    enable: true
+    filter: # 格式<设备类型>:<设备名称>:<遥测名称>
+      - ".*:.*:.*"
+    #       - "vobc\\.info:vobc.*:RIOM_sta_3"
     config:
-      url: "127.0.0.1:6667,127.0.0.1:6668,127.0.0.1:6669"
-      username:
-      password:
-      batch_size:
+      #    以下是自定义配置项
+      url: http://10.17.191.107:8086
+      token: mK_0NkLVPW8THIYkn52eqr7enL6IinGp8d5xbXizO1mVxAEk_EuOFxZ9OKWYcwVgi2XmogD6iPcO9KQ8ToVvtQ==
+      org: "byd"
+      bucket: "test"
+      batch_size: 2000
+      tags:
+        - "data_source"
   - type: mqtt
     enable: false
     filter: # 格式<设备类型>:<设备名称>:<遥测名称>
@@ -222,49 +94,83 @@ strategy:
       password:
       willTopic: "status/gateway"
 ```
-
-filter完全采用正则语法，在字段更新时会自动检测是否符合所有过滤器。遵循
-
-```<设备类型>:<设备名称>:<遥测名称>```
-
-的格式即可，例如：
-
-```".*:vobc.*:RIOM_sta_3"```
-
-表示：
-- 所有设备类型
-- 所有以“vobc.”为开头的设备名称
-- 所有遥测名称为RIOM_sta_3的字段
-
-会发往InfluxDb之中，并且一个字段可以发往多个数据源。例如上述配置同时发往了mqtt与InfluxDb之中
-
-所有策略需要实现两个接口即可完成拓展：
-  
-```go
-// SendStrategy 定义了所有发送策略的通用接口
-type SendStrategy interface {
-	Start() // 启动策略监听
-	GetChan() chan *Point // 提供访问 chan 的方法
-}
+另需一份协议配置：
+```yaml
+test:
+  chunks:
+    - type: FixedLengthChunk # 定长Chunk
+      length: 1 # 长度(字节)
+      sections: # 一个Chunk有多个Section
+        - from: # from -- 数据来源
+            byte: 1  # Section长度 (字节)
+          decoding: # decoding -- 数据解码
+            method: "DecodeByteToBigEndianBits" # 解码方法名, 定义在./script下， 反射读取
+          to: # to -- 数据去向, 映射到Point的信息
+            device: "vobc.status"  # 设备名称
+            fields: # 字段 , 数据从from中拿出，经过decoding解析为list，映射到fields中
+              - RIOM_sta_1 
+              - RIOM_sta_2
+              - RIOM_sta_3
+              - RIOM_sta_4
+              - RIOM_sta_5
+              - RIOM_sta_6
+              - RIOM_sta_7
+              - RIOM_sta_8 # 可简写为RIOM_sta_{1..8}
 ```
 
+随后可以通过cli工具测试配置和解析流程，验证：
+```shell
+gogate-cli
+```
+验证FF解析结果是否正确: 
+![show_cli.gif](_asset/show_cli.gif) 
 
-## flow
-主流程从pipeline开始，拼接了三个模块。得益于工厂模式设计，三个模块均符合开闭原则，可以方便的拓展及测试。
+# Design
+
+---
+![img.png](_asset/img_3.png)
+
+## Pipeline
+
+---
+主流程从pipeline开始，通过配置自动构造四个模块。得益于工厂模式设计，三个模块均符合开闭原则，可以方便的拓展及测试。
+
+### Connector
+
+减少了网关样板代码的编写，对数据源的读取进行了封装，提供了统一的接口，方便后续的拓展。特点：
+
+- 有统一的超时重连机制
+- 有BufferPool的应用
+- 统一简洁的日志输出
+
+## Parser
+
+负责从Connector中读取数据，解析后生成Point。Parser的设计思路是：
+1. 区分流数据(Stream)和离散数据(Message)，但是其声明是自动化的保证使用者使用时是无感的
+2. 解析规则可拓展可配置，可实现配置+脚本方式，0代码编写解析流程
+3. 可通过Cli工具测试解析流程
+
+### Aggregator
+
+由于Section（配置中的一个解析单元）和Point是一一对应的，在使用时会有诸多不方便的地方，受到 [Telegraf](https://www.influxdata.com/time-series-platform/telegraf/) 启发， Aggregator具有以下职责：
+  
+- 聚合：将从Parser中解析的一帧数据(Frame)中的原始Point(rawPoint)按设备名称聚合并暂存，减少后续发送IO
+- 路由: 将不同Point按策略中匹配的正则规则路由至正确的发送策略管道中
+- 解耦: 分离了parser与Strategy模块，分担了Parser职责，自此Parser和Connector不必再是一对一的，减少开销
+
+![img.png](_asset/img_4.png)
+
+### Strategy
+
+策略模块负责将Point发送至目标：
+
+- 减少样板代码编写。可配置限流、过滤等策略。
+- 通过正则方式匹配Point，避免繁琐的编写。例如，"vobc.*"即可匹配所有vobc开头的设备。
+
+
 
 ## 测试
-单元测试在对应软件包下，集成测试统一在test/目录下。
-![img.png](asset/img4.png)
-## 使用
-项目打包为镜像后，仅需要通过配置来指定所有流程。
+单元测试在对应软件包下，集成测试统一在_test/目录下。
+![img.png](_asset/img4.png)
 
-示意图：
 
-![img.png](asset/img.png)
-
-解析状态机：
-
-![img.png](asset/img3.png)
-
-使用pipeline责任链模式构建三个核心模块：
-![img_1.png](asset/img_1.png)
