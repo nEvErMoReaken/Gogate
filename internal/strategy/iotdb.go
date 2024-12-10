@@ -137,7 +137,7 @@ func NewIoTDBStrategy(ctx context.Context) (Template, error) {
 	}, nil
 }
 
-// GetChan Step.1
+// GetType Step.1 获取策略类型
 func (b *IoTDBStrategy) GetType() string {
 	return "iotdb"
 }
@@ -211,13 +211,7 @@ func (b *IoTDBStrategy) Publish(point pkg.Point) error {
 			continue
 		}
 	}
-
-	if point.DeviceType != "" {
-		deviceId = fmt.Sprintf("root.%s.%s", point.DeviceType, point.DeviceName)
-	} else {
-		deviceId = fmt.Sprintf("root.%s", point.DeviceName)
-	}
-
+	deviceId = fmt.Sprintf("root.%s", point.Device)
 	// 设置时间戳（毫秒）
 	timestamp := []int64{point.Ts.UnixNano() / 1e6}
 

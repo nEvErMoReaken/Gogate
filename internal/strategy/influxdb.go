@@ -142,14 +142,14 @@ func (b *InfluxDbStrategy) Publish(point pkg.Point) error {
 			decodedFields[key] = value
 		}
 	}
-	tagsMap["devName"] = point.DeviceName
+	tagsMap["devName"] = point.Device
 	//common.Log.Debugf("正在发送 %+v", decodedFields)
 	// 创建一个数据点
 	p := influxdb2.NewPoint(
-		point.DeviceType, // measurement
-		tagsMap,          // tags
-		decodedFields,    // fields (converted)
-		point.Ts,         // timestamp
+		point.Device,  // measurement
+		tagsMap,       // tags
+		decodedFields, // fields (converted)
+		point.Ts,      // timestamp
 	)
 	// 写入到 InfluxDB
 	b.writeAPI.WritePoint(p)

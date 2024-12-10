@@ -112,8 +112,7 @@ func TestIoTDBStrategy_Publish(t *testing.T) {
 	}
 
 	point := pkg.Point{
-		DeviceName: "device1",
-		DeviceType: "type1",
+		Device: "type1.device1",
 		Field: map[string]interface{}{
 			"temperature": 23.5,
 			"humidity":    60,
@@ -162,8 +161,7 @@ func TestIoTDBStrategy_Publish_Error(t *testing.T) {
 	}
 
 	point := pkg.Point{
-		DeviceName: "device1",
-		DeviceType: "type1",
+		Device: "device1",
 		Field: map[string]interface{}{
 			"unsupported": struct{}{}, // 不支持的数据类型
 		},
@@ -196,9 +194,9 @@ func TestIoTDBStrategy_StartStop(t *testing.T) {
 
 	// 发送一个点
 	point := pkg.Point{
-		DeviceName: "device1",
-		Field:      map[string]interface{}{"temperature": 25.0},
-		Ts:         time.Now(),
+		Device: "device1",
+		Field:  map[string]interface{}{"temperature": 25.0},
+		Ts:     time.Now(),
 	}
 	ph <- point
 

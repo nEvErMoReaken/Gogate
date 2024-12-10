@@ -100,8 +100,7 @@ func TestInfluxDbStrategy_Publish(t *testing.T) {
 
 	// 模拟数据点
 	point := pkg.Point{
-		DeviceName: "device1",
-		DeviceType: "type1",
+		Device: "device1",
 		Field: map[string]interface{}{
 			"tag1":   "value1",
 			"field1": 10.5,
@@ -174,10 +173,9 @@ func TestInfluxDbStrategy_StartAndStop(t *testing.T) {
 
 	// 发送一个数据点到 channel
 	pc <- pkg.Point{
-		DeviceName: "device1",
-		DeviceType: "type1",
-		Field:      map[string]interface{}{"field1": 42},
-		Ts:         time.Now(),
+		Device: "device1",
+		Field:  map[string]interface{}{"field1": 42},
+		Ts:     time.Now(),
 	}
 
 	// 停止策略

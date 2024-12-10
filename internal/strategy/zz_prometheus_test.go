@@ -36,8 +36,7 @@ func TestPrometheusStrategy(t *testing.T) {
 	promStrategy := strategy.(*PrometheusStrategy)
 	// 创建模拟的 Point 数据
 	point := pkg.Point{
-		DeviceType: "testDevice",
-		DeviceName: "testName",
+		Device: "testDevice",
 		Field: map[string]interface{}{
 			"temperature": 24.5,     // float64 类型
 			"status":      "online", // string 类型
@@ -53,11 +52,11 @@ func TestPrometheusStrategy(t *testing.T) {
 
 	// 使用 testutil 来验证 Prometheus 指标
 	expectedMetric := `
-	# HELP testDevice_testName_fields Metrics for testDevice testName
-	# TYPE testDevice_testName_fields gauge
-	testDevice_testName_fields{field="temperature"} 24.5
+	# HELP testDevice_fields Metrics for testDevice
+	# TYPE testDevice_fields gauge
+	testDevice_fields{field="temperature"} 24.5
 	`
-	if err := testutil.CollectAndCompare(promStrategy.metrics["testDevice_testName_fields"], strings.NewReader(expectedMetric)); err != nil {
+	if err = testutil.CollectAndCompare(promStrategy.metrics["testDevice_fields"], strings.NewReader(expectedMetric)); err != nil {
 		t.Errorf("unexpected collecting result:\n%s", err)
 	}
 

@@ -92,13 +92,13 @@ func (p *PrometheusStrategy) Start(pointChan chan pkg.Point) {
 // Publish 将数据发布到 Prometheus
 func (p *PrometheusStrategy) Publish(point pkg.Point) error {
 	// 创建或更新指标
-	metricName := fmt.Sprintf("%s_%s_fields", point.DeviceType, point.DeviceName)
+	metricName := fmt.Sprintf("%s_fields", point.Device)
 	gauge, exists := p.metrics[metricName]
 	if !exists {
 		gauge = prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
 				Name: metricName,
-				Help: fmt.Sprintf("Metrics for %s %s", point.DeviceType, point.DeviceName),
+				Help: fmt.Sprintf("Metrics for %s", point.Device),
 			},
 			[]string{"field"},
 		)

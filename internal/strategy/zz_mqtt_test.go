@@ -12,22 +12,14 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"go.uber.org/zap"
 )
 
 // 测试 NewMqttStrategy 成功情况
 func TestNewMqttStrategy_Success(t *testing.T) {
 
 	ctx := pkg.WithLogger(context.Background(), logger)
-	logger, _ := zap.NewDevelopment()
-	defer func(logger *zap.Logger) {
-		err := logger.Sync()
-		if err != nil {
 
-		}
-	}(logger)
-
-	// 启动内存中的 MQTT broker
+	// 启动存中的 MQTT broker
 	srv := server.New()
 
 	// 创建一个 TCP 监听器，监听本地 1883 端口
@@ -37,12 +29,12 @@ func TestNewMqttStrategy_Success(t *testing.T) {
 
 	// 启动 MQTT broker
 	go func() {
-		if err := srv.Serve(); err != nil {
+		if err = srv.Serve(); err != nil {
 			t.Log("MQTT 服务器错误:", err)
 		}
 	}()
 	defer func(srv *server.Server) {
-		err := srv.Close()
+		err = srv.Close()
 		if err != nil {
 
 		}
@@ -99,8 +91,7 @@ func TestNewMqttStrategy_Success(t *testing.T) {
 
 	// 准备一个要发布的点
 	point := pkg.Point{
-		DeviceType: "sensor",
-		DeviceName: "sensor1",
+		Device: "device.vobc",
 		Field: map[string]interface{}{
 			"temperature": 25.5,
 			"humidity":    60.0,
@@ -131,7 +122,7 @@ func TestNewMqttStrategy_Success(t *testing.T) {
 	defer subscriber.Disconnect(250)
 
 	// 订阅主题
-	topic := fmt.Sprintf("gateway/%s/%s/fields", point.DeviceType, point.DeviceName)
+	topic := fmt.Sprintf("gateway/device/vobc/fields")
 	if token := subscriber.Subscribe(topic, 0, messageHandler); token.Wait() && token.Error() != nil {
 		t.Fatalf("订阅者订阅失败: %v", token.Error())
 	}
@@ -141,11 +132,11 @@ func TestNewMqttStrategy_Success(t *testing.T) {
 	case msg := <-received:
 		// 反序列化 JSON 消息
 		var data map[string]interface{}
-		err := json.Unmarshal(msg, &data)
+		err = json.Unmarshal(msg, &data)
 		assert.NoError(t, err)
 		assert.Equal(t, point.Field["temperature"], data["temperature"])
 		assert.Equal(t, point.Field["humidity"], data["humidity"])
 	case <-time.After(2 * time.Second):
-		t.Fatal("未及时收到消息")
+		t.Fatalf("未及时从%s topic收到消息", topic)
 	}
 }
