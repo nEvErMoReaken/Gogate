@@ -27,7 +27,7 @@ func Register(strategyType string, factory FactoryFunc) {
 // TemplateCollection 代表发送策略集 这里面是所有已启用的数据源
 type TemplateCollection map[string]Template
 
-func (c *TemplateCollection) Start(pointChan *pkg.PointDataSource) {
+func (c *TemplateCollection) Start(pointChan *pkg.StrategyDataSource) {
 	for key, strategy := range *c {
 		go strategy.Start(pointChan.PointChan[key])
 	}
