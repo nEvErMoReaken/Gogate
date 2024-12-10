@@ -4,6 +4,7 @@
     <inspection_tool class="GoDfaErrorMayBeNotNil" enabled="true" level="WARNING" enabled_by_default="true">
       <functions>
         <function importPath="gateway/internal/parser" name="NewSnapshot" />
+        <function importPath="gateway/internal/parser" name="processSection" />
       </functions>
       <methods>
         <method importPath="gateway/internal/parser" receiver="*SnapshotCollection" name="GetDeviceSnapshot" />
