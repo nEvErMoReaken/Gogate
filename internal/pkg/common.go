@@ -36,7 +36,6 @@ type Point struct {
 	Device string                 // 设备标识
 	Field  map[string]interface{} // 字段名称
 	Ts     time.Time              // 时间戳
-
 }
 
 // Merge 方法用于合并两个 Point 实例
@@ -143,6 +142,7 @@ func (m *MessageDataSource) WriteOne(data []byte) error {
 
 type AggregatorDataSource struct {
 	PointChan chan Point
+	EndChan   chan struct{}
 }
 
 func (a *AggregatorDataSource) Type() DataSourceType {
