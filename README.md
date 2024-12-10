@@ -1,5 +1,5 @@
 # GoGate
-
+\---
 一个零代码、完全依赖配置驱动的数据网关。
 
 
@@ -92,9 +92,9 @@ strategy:
       password:
       willTopic: "status/gateway"
 ```
-另需一份协议配置：
+另需一份协议配置， 这里键名和上面Profile对应上即可：
 ```yaml
-test:
+proto-train2sam-v0.0.1:
   chunks:
     - type: FixedLengthChunk # 定长Chunk
       length: 1 # 长度(字节)
