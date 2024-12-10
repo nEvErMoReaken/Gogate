@@ -25,11 +25,10 @@ type ByteScriptFunc func([]byte) ([]interface{}, error)
 //
 // 返回:
 //
-//	devName: 设备名称，字符串。
-//	devType: 设备类型，字符串。
+//	device: 设备名称，字符串。
 //	fields: 设备的字段数据，类型为 map[string]interface{}。
 //	err: 如果出现错误，返回错误信息，否则为 nil。
-type JsonScriptFunc func(jsonMap map[string]interface{}) (devName string, devType string, fields map[string]interface{}, err error)
+type JsonScriptFunc func(jsonMap map[string]interface{}) (listPoint []map[string]interface{}, err error)
 
 // ByteScriptFuncCache 脚本函数缓存
 var ByteScriptFuncCache = make(map[string]ByteScriptFunc)
@@ -67,7 +66,7 @@ func extractAndCacheFunctions(ctx context.Context, i *interp.Interpreter, path s
 			}
 
 			// 尝试强制转换为 JsonScriptFunc
-			if fnFunc, ok := v.Interface().(func(map[string]interface{}) (string, string, map[string]interface{}, error)); ok {
+			if fnFunc, ok := v.Interface().(func(map[string]interface{}) ([]map[string]interface{}, error)); ok {
 				JsonScriptFuncCache[funcName] = fnFunc // 隐式转换
 				log.Debug("方法已缓存为 JsonScriptFunc", zap.String("funcName", funcName))
 				continue
@@ -83,8 +82,10 @@ func extractAndCacheFunctions(ctx context.Context, i *interp.Interpreter, path s
 
 // LoadAllScripts 加载/script目录下的所有脚本并缓存
 func LoadAllScripts(ctx context.Context, scriptDir string) error {
-	// 初始化yaegi解释器
-	i := interp.New(interp.Options{})
+	// 初始化 yaegi 解释器并设置 GoPath
+	i := interp.New(interp.Options{
+		GoPath: "D:\\code\\gateway", // 设置为你的项目根路径
+	})
 	err := i.Use(stdlib.Symbols)
 	if err != nil {
 		return err

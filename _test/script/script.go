@@ -7,15 +7,15 @@ import (
 
 /*
 JsonType的脚本
-遵循格式: type JsonScriptFunc func(map[string]interface{}) (string, string, map[string]interface{}, error)
+遵循格式: type JsonScriptFunc func(jsonMap map[string]interface{})  ([]map[string]interface{}, error)
 */
 
 // ConvertOldGatewayTelemetry 将旧网关遥测数据转换为新格式
-func ConvertOldGatewayTelemetry(jsonMap map[string]interface{}) (string, string, map[string]interface{}, error) {
+func ConvertOldGatewayTelemetry(jsonMap map[string]interface{}) ([]map[string]interface{}, error) {
 	devName := jsonMap["deviceName"].(string)
 	devType := jsonMap["deviceType"].(string)
 	fields := jsonMap["fields"].(map[string]interface{})
-	return devName, devType, fields, nil
+	return []map[string]interface{}{{"device": devName + devType, "fields": fields}}, nil
 }
 
 /*  ByteType的脚本
@@ -48,7 +48,7 @@ func DecodeByteToLittleEndianBits(data []byte) ([]interface{}, error) {
 func DecodeByteToBigEndianBits(data []byte) ([]interface{}, error) {
 	// 错误检查
 	if len(data) == 0 {
-		return nil, fmt.Errorf("[DecodeByteToBigEndianBits]输入字节数组为空")
+		return nil, fmt.Errorf("[Decode8BToInt]输入字节数组为空")
 	}
 	// 结果数组，长度是输入字节数组长度的 8 倍
 	result := make([]interface{}, 0, len(data)*8)
