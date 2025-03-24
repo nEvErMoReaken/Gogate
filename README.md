@@ -121,12 +121,12 @@ proto-train2sam-v0.0.1:
 gogate-cli
 ```
 验证FF解析结果是否正确: 
-![show_cli.gif](_asset/show_cli.gif) 
+![show_cli.gif](./_asset/show_cli.gif) 
 
 # Design
 
 ---
-![img.png](_asset/img_3.png)
+![img.png](./_asset/img_3.png)
 
 ## Pipeline
 
@@ -147,7 +147,7 @@ gogate-cli
 2. 解析规则可拓展可配置，可实现配置+脚本方式，0代码编写解析流程
 3. 可通过Cli工具测试解析流程
 
-![img.png](_asset/img_5.png)
+![img.png](./_asset/img_5.png)
 
 
 ### Aggregator
@@ -158,7 +158,7 @@ gogate-cli
 - 路由: 将不同Point按策略中匹配的正则规则路由至正确的发送策略管道中
 - 解耦: 分离了parser与Strategy模块，分担了Parser职责，自此Parser和Connector不必再是一对一的，减少开销
 
-![img.png](_asset/img_4.png)
+![img.png](./_asset/img_4.png)
 
 ### Strategy
 
@@ -171,6 +171,6 @@ gogate-cli
 
 ## 测试
 单元测试在对应软件包下，集成测试统一在_test/目录下。
-![img.png](_asset/img4.png)
+![img.png](./_asset/img4.png)
 
 
