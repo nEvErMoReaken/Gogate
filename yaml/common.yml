@@ -78,7 +78,7 @@ parser:
   type: ioReader # ioReader|json
   config:
     dir: ./script
-    protoFile: test # 启用哪一份协议
+    protoFile: proto-train2sam-v0.0.1 # 启用哪一份协议
 #    method: "ConvertOldGatewayTelemetry"
 
 
@@ -97,28 +97,28 @@ strategy:
       bucket: "test"
       batch_size: 2000
       tags:
-        - "data_source"
-  - type: iotdb
-    enable: false
-    config:
-      url: "127.0.0.1:6667,127.0.0.1:6668,127.0.0.1:6669"
-      username:
-      password:
-      batch_size:
-  - type: mqtt
-    enable: false
-    filter: # 格式<设备类型>:<设备名称>:<遥测名称>
-      - ".*:.*:.*"
-    config:
-      url: tcp://
-      clientID:
-      username:
-      password:
-      willTopic: "status/gateway"
-  - type: prometheus
-    enable: false
-    filter:
-      - ".*:.*:.*"
-    config:
-      port: 8080
-      endpoint: /metrics
+      - "data_source"
+#  - type: iotdb
+#    enable: false
+#    config:
+#      url: "127.0.0.1:6667,127.0.0.1:6668,127.0.0.1:6669"
+#      username:
+#      password:
+#      batch_size:
+#  - type: mqtt
+#    enable: false
+#    filter: # 格式<设备类型>:<设备名称>:<遥测名称>
+#      - ".*:.*:.*"
+#    config:
+#      url: tcp://
+#      clientID:
+#      username:
+#      password:
+#      willTopic: "status/gateway"
+#  - type: prometheus
+#    enable: false
+#    filter:
+#      - ".*:.*:.*"
+#    config:
+#      port: 8080
+#      endpoint: /metrics

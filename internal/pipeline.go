@@ -9,9 +9,10 @@ import (
 	"gateway/internal/parser"
 	"gateway/internal/pkg"
 	"gateway/internal/strategy"
-	"go.uber.org/zap"
 	"io"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 // Pipeline 为函数的主逻辑

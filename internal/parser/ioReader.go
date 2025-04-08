@@ -4,13 +4,14 @@ import (
 	"context"
 	"fmt"
 	"gateway/internal/pkg"
-	"github.com/mitchellh/mapstructure"
-	"go.uber.org/zap"
 	"io"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/mitchellh/mapstructure"
+	"go.uber.org/zap"
 )
 
 // IoReader 用于解析二进制数据流
@@ -398,21 +399,57 @@ func processSection(
 		var decoded []interface{}
 		// TODO 在此加入Recover机制, 动态脚本的内容是不可控的
 		if sec.Length == 0 {
+			log := pkg.LoggerFromContext(ctx)
+			log.Debug("解码数据(Length=0)",
+				zap.Int("游标位置", byteCursor),
+				zap.Binary("数据", data[byteCursor:byteCursor+1]))
 			decoded, err = sec.Decoding(data[byteCursor : byteCursor+1])
 		} else {
+			if byteCursor+sec.Length > len(data) {
+				log := pkg.LoggerFromContext(ctx)
+				log.Error("游标将超出数据范围",
+					zap.Int("游标位置", byteCursor),
+					zap.Int("尝试读取长度", sec.Length),
+					zap.Int("数据总长度", len(data)))
+			}
+			log := pkg.LoggerFromContext(ctx)
+			log.Debug("解码数据",
+				zap.Int("游标位置", byteCursor),
+				zap.Int("读取长度", sec.Length),
+				zap.Binary("数据", data[byteCursor:byteCursor+sec.Length]))
 			decoded, err = sec.Decoding(data[byteCursor : byteCursor+sec.Length])
 		}
 		if err != nil {
+			log := pkg.LoggerFromContext(ctx)
+			log.Error("数据解码失败",
+				zap.Error(err),
+				zap.Int("游标位置", byteCursor),
+				zap.Int("读取长度", sec.Length),
+				zap.String("Section信息", sec.String()))
 			return ctx, byteCursor, handoff, nil, err
 		}
+
+		log := pkg.LoggerFromContext(ctx)
+		log.Debug("数据解码成功",
+			zap.Int("解码后数据长度", len(decoded)),
+			zap.Any("解码后数据", decoded))
 		// 2.2 移动游标
 		byteCursor += sec.Length
 
 		// 2.3 保存解码后的数据到对应的 VarName 下标内
 		if len(sec.ToVars) != 0 && len(sec.ToVars) != len(decoded) {
+			log := pkg.LoggerFromContext(ctx)
+			log.Error("解码数据与变量不匹配",
+				zap.Int("解码数据长度", len(decoded)),
+				zap.Int("变量名称长度", len(sec.ToVars)),
+				zap.Any("解码后数据", decoded),
+				zap.Strings("变量名称列表", sec.ToVars),
+				zap.Int("当前游标位置", byteCursor),
+				zap.String("Section信息", sec.String()))
+
 			return ctx, byteCursor, handoff, nil, fmt.Errorf(
-				"解码后的数据长度与 VarNames 长度不匹配, %d != %d",
-				len(decoded), len(sec.ToVars),
+				"解码后的数据长度与 VarNames 长度不匹配, %d != %d, 解码数据: %v, 变量列表: %v",
+				len(decoded), len(sec.ToVars), decoded, sec.ToVars,
 			)
 		}
 		// 2.4 处理动态变量
@@ -420,9 +457,18 @@ func processSection(
 			ctx = context.WithValue(ctx, pt, decoded[ii])
 		}
 		if len(sec.ToFields) != 0 && len(sec.ToFields) != len(decoded) {
+			log := pkg.LoggerFromContext(ctx)
+			log.Error("解码数据与字段不匹配",
+				zap.Int("解码数据长度", len(decoded)),
+				zap.Int("字段名称长度", len(sec.ToFields)),
+				zap.Any("解码后数据", decoded),
+				zap.Strings("字段名称列表", sec.ToFields),
+				zap.Int("当前游标位置", byteCursor),
+				zap.String("Section信息", sec.String()))
+
 			return ctx, byteCursor, handoff, nil, fmt.Errorf(
-				"解码后的数据长度与 FieldNames 长度不匹配, %d != %d",
-				len(decoded), len(sec.ToFields),
+				"解码后的数据长度与 FieldNames 长度不匹配, %d != %d, 解码数据: %v, 字段列表: %v",
+				len(decoded), len(sec.ToFields), decoded, sec.ToFields,
 			)
 		}
 		var deviceName string
@@ -656,18 +702,20 @@ func createChunk(chunkMap map[string]interface{}) (Chunk, error) {
 				Tag:      strings.Split(section.Tag, ":"),
 			}
 			for i := 0; i < len(section.To.Fields); i++ {
-				// 如果 section.To.Fields 中是 "field${1..8}" 形式
-				if len(section.To.Fields) != 0 && strings.Contains(section.To.Fields[0], "{") && strings.Contains(section.To.Fields[0], "..") && strings.Contains(section.To.Fields[0], "}") {
-					// 解析模板 "field${1..8}"
-					fields, err := expandFieldTemplate(section.To.Fields[0])
+				fieldValue := section.To.Fields[i]
+
+				// 如果包含模板语法如 "field_{1..8}"
+				if strings.Contains(fieldValue, "{") && strings.Contains(fieldValue, "..") && strings.Contains(fieldValue, "}") {
+					// 解析模板
+					fields, err := expandFieldTemplate(fieldValue)
 					if err != nil {
 						return nil, fmt.Errorf("解析模板失败: %v", err)
 					}
-					// 展开结果追加 FieldTarget
+					// 展开结果追加到字段列表
 					tmpSec.ToFields = append(tmpSec.ToFields, fields...)
 				} else {
-					// 否则直接追加
-					tmpSec.ToFields = append(tmpSec.ToFields, section.To.Fields[i])
+					// 普通字段直接追加
+					tmpSec.ToFields = append(tmpSec.ToFields, fieldValue)
 				}
 			}
 			if section.Decoding.Method != "" {
@@ -724,18 +772,20 @@ func createChunk(chunkMap map[string]interface{}) (Chunk, error) {
 				Tag:      strings.Split(section.Tag, ":"),
 			}
 			for i := 0; i < len(section.To.Fields); i++ {
-				// 如果 section.To.Fields 中是 "field${1..8}" 形式
-				if len(section.To.Fields) != 0 && strings.Contains(section.To.Fields[0], "{") && strings.Contains(section.To.Fields[0], "..") && strings.Contains(section.To.Fields[0], "}") {
-					// 解析模板 "field${1..8}"
-					fields, err := expandFieldTemplate(section.To.Fields[0])
+				fieldValue := section.To.Fields[i]
+
+				// 如果包含模板语法如 "field_{1..8}"
+				if strings.Contains(fieldValue, "{") && strings.Contains(fieldValue, "..") && strings.Contains(fieldValue, "}") {
+					// 解析模板
+					fields, err := expandFieldTemplate(fieldValue)
 					if err != nil {
 						return nil, fmt.Errorf("解析模板失败: %v", err)
 					}
-					// 展开结果追加 FieldTarget
+					// 展开结果追加到字段列表
 					tmpSec.ToFields = append(tmpSec.ToFields, fields...)
 				} else {
-					// 否则直接追加
-					tmpSec.ToFields = append(tmpSec.ToFields, section.To.Fields[i])
+					// 普通字段直接追加
+					tmpSec.ToFields = append(tmpSec.ToFields, fieldValue)
 				}
 			}
 			if section.Decoding.Method != "" {

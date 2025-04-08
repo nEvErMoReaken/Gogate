@@ -5,11 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"gateway/internal/pkg"
-	"github.com/mitchellh/mapstructure"
-	"go.uber.org/zap"
 	"io"
 	"net"
 	"time"
+
+	"github.com/mitchellh/mapstructure"
+	"go.uber.org/zap"
 )
 
 // TcpServerConnector Connector的TcpServer版本实现
