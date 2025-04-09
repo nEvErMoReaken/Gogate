@@ -5,12 +5,24 @@ import (
 	"fmt"
 	"gateway/internal"
 	"gateway/internal/pkg"
-	"go.uber.org/zap"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
+
+	"go.uber.org/zap"
 )
+
+// syncLog 安全地同步日志，忽略与标准输出相关的错误
+func syncLog(log *zap.Logger) {
+	// Windows平台上，同步标准输出时会出现"The handle is invalid"错误
+	// 这是zap的已知问题，我们可以安全地忽略它
+	err := log.Sync()
+	if err != nil && !strings.Contains(err.Error(), "The handle is invalid") {
+		log.Error("程序退出时同步日志失败", zap.Error(err))
+	}
+}
 
 func main() {
 
@@ -57,11 +69,8 @@ func main() {
 			log.Info("Exiting gateway...")
 			cancel()                    // 取消上下文
 			time.Sleep(1 * time.Second) // 给其他协程时间处理取消
-			err = log.Sync()
-			if err != nil {
-				log.Error("程序退出时同步日志失败: %s", zap.Error(err))
-			}
-			os.Exit(0) // 安全退出程序
+			syncLog(log)                // 使用安全的同步函数
+			os.Exit(0)                  // 安全退出程序
 		case bad := <-errChan:
 			log.Error("Error occurred", zap.Error(bad))
 			cancel() // 取消上下文
@@ -72,10 +81,7 @@ func main() {
 				}
 			}()
 			time.Sleep(1 * time.Second) // 确保日志输出完整
-			err = log.Sync()
-			if err != nil {
-				log.Error("程序退出时同步日志失败: %s", zap.Error(err))
-			}
+			syncLog(log)                // 使用安全的同步函数
 			os.Exit(1)
 		}
 	}
@@ -83,11 +89,11 @@ func main() {
 
 func printStartupLogo() {
 	logo := `
-		 ________  ________  ________  ________  _________  _______      
-		|\   ____\|\   __  \|\   ____\|\   __  \|\___   ___\\  ___ \     
-		\ \  \___|\ \  \|\  \ \  \___|\ \  \|\  \|___ \  \_\ \   __/|    
-		 \ \  \  __\ \  \\\  \ \  \  __\ \   __  \   \ \  \ \ \  \_|/__  
-		  \ \  \|\  \ \  \\\  \ \  \|\  \ \  \ \  \   \ \  \ \ \  \_|\ \ 
+		 ________  ________  ________  ________  _________  _______
+		|\   ____\|\   __  \|\   ____\|\   __  \|\___   ___\\  ___ \
+		\ \  \___|\ \  \|\  \ \  \___|\ \  \|\  \|___ \  \_\ \   __/|
+		 \ \  \  __\ \  \\\  \ \  \  __\ \   __  \   \ \  \ \ \  \_|/__
+		  \ \  \|\  \ \  \\\  \ \  \|\  \ \  \ \  \   \ \  \ \ \  \_|\ \
 		   \ \_______\ \_______\ \_______\ \__\ \__\   \ \__\ \ \_______\
 			\|_______|\|_______|\|_______|\|__|\|__|    \|__|  \|_______|
 

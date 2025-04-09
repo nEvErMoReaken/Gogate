@@ -11,7 +11,7 @@ log:
   max_age: 365
   # Compress：是否压缩/归档旧文件
   compress: true
-  level: debug
+  level: info
 
 
 
@@ -87,7 +87,7 @@ strategy:
   - type: influxdb
     enable: true
     filter: # 格式<设备类型>:<设备名称>:<遥测名称>
-       - ".*:.*:.*"
+       - ".*"
 #       - "vobc\\.info:vobc.*:RIOM_sta_3"
     config:
   #    以下是自定义配置项
