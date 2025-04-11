@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"gateway/internal/adapter"
 	"gateway/internal/aggregator"
-	"gateway/internal/connector"
 	"gateway/internal/parser"
 	"gateway/internal/pkg"
 	"gateway/internal/strategy"
@@ -17,13 +17,13 @@ import (
 
 // Pipeline 为函数的主逻辑
 type Pipeline struct {
-	connector    connector.Template
-	parser       parser.Template
-	aggregator   *aggregator.Aggregator
-	strategy     strategy.TemplateCollection
-	source01Chan chan pkg.DataSource
-	source02     *pkg.AggregatorDataSource
-	source03     *pkg.StrategyDataSource
+	connector  adapter.Template
+	parser     parser.Template
+	aggregator *aggregator.Aggregator
+	strategy   strategy.TemplateCollection
+	source01   *pkg.ConnectorDataSource
+	source02   *pkg.Parser2DispatcherChan
+	source03   *pkg.Dispatch2DataSourceChan
 }
 
 // ShootOne 发射-回执一条数据，用于cli和测试
@@ -44,11 +44,10 @@ func ShootOne(ctx context.Context, oriFrame string) (res string, err error) {
 		}
 		// ShootInput -> source01 -> parser -> source02 -> aggregator -> source03 -> ShowOutput
 		var source01 pkg.DataSource = &source
-		source02 := pkg.AggregatorDataSource{PointChan: make(chan pkg.Point), EndChan: make(chan struct{})}
-		source03 := pkg.StrategyDataSource{PointChan: make(map[string]chan pkg.Point)}
+		source02 := pkg.Parser2DispatcherChan{PointChan: make(chan pkg.Point), EndChan: make(chan struct{})}
+		source03 := pkg.Dispatch2DataSourceChan{PointChan: make(map[string]chan pkg.Point)}
 
 		// 2. 初始化parser和aggregator
-
 		var a *aggregator.Aggregator
 		a = aggregator.New(ctx)
 		for _, StrategyConfig := range pkg.ConfigFromContext(ctx).Strategy {
@@ -89,11 +88,17 @@ func ShootOne(ctx context.Context, oriFrame string) (res string, err error) {
 
 // Start 启动管道
 func (p *Pipeline) Start(ctx context.Context) {
-	pkg.LoggerFromContext(ctx).Info("=== Starting Pipeline ===")
+	logger := pkg.LoggerFromContext(ctx)
+	metrics := pkg.GetPerformanceMetrics() // 获取性能指标实例
+
+	logger.Info("=== Starting Pipeline ===")
 
 	// Step.1 启动连接器
-	err := p.connector.Start(p.source01Chan)
+
+	err := p.connector.Start(p.source01)
+
 	if err != nil {
+		logger.Error("=== Connector Start Failed ===", zap.Error(err))
 		return
 	}
 
@@ -103,17 +108,27 @@ func (p *Pipeline) Start(ctx context.Context) {
 		for {
 			select {
 			case source01 := <-p.source01Chan:
+				parserTimer := metrics.NewTimer("Parser_Process")
+				metrics.IncRequestCount() // 增加请求计数
 				p.parser.Start(&source01, p.source02)
+				parserTimer.StopAndLog(logger)
 			}
 		}
 	}()
 
 	// Step.3 启动Aggregator
-	go p.aggregator.Start(p.source02, p.source03)
-	// Step.4 启动Strategy
-	p.strategy.Start(p.source03)
-	pkg.LoggerFromContext(ctx).Info("=== Pipeline Start Success ===")
+	go func() {
+		aggregatorTimer := metrics.NewTimer("Aggregator_Start")
+		p.aggregator.Start(p.source02, p.source03)
+		aggregatorTimer.StopAndLog(logger)
+	}()
 
+	// Step.4 启动Strategy
+	strategyTimer := metrics.NewTimer("Strategy_Start")
+	p.strategy.Start(p.source03)
+	strategyTimer.StopAndLog(logger)
+
+	logger.Info("=== Pipeline Start Success ===")
 }
 
 func NewPipeline(ctx context.Context) (*Pipeline, error) {
@@ -123,8 +138,8 @@ func NewPipeline(ctx context.Context) (*Pipeline, error) {
 	var err error
 
 	// 1. 初始化Connector
-	var c connector.Template
-	c, err = connector.New(pkg.WithLoggerAndModule(ctx, pkg.LoggerFromContext(ctx), "Connector"))
+	var c adapter.Template
+	c, err = adapter.New(pkg.WithLoggerAndModule(ctx, pkg.LoggerFromContext(ctx), "Connector"))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create connector, %s ", err)
 	}
@@ -153,11 +168,11 @@ func NewPipeline(ctx context.Context) (*Pipeline, error) {
 	a = aggregator.New(ctx)
 
 	// 5. 初始化数据源
-	source01Chan := make(chan pkg.DataSource, 200)
-	source02 := pkg.AggregatorDataSource{PointChan: make(chan pkg.Point, 200), EndChan: make(chan struct{}, 20)}
-	source03 := pkg.StrategyDataSource{PointChan: make(map[string]chan pkg.Point)}
+	source01 := make(pkg.ConnectorDataSource)
+	source02 := pkg.Parser2DispatcherChan{PointChan: make(chan pkg.Point, 200), EndChan: make(chan struct{}, 20)}
+	source03 := make(pkg.Dispatch2DataSourceChan)
 	for key := range s {
-		source03.PointChan[key] = make(chan pkg.Point, 200)
+		source03[key] = make(chan pkg.Point, 200)
 	}
 
 	// 6. 简单校验
@@ -167,12 +182,12 @@ func NewPipeline(ctx context.Context) (*Pipeline, error) {
 
 	pkg.LoggerFromContext(ctx).Info(" Pipeline Info ", zap.Any("connector", pkg.ConfigFromContext(ctx).Connector.Type), zap.Any("parser", pkg.ConfigFromContext(ctx).Parser.Type), zap.Any("strategy", showList))
 	return &Pipeline{
-		connector:    c,
-		parser:       p,
-		strategy:     s,
-		aggregator:   a,
-		source01Chan: source01Chan,
-		source02:     &source02,
-		source03:     &source03,
+		connector:  c,
+		parser:     p,
+		strategy:   s,
+		aggregator: a,
+		source01:   &source01,
+		source02:   &source02,
+		source03:   &source03,
 	}, nil
 }

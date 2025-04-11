@@ -2,10 +2,11 @@ package connector
 
 import (
 	"gateway/internal/pkg"
-	"github.com/smartystreets/goconvey/convey"
 	"net"
 	"testing"
 	"time"
+
+	"github.com/smartystreets/goconvey/convey"
 )
 
 // 模拟 pkg.ConfigFromContext 和 pkg.LoggerFromContext 以避免依赖真实的外部系统

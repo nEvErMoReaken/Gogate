@@ -4,11 +4,12 @@ import (
 	"context"
 	"fmt"
 	"gateway/internal/pkg"
-	. "github.com/smartystreets/goconvey/convey"
-	"go.uber.org/zap"
 	"net"
 	"testing"
 	"time"
+
+	. "github.com/smartystreets/goconvey/convey"
+	"go.uber.org/zap"
 )
 
 func TestNewTcpClient_ConfigParsing(t *testing.T) {

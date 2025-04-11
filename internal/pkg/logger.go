@@ -2,11 +2,14 @@ package pkg
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"time"
+
+	law "github.com/shengyanli1982/law"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"gopkg.in/natefinch/lumberjack.v2"
-	"os"
-	"time"
 )
 
 // 定义一个不导出的 key 类型，避免 context key 冲突
@@ -37,8 +40,77 @@ func CustomTimeEncoder(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
 	enc.AppendString(t.Format("2006-01-02T15:04:05.000"))
 }
 
+// LogErrorCallback 实现 law.Callback 接口，用于处理日志写入错误
+type LogErrorCallback struct {
+	ErrorLogger *zap.Logger
+}
+
+// OnWriteFailed 当日志写入出错时回调
+// content: 写入失败的内容
+// reason: 失败原因
+func (c *LogErrorCallback) OnWriteFailed(content []byte, reason error) {
+	if c.ErrorLogger != nil {
+		c.ErrorLogger.Error("日志写入失败",
+			zap.Error(reason),
+			zap.ByteString("content", content))
+	} else {
+		fmt.Fprintf(os.Stderr, "日志写入失败: %v, 数据: %s\n", reason, string(content))
+	}
+}
+
+// 存储异步写入器的全局变量，便于程序退出时清理资源
+var asyncWriters []*law.WriteAsyncer
+
+// 存储错误回调
+var errorCallback *LogErrorCallback
+
+// 初始化错误回调
+func initErrorCallback(logger *zap.Logger) *LogErrorCallback {
+	if errorCallback == nil {
+		errorCallback = &LogErrorCallback{
+			ErrorLogger: logger,
+		}
+	}
+	return errorCallback
+}
+
+// 关闭所有异步写入器
+func CloseAllAsyncWriters() {
+	for _, aw := range asyncWriters {
+		aw.Stop()
+	}
+	asyncWriters = nil
+}
+
+// 默认配置值
+const (
+	DefaultBufferSize        = 2048 // 默认缓冲区大小：2KB
+	DefaultFlushIntervalSecs = 5    // 默认刷新间隔：5秒
+)
+
 // NewLogger initializes the common
 func NewLogger(config *LogConfig) *zap.Logger {
+	// 创建一个初始的同步logger，用于记录异步写入过程中的错误
+	initialEncoderConfig := zapcore.EncoderConfig{
+		TimeKey:        "timestamp",
+		LevelKey:       "level",
+		NameKey:        "log",
+		MessageKey:     "msg",
+		EncodeLevel:    zapcore.CapitalLevelEncoder,
+		EncodeTime:     CustomTimeEncoder,
+		EncodeDuration: zapcore.SecondsDurationEncoder,
+	}
+	initialEncoder := zapcore.NewJSONEncoder(initialEncoderConfig)
+	initialCore := zapcore.NewCore(
+		initialEncoder,
+		zapcore.AddSync(os.Stderr),
+		zap.ErrorLevel,
+	)
+	initialLogger := zap.New(initialCore)
+
+	// 初始化错误回调
+	callback := initErrorCallback(initialLogger)
+
 	lumberJackLogger := &lumberjack.Logger{
 		Filename:   config.LogPath,    // 日志文件路径
 		MaxSize:    config.MaxSize,    // megabytes
@@ -69,9 +141,37 @@ func NewLogger(config *LogConfig) *zap.Logger {
 		level = zap.InfoLevel
 	}
 
+	// 设置缓冲区大小和刷新间隔
+	bufferSize := DefaultBufferSize
+	if config.BufferSize > 0 {
+		bufferSize = config.BufferSize
+	}
+
+	flushInterval := DefaultFlushIntervalSecs
+	if config.FlushIntervalSecs > 0 {
+		flushInterval = config.FlushIntervalSecs
+	}
+
+	// 配置异步日志
+	lawConfig := law.NewConfig().
+		WithCallback(callback).
+		WithBufferSize(bufferSize)
+
+	// 创建异步写入器
+	stdoutAsyncer := law.NewWriteAsyncer(os.Stdout, lawConfig)
+	fileAsyncer := law.NewWriteAsyncer(lumberJackLogger, lawConfig)
+
+	// 记录配置信息
+	initialLogger.Info("初始化异步日志配置",
+		zap.Int("缓冲区大小", bufferSize),
+		zap.Int("刷新间隔(秒)", flushInterval))
+
+	// 保存异步写入器以便后续清理
+	asyncWriters = append(asyncWriters, stdoutAsyncer, fileAsyncer)
+
 	core := zapcore.NewCore(
 		encoder,
-		zapcore.NewMultiWriteSyncer(zapcore.AddSync(os.Stdout), zapcore.AddSync(lumberJackLogger)),
+		zapcore.NewMultiWriteSyncer(zapcore.AddSync(stdoutAsyncer), zapcore.AddSync(fileAsyncer)),
 		level,
 	)
 

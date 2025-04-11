@@ -1,14 +1,15 @@
-package parser
+package connector
 
 import (
 	"context"
 	"gateway/internal/pkg"
-	"github.com/stretchr/testify/assert"
-	"github.com/traefik/yaegi/interp"
 	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/traefik/yaegi/interp"
 )
 
 func TestLoadAllScripts_Success(t *testing.T) {

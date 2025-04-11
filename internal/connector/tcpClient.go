@@ -4,12 +4,13 @@ import (
 	"context"
 	"fmt"
 	"gateway/internal/pkg"
-	"github.com/mitchellh/mapstructure"
-	"go.uber.org/zap"
 	"io"
 	"net"
 	"strings"
 	"time"
+
+	"github.com/mitchellh/mapstructure"
+	"go.uber.org/zap"
 )
 
 // TcpClientConnector Connector的TcpClient版本实现
@@ -90,7 +91,6 @@ func (t *TcpClientConnector) GetType() string {
 
 // Start 方法启动客户端连接到服务器
 func (t *TcpClientConnector) Start(sourceChan chan pkg.DataSource) error {
-
 	for _, serverAddr := range t.clientConfig.ServerAddrs {
 		ds := pkg.NewStreamDataSource()
 		sourceChan <- ds
@@ -103,6 +103,7 @@ func (t *TcpClientConnector) Start(sourceChan chan pkg.DataSource) error {
 // manageConnection 管理对单个服务器的连接，包括重连逻辑
 func (t *TcpClientConnector) manageConnection(serverAddr string, ds *pkg.StreamDataSource) {
 	log := pkg.LoggerFromContext(t.ctx)
+	metrics := pkg.GetPerformanceMetrics() // 获取性能指标实例
 
 	for {
 		select {
@@ -113,25 +114,34 @@ func (t *TcpClientConnector) manageConnection(serverAddr string, ds *pkg.StreamD
 
 		}
 		// 尝试连接到服务器
+		connectTimer := metrics.NewTimer("tcpclient_connect")
 		conn, err := net.DialTimeout("tcp", serverAddr, t.clientConfig.ReconnectDelay)
+		connectTimer.Stop()
 
 		if err != nil {
+			metrics.IncErrorCount()
+			metrics.IncMsgErrors("tcpclient_connect")
 			log.Warn(fmt.Sprintf("无法连接到服务器 ，%s 秒后重试", t.clientConfig.ReconnectDelay), zap.String("serverAddr", serverAddr), zap.Error(err))
 			time.Sleep(t.clientConfig.ReconnectDelay)
 			continue
 		}
+
+		metrics.IncMsgReceived("tcpclient_connect_success")
 		log.Info("成功连接到服务器", zap.String("serverAddr", serverAddr))
 		// 在退出循环前确保关闭连接
 		func(conn net.Conn) {
 			defer func(conn net.Conn) {
 				err = conn.Close()
 				if err != nil {
+					metrics.IncErrorCount()
 					log.Error("关闭连接失败", zap.String("serverAddr", serverAddr), zap.Error(err))
 				}
 			}(conn)
 
 			// 设置连接超时时间
 			if err = conn.SetReadDeadline(time.Now().Add(t.clientConfig.Timeout)); err != nil {
+				metrics.IncErrorCount()
+				metrics.IncMsgErrors("tcpclient_timeout")
 				log.Error("设置连接超时失败", zap.String("serverAddr", serverAddr), zap.Error(err))
 				return
 			}
@@ -145,22 +155,40 @@ func (t *TcpClientConnector) manageConnection(serverAddr string, ds *pkg.StreamD
 				default:
 					// 从 TCP 连接读取数据
 					var n int
+					readTimer := metrics.NewTimer("tcpclient_read")
 					n, err = conn.Read(buffer)
+					readTimer.Stop()
+
+					// 记录接收消息
+					metrics.IncMsgReceived("tcpclient")
+
 					log.Debug("读取到数据", zap.String("buffer", string(buffer[:n])))
 					if err != nil {
 						if err == io.EOF {
+							metrics.IncMsgErrors("tcpclient_eof")
 							log.Info("服务器关闭连接", zap.String("serverAddr", serverAddr))
 						} else {
+							metrics.IncErrorCount()
+							metrics.IncMsgErrors("tcpclient_read")
 							log.Error("读取数据失败", zap.Error(err))
 						}
 						return // 读取失败，退出以重连
 					}
 
 					// 将读取的数据写入到 Sink 的 writer 中
-					if _, err = ds.WriteASAP(buffer[:n]); err != nil {
+					writeTimer := metrics.NewTimer("tcpclient_write")
+					_, err = ds.WriteASAP(buffer[:n])
+					writeTimer.Stop()
+
+					if err != nil {
+						metrics.IncErrorCount()
+						metrics.IncMsgErrors("tcpclient_write")
 						log.Error("写入数据到 Sink 失败", zap.Error(err))
 						return // 写入失败，退出以重连
 					}
+
+					// 记录成功处理的消息
+					metrics.IncMsgProcessed("tcpclient")
 				}
 			}
 		}(conn)

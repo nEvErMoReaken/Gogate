@@ -1,16 +1,17 @@
-package strategy
+package sink
 
 import (
 	"context"
 	"gateway/internal/pkg"
+	"testing"
+	"time"
+
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/influxdata/influxdb-client-go/v2/api"
 	"github.com/influxdata/influxdb-client-go/v2/api/write"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"go.uber.org/zap"
-	"testing"
-	"time"
 )
 
 // Mock Logger for capturing log outputs

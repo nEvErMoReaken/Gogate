@@ -1,11 +1,12 @@
-package strategy
+package sink
 
 import (
 	"context"
 	"fmt"
 	"gateway/internal/pkg"
-	"go.uber.org/zap"
 	"strings"
+
+	"go.uber.org/zap"
 
 	"github.com/apache/iotdb-client-go/client"
 	"github.com/apache/iotdb-client-go/rpc"
@@ -144,6 +145,8 @@ func (b *IoTDBStrategy) GetType() string {
 
 // Start Step.2 启动策略
 func (b *IoTDBStrategy) Start(pointChan chan pkg.Point) {
+	metrics := pkg.GetPerformanceMetrics() // 获取性能指标实例
+
 	b.logger.Info("===IoTDBStrategy started===")
 	for {
 		select {
@@ -151,24 +154,50 @@ func (b *IoTDBStrategy) Start(pointChan chan pkg.Point) {
 			b.Stop()
 			b.logger.Info("===IoTDBStrategy stopped===")
 		case point := <-pointChan:
+			// 创建发布计时器
+			publishTimer := metrics.NewTimer("iotdb_publish")
+
+			// 记录接收的点
+			metrics.IncMsgReceived("iotdb")
+
 			err := b.Publish(point)
+
 			if err != nil {
+				metrics.IncErrorCount()
+				metrics.IncMsgErrors("iotdb")
 				pkg.ErrChanFromContext(b.ctx) <- fmt.Errorf("IoTDBStrategy error occurred: %w", err)
+			} else {
+				// 记录成功处理的点
+				metrics.IncMsgProcessed("iotdb")
 			}
+
+			publishTimer.StopAndLog(b.logger)
 		}
 	}
 }
 
 // Publish 将数据发布到 IoTDB
 func (b *IoTDBStrategy) Publish(point pkg.Point) error {
-	log := b.logger // 避免每次都要强转一次
+	log := b.logger                        // 避免每次都要强转一次
+	metrics := pkg.GetPerformanceMetrics() // 获取性能指标实例
+
 	// 日志记录
 	log.Debug("正在发送 %+v", zap.Any("point", point))
+
+	// 创建会话计时器
+	sessionTimer := metrics.NewTimer("iotdb_get_session")
 	session, err := b.sessionPool.GetSession()
+	sessionTimer.Stop()
+
 	defer b.sessionPool.PutBack(session)
 	if err != nil {
+		metrics.IncErrorCount()
+		metrics.IncMsgErrors("iotdb_session")
 		return fmt.Errorf("failed to get session %+v", err)
 	}
+
+	// 创建转换计时器
+	convertTimer := metrics.NewTimer("iotdb_convert")
 
 	var (
 		deviceId     string // 设备 ID
@@ -215,9 +244,19 @@ func (b *IoTDBStrategy) Publish(point pkg.Point) error {
 	// 设置时间戳（毫秒）
 	timestamp := []int64{point.Ts.UnixNano() / 1e6}
 
+	convertTimer.Stop()
+
+	// 创建插入计时器
+	insertTimer := metrics.NewTimer("iotdb_insert")
+
 	// 插入记录
 	err = checkError(session.InsertAlignedRecordsOfOneDevice(deviceId, timestamp, measurements, dataTypes, values, false))
+
+	insertTimer.Stop()
+
 	if err != nil {
+		metrics.IncErrorCount()
+		metrics.IncMsgErrors("iotdb_insert")
 		return err
 	}
 	return nil

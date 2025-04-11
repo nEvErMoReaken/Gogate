@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"gateway/internal/pkg"
+	"testing"
+	"time"
+
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/stretchr/testify/mock"
 	"go.uber.org/zap"
-	"testing"
-	"time"
 )
 
 type MockMQTTClient struct {

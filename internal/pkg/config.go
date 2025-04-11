@@ -3,10 +3,11 @@ package pkg
 import (
 	"context"
 	"fmt"
-	"github.com/spf13/viper"
 	"io/fs"
 	"os"
 	"path/filepath"
+
+	"github.com/spf13/viper"
 )
 
 // Config 根Config
@@ -20,12 +21,14 @@ type Config struct {
 }
 
 type LogConfig struct {
-	LogPath    string `mapstructure:"log_path"`
-	MaxSize    int    `mapstructure:"max_size"`
-	MaxBackups int    `mapstructure:"max_backups"`
-	MaxAge     int    `mapstructure:"max_age"`
-	Compress   bool   `mapstructure:"compress"`
-	Level      string `mapstructure:"level"`
+	LogPath           string `mapstructure:"log_path"`
+	MaxSize           int    `mapstructure:"max_size"`
+	MaxBackups        int    `mapstructure:"max_backups"`
+	MaxAge            int    `mapstructure:"max_age"`
+	Compress          bool   `mapstructure:"compress"`
+	Level             string `mapstructure:"level"`
+	BufferSize        int    `mapstructure:"buffer_size"`         // 异步日志缓冲区大小
+	FlushIntervalSecs int    `mapstructure:"flush_interval_secs"` // 异步日志刷新间隔（秒）
 }
 
 // 定义一个不导出的 key 类型，避免 context key 冲突

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"gateway/internal/pkg"
-	"io"
 	"regexp"
 	"strconv"
 	"strings"
@@ -14,11 +13,7 @@ import (
 	"go.uber.org/zap"
 )
 
-// IoReader 用于解析二进制数据流
-type IoReader struct {
-	Chunks []Chunk `mapstructure:"chunks"`
-	ctx    context.Context
-}
+// ==== 配置文件结构 ====
 type ConditionalChunkConfig struct {
 	Type     string                            `mapstructure:"type"`
 	Length   int                               `mapstructure:"length"`
@@ -30,11 +25,6 @@ type FixedChunkConfig struct {
 	Type     string          `mapstructure:"type"`
 	Length   interface{}     `mapstructure:"length"`
 	Sections []SectionConfig `mapstructure:"sections"`
-}
-
-type ioReaderConfig struct {
-	Dir       string `mapstructure:"dir"`
-	ProtoFile string `mapstructure:"protoFile"`
 }
 
 // SectionConfig 定义
@@ -50,6 +40,7 @@ type SectionConfig struct {
 type ForConfig struct {
 	VarName []string `mapstructure:"varName"`
 }
+
 type FromConfig struct {
 	Byte   int         `mapstructure:"byte"`
 	Repeat interface{} `mapstructure:"repeat"`
@@ -112,122 +103,20 @@ func (s *Section) String() string {
 		repeatVal, s.Length, decodingAddr, s.ToDevice, varNameStr, s.Tag, fieldTargetStr)
 }
 
-// Chunk 处理器接口
+// ==== Chunk统一接口 ====
 type Chunk interface {
-	Process(ctx context.Context, dataSource *pkg.StreamDataSource, frame *[]byte, sink *pkg.AggregatorDataSource) (changedCtx context.Context, err error)
-	String() string // 添加 String 方法
+	Process(ctx context.Context, ring *pkg.RingBuffer, rawPointList []*pkg.Point) (changedCtx context.Context, err error)
 }
 
-// step.1 注册
-func init() {
-	Register("ioReader", NewIoReader)
-}
-
-func NewIoReader(ctx context.Context) (Template, error) {
-
-	// 1. 初始化杂项配置文件
-	v := pkg.ConfigFromContext(ctx)
-	var c ioReaderConfig
-	err := mapstructure.Decode(v.Parser.Para, &c)
-	if err != nil {
-		pkg.LoggerFromContext(ctx).Error("配置文件解析失败", zap.Error(err))
-		return nil, fmt.Errorf("配置文件解析失败: %s", err)
-	}
-	// 2. 初始化协议配置文件
-	chunksConfig, exist := pkg.ConfigFromContext(ctx).Others[c.ProtoFile]
-	if !exist {
-		pkg.LoggerFromContext(ctx).Error("未找到协议文件", zap.String("ProtoFile", c.ProtoFile))
-		return nil, fmt.Errorf("未找到协议文件:%s", c.ProtoFile)
-	}
-	pkg.LoggerFromContext(ctx).Debug("协议文件", zap.Any("chunks", chunksConfig))
-	chunks, ok := chunksConfig.(map[string]interface{})
-	if !ok {
-		pkg.LoggerFromContext(ctx).Error("协议文件格式错误", zap.Any("chunks", chunksConfig))
-		return nil, fmt.Errorf("协议文件格式错误")
-	}
-	// 初始化 IoReader
-	ioReader, err := createIoParser(ctx, c, chunks["chunks"].([]interface{}))
-	if err != nil {
-		pkg.LoggerFromContext(ctx).Error("未找到协议文件", zap.Error(err))
-		return nil, fmt.Errorf("初始化IoReader失败: %s", err)
-	}
-	return &ioReader, nil
-}
-
-func (r *IoReader) GetType() string {
-	return "stream"
-}
-
-// Start 方法用于启动 IoReader
-func (r *IoReader) Start(source *pkg.DataSource, sink *pkg.AggregatorDataSource) {
-	pkg.LoggerFromContext(r.ctx).Info("===IoReader 开始处理数据===")
-	dataSource := (*source).(*pkg.StreamDataSource)
-
-	for {
-		count := 0
-		select {
-		case <-r.ctx.Done():
-			return
-		default:
-			// 4.1 Frame 数组，用于存储一帧原始报文
-			frame := make([]byte, 0)
-			ctx := r.ctx
-			// 绑定默认时间, 协议中有可能覆盖
-			ctx = context.WithValue(ctx, "ts", time.Now())
-			// ** 此处是完整的一帧的开始 **
-			for index, chunk := range r.Chunks {
-				var err error
-				ctx, err = chunk.Process(ctx, dataSource, &frame, sink)
-				if err != nil {
-					if err == io.EOF {
-						pkg.LoggerFromContext(r.ctx).Info("读取到 EOF，等待更多数据")
-						return // 读取到 EOF 后可以忽略
-					}
-					pkg.ErrChanFromContext(r.ctx) <- fmt.Errorf("解析第 %d 个 Chunk 失败: %s", index+1, err) // 其他错误，终止连接
-					return                                                                             // 解析失败时终止处理
-				}
-
-			}
-			// ** 此处是完整的一帧的结束 **
-			// 通知聚合器可以发送了
-			sink.EndChan <- struct{}{}
-			count += 1
-
-			// 4.3 打印原始报文
-			hexString := ""
-			for _, b := range frame {
-				hexString += fmt.Sprintf("%02X", b)
-			}
-			pkg.LoggerFromContext(r.ctx).Info("Frame",
-				zap.String("count", fmt.Sprintf("%06X", count)), // 使用 6 位 16 进制数格式化 count
-				zap.String("frame", hexString))                  // frame 转为16进制字符串
-		}
-	}
-
-}
-
-// IoReader 的 String 方法
-func (r *IoReader) String() string {
-	result := "IoReader:"
-	for i, chunk := range r.Chunks {
-		result += fmt.Sprintf("  Chunk %d: %s", i+1, chunk.String()) // 调用每个 Chunk 的 String 方法
-	}
-	return result
-}
-
-// FixedLengthChunk 实现
-type FixedLengthChunk struct {
-	Length   interface{} // 为长度或者是变量名
+// ==== DefaultChunk 逻辑====
+// DefaultChunk 是默认的Chunk实现
+type DefaultChunk struct {
 	Sections []Section
 }
 
-// 为 FixedLengthChunk 实现 String 方法，打印指针指向的值和指针的地址
-func (f *FixedLengthChunk) String() string {
-	// 打印 Length 指针的值（解引用）
+// DefaultChunk 实现 String 方法，打印指针指向的值和指针的地址
+func (f *DefaultChunk) String() string {
 
-	lengthVal := fmt.Sprintf("%d", f.Length)
-
-	// 打印 Sections 指针中的值
 	sectionsStr := ""
 	for i, sec := range f.Sections {
 		// 打印 Repeat 指针的值和地址
@@ -267,50 +156,39 @@ func (f *FixedLengthChunk) String() string {
 	}
 
 	// 打印整个结构体信息
-	return fmt.Sprintf("FixedLengthChunk:  Length=%s  Sections:%s", lengthVal, sectionsStr)
+	return fmt.Sprintf("DefaultChunk:  Sections:%s", sectionsStr)
 }
 
-func (f *FixedLengthChunk) Process(ctx context.Context, dataSource *pkg.StreamDataSource, frame *[]byte, sink *pkg.AggregatorDataSource) (changedCtx context.Context, err error) {
-	log := pkg.LoggerFromContext(ctx)
-	// ～～～ 定长块的处理逻辑 ～～～
-	chunkLen, err := getIntVar(ctx, f.Length)
-	if err != nil {
-		return ctx, fmt.Errorf("获取FixedLengthChunk长度错误: %v", err)
-	}
-	// 1. 读取固定长度数据
-	data := make([]byte, chunkLen)
-	n, err := dataSource.ReadFully(data)
-	if err != nil {
-		if err == io.EOF {
-			// 如果已读取部分数据，可以继续处理
-			data = data[:n]
-		} else {
-			// 其他错误直接返回
-			return ctx, fmt.Errorf("读取错误: %v", err)
-		}
-	}
+// Step3: 处理 FixedLengthChunk
+func (f *DefaultChunk) Process(
+	ctx context.Context,
+	rawData []byte,
+	rawPointList []*pkg.Point,
+) (changedCtx context.Context, err error) {
 
-	// 定长Chunk可以直接追加到frame中
-	*frame = append(*frame, data...)
-	// 2. 解析数据
+	log := pkg.LoggerFromContext(ctx)
+
+	// 1. 解析数据
 	log.Debug("===Processing FixedLengthChunk===")
 	log.Debug("FixedLengthChunk", zap.Any("fix", f))
-	byteCursor := 0
+	// 2. 遍历 Sections 进行处理
+	cursor := 0 // 游标
 	for _, sec := range f.Sections {
 		var rawPoint *pkg.Point
 		// FixLengthChunk 的处理逻辑, 不需要返回 handoff
-		ctx, byteCursor, _, rawPoint, err = processSection(ctx, data, sec, byteCursor)
+		ctx, cursor, _, rawPoint, err = processSection(ctx, rawData, sec, cursor)
 		if err != nil {
-			return ctx, err
+			return ctx, fmt.Errorf("处理Section失败: %v", err)
 		}
 		if rawPoint != nil {
-			sink.PointChan <- *rawPoint
+			rawPointList = append(rawPointList, rawPoint)
 		}
 
 	}
 	return ctx, nil
 }
 
+// ==== ConditionalChunk 逻辑 ====
 // ConditionalChunk 用于处理带条件的 Chunk
 type ConditionalChunk struct {
 	Length   interface{}
@@ -319,29 +197,74 @@ type ConditionalChunk struct {
 	Sections []Section
 }
 
-func (c *ConditionalChunk) Process(ctx context.Context, dataSource *pkg.StreamDataSource, frame *[]byte, sink *pkg.AggregatorDataSource) (changedCtx context.Context, err error) {
-	log := pkg.LoggerFromContext(ctx)
-	// ～～～ 定长块的处理逻辑 ～～～
-	chunkLen, err := getIntVar(ctx, c.Length)
-	if err != nil {
-		return ctx, fmt.Errorf("获取ConditionalChunk长度错误: %v", err)
-	}
-	// 1. 读取固定长度数据
-	data := make([]byte, chunkLen)
-	n, err := dataSource.ReadFully(data)
-	if err != nil {
-		if err == io.EOF {
-			// 如果已读取部分数据，可以继续处理
-			data = data[:n]
-		} else {
-			// 其他错误直接返回
-			return ctx, fmt.Errorf("读取错误: %v", err)
-		}
+// Step1: 为 ConditionalChunk 实现 String 方法
+func (c *ConditionalChunk) String() string {
+	// 打印 Length 的值
+	lengthVal := fmt.Sprintf("%v", c.Length)
+
+	// 打印 Handoff 的信息
+	handoffStr := ""
+	handoffStr += fmt.Sprintf(c.Handoff)
+
+	// 打印 Choices 的信息
+	choicesStr := ""
+	for key, chunk := range c.Choices {
+		choicesStr += fmt.Sprintf("  Choice %s: %v", key, chunk)
 	}
 
-	// 定长Chunk可以直接追加到frame中
-	*frame = append(*frame, data...)
-	// 2. 解析数据
+	// 打印 Sections 的信息
+	sectionsStr := ""
+	for i, sec := range c.Sections {
+		// 打印 Repeat 指针的值
+		repeatVal := fmt.Sprintf("%d", sec.Repeat)
+
+		// 打印 Decoding 的地址
+		decodingAddr := "nil"
+		if sec.Decoding != nil {
+			decodingAddr = fmt.Sprintf("%p", sec.Decoding)
+		}
+
+		// 打印 ToVarNames 列表
+		varNameStr := "["
+		for j, pt := range sec.ToVars {
+			varNameStr += pt
+			if j < len(sec.ToVars)-1 {
+				varNameStr += ", "
+			}
+		}
+		varNameStr += "]"
+
+		// 打印 ToFieldNames 列表
+		fieldTargetStr := "["
+		for j, field := range sec.ToFields {
+			fieldTargetStr += field
+			if j < len(sec.ToFields)-1 {
+				fieldTargetStr += ", "
+			}
+		}
+		fieldTargetStr += "]"
+
+		// 拼接 Section 的详细信息
+		sectionsStr += fmt.Sprintf(
+			"  Section %d: Repeat=%s, Length=%d, Decoding Addr=%s, Device%s, VarName=%s, FieldTarget=%s",
+			i+1, repeatVal, sec.Length, decodingAddr, sec.ToDevice, varNameStr, fieldTargetStr)
+	}
+
+	// 拼接整个 ConditionalChunk 的字符串信息
+	return fmt.Sprintf(
+		"ConditionalChunk:  Length=%s  Handoff: %s  Choices: %s  Sections: %s",
+		lengthVal, handoffStr, choicesStr, sectionsStr)
+}
+
+// Step2: 处理 ConditionalChunk
+func (c *ConditionalChunk) Process(
+	ctx context.Context,
+	rawData []byte,
+	rawPointList []*pkg.Point,
+) (changedCtx context.Context, err error) {
+	log := pkg.LoggerFromContext(ctx)
+
+	// 1. 解析数据
 	log.Debug("===Processing ConditionalChunk===")
 	//log.Debug(fmt.Sprintf("frame: %v", frame))
 	log.Debug("ConditionalChunk", zap.Any("Condition", c))
@@ -349,12 +272,12 @@ func (c *ConditionalChunk) Process(ctx context.Context, dataSource *pkg.StreamDa
 	for _, sec := range c.Sections {
 		var rawPoint *pkg.Point
 		log.Debug(fmt.Sprintf("Section: %v", sec.String()))
-		ctx, byteCursor, c.Handoff, rawPoint, err = processSection(ctx, data, sec, byteCursor)
+		ctx, byteCursor, c.Handoff, rawPoint, err = processSection(ctx, rawData, sec, byteCursor)
 		if err != nil {
 			return ctx, err
 		}
 		if rawPoint != nil {
-			sink.PointChan <- *rawPoint
+			rawPointList = append(rawPointList, rawPoint)
 		}
 
 	}
@@ -364,7 +287,7 @@ func (c *ConditionalChunk) Process(ctx context.Context, dataSource *pkg.StreamDa
 	if !exist {
 		return ctx, fmt.Errorf("未找到对应的 Choice: %s", c.Handoff)
 	}
-	ctx, err = choices.Process(ctx, dataSource, frame, sink)
+	ctx, err = choices.Process(ctx, rawData, rawPointList)
 	if err != nil {
 		return ctx, err
 	}
@@ -372,6 +295,25 @@ func (c *ConditionalChunk) Process(ctx context.Context, dataSource *pkg.StreamDa
 	return ctx, nil
 }
 
+// Step3: 获取ConditionalChunk的长度
+func (c *ConditionalChunk) GetLength(ctx context.Context) (int, error) {
+	// 获取ConditionalChunk自己的长度
+	chunkLen, err := getIntVar(ctx, c.Length)
+	if err != nil {
+		return -1, fmt.Errorf("获取ConditionalChunk长度错误: %v", err)
+	}
+	// 获取Choices的长度
+	for _, choice := range c.Choices {
+		choiceLen, err := choice.GetLength(ctx)
+		if err != nil {
+			return -1, fmt.Errorf("获取Choice长度错误: %v", err)
+		}
+		chunkLen += choiceLen
+	}
+	return chunkLen, nil
+}
+
+// ==== 一些通用的函数逻辑 ====
 // processSection 处理 Section , 这里的rawPoint是可能返回空的
 func processSection(
 	ctx context.Context,
@@ -501,64 +443,7 @@ func processSection(
 	return ctx, byteCursor, handoff, rawPoint, nil
 }
 
-func (c *ConditionalChunk) String() string {
-	// 打印 Length 的值
-	lengthVal := fmt.Sprintf("%v", c.Length)
-
-	// 打印 Handoff 的信息
-	handoffStr := ""
-	handoffStr += fmt.Sprintf(c.Handoff)
-
-	// 打印 Choices 的信息
-	choicesStr := ""
-	for key, chunk := range c.Choices {
-		choicesStr += fmt.Sprintf("  Choice %s: %v", key, chunk)
-	}
-
-	// 打印 Sections 的信息
-	sectionsStr := ""
-	for i, sec := range c.Sections {
-		// 打印 Repeat 指针的值
-		repeatVal := fmt.Sprintf("%d", sec.Repeat)
-
-		// 打印 Decoding 的地址
-		decodingAddr := "nil"
-		if sec.Decoding != nil {
-			decodingAddr = fmt.Sprintf("%p", sec.Decoding)
-		}
-
-		// 打印 ToVarNames 列表
-		varNameStr := "["
-		for j, pt := range sec.ToVars {
-			varNameStr += pt
-			if j < len(sec.ToVars)-1 {
-				varNameStr += ", "
-			}
-		}
-		varNameStr += "]"
-
-		// 打印 ToFieldNames 列表
-		fieldTargetStr := "["
-		for j, field := range sec.ToFields {
-			fieldTargetStr += field
-			if j < len(sec.ToFields)-1 {
-				fieldTargetStr += ", "
-			}
-		}
-		fieldTargetStr += "]"
-
-		// 拼接 Section 的详细信息
-		sectionsStr += fmt.Sprintf(
-			"  Section %d: Repeat=%s, Length=%d, Decoding Addr=%s, Device%s, VarName=%s, FieldTarget=%s",
-			i+1, repeatVal, sec.Length, decodingAddr, sec.ToDevice, varNameStr, fieldTargetStr)
-	}
-
-	// 拼接整个 ConditionalChunk 的字符串信息
-	return fmt.Sprintf(
-		"ConditionalChunk:  Length=%s  Handoff: %s  Choices: %s  Sections: %s",
-		lengthVal, handoffStr, choicesStr, sectionsStr)
-}
-
+// getIntVar 获取变量值
 func getIntVar(ctx context.Context, key interface{}) (int, error) {
 	switch key.(type) {
 	case int:
@@ -577,8 +462,8 @@ func getIntVar(ctx context.Context, key interface{}) (int, error) {
 	return 0, fmt.Errorf("未知类型")
 }
 
-// 解析 ToDeviceName 中的模板变量
-func (s *Section) parseToDevice(context context.Context) (string, error) {
+// parseToDevice 解析 ToDeviceName 中的模板变量
+func (s *Section) parseToDevice(ctx context.Context) (string, error) {
 	if s.ToDevice == "" {
 		return "", fmt.Errorf("ToDevice 为空")
 	}
@@ -597,7 +482,7 @@ func (s *Section) parseToDevice(context context.Context) (string, error) {
 			// match[1] 是模板中的变量名
 			templateVar := match[1]
 			// 从 context 中查找变量的值
-			contextVar := context.Value(templateVar)
+			contextVar := ctx.Value(templateVar)
 			if contextVar != nil {
 				// 替换模板中的变量
 				result = strings.Replace(result, "${"+templateVar+"}", contextVar.(string), -1)
@@ -611,22 +496,29 @@ func (s *Section) parseToDevice(context context.Context) (string, error) {
 	return result, nil
 }
 
-// createIoParser 从配置文件初始化 Chunk
-func createIoParser(ctx context.Context, c ioReaderConfig, chunks []interface{}) (IoReader, error) {
+// CreateByteParser 从配置文件初始化 Chunk
+func CreateByteParser(ctx context.Context, c byteParserConfig, chunks []interface{}) (*ByteParser, error) {
 	log := pkg.LoggerFromContext(ctx)
 	log.Info("当前启用的协议文件", zap.String("protocol", c.ProtoFile))
-	var chunkSequence = IoReader{
-		make([]Chunk, 0),
-		ctx,
+	var chunkSequence = &ByteParser{
+		Chunks: make([]Chunk, 0),
+		ctx:    ctx,
 	}
 	for _, chunk := range chunks {
 		// 动态处理不同的 chunkType，生成chunkSequence
 		tmpChunk, err := createChunk(chunk.(map[string]interface{}))
 		if err != nil {
-			return chunkSequence, err
+			return nil, err
 		}
 
 		chunkSequence.Chunks = append(chunkSequence.Chunks, tmpChunk)
+	}
+	if c.BufferSize > 0 {
+		// 初始化 RingBuffer
+		chunkSequence.RingBuffer = NewRingBuffer(c.BufferSize)
+	} else {
+		// 默认缓冲区大小为32KB
+		chunkSequence.RingBuffer = NewRingBuffer(32 * 1024)
 	}
 	log.Debug("IoReader 初始化成功")
 	return chunkSequence, nil
@@ -685,7 +577,7 @@ func createChunk(chunkMap map[string]interface{}) (Chunk, error) {
 		}
 
 		// 初始化 FixedLengthChunk(不包含Section)
-		var fixedChunk = FixedLengthChunk{
+		var fixedChunk = DefaultChunk{
 			Length:   fixedChunkConfig.Length,
 			Sections: make([]Section, 0),
 		}

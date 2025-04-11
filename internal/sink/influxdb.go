@@ -1,14 +1,15 @@
-package strategy
+package sink
 
 import (
 	"context"
 	"fmt"
 	"gateway/internal/pkg"
+	"strconv"
+
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/influxdata/influxdb-client-go/v2/api"
 	"github.com/mitchellh/mapstructure"
 	"go.uber.org/zap"
-	"strconv"
 )
 
 // 拓展数据源步骤
@@ -82,26 +83,47 @@ func (b *InfluxDbStrategy) GetType() string {
 
 // Start Step.2
 func (b *InfluxDbStrategy) Start(pointChan chan pkg.Point) {
+	metrics := pkg.GetPerformanceMetrics() // 获取性能指标实例
+
 	defer b.client.Close()
-	pkg.LoggerFromContext(b.ctx).Debug("===InfluxDbStrategy started===")
+	b.logger.Debug("===InfluxDbStrategy started===")
 	for {
 		select {
 		case <-b.ctx.Done():
 			b.Stop()
-			pkg.LoggerFromContext(b.ctx).Debug("===InfluxDbStrategy stopped===")
+			b.logger.Debug("===InfluxDbStrategy stopped===")
 			return
 		case point := <-pointChan:
+			// 创建发布计时器
+			publishTimer := metrics.NewTimer("influxdb_publish")
+
+			// 记录接收的点
+			metrics.IncMsgReceived("influxdb")
+
 			err := b.Publish(point)
+
 			if err != nil {
+				metrics.IncErrorCount()
+				metrics.IncMsgErrors("influxdb")
 				pkg.ErrChanFromContext(b.ctx) <- fmt.Errorf("InfluxDbStrategy error occurred: %w", err)
+			} else {
+				// 记录成功处理的点
+				metrics.IncMsgProcessed("influxdb")
 			}
+
+			publishTimer.StopAndLog(b.logger)
 		}
 	}
 }
 
 func (b *InfluxDbStrategy) Publish(point pkg.Point) error {
+	metrics := pkg.GetPerformanceMetrics() // 获取性能指标实例
+
 	// ～～～将数据发布到 InfluxDB 的逻辑～～～
 	b.logger.Debug("正在发送 %+v", zap.Any("point", point))
+
+	// 创建点转换计时器
+	convertTimer := metrics.NewTimer("influxdb_convert")
 
 	// 创建一个新的 map[string]interface{} 来存储解引用的字段
 	decodedFields := make(map[string]interface{})
@@ -143,6 +165,13 @@ func (b *InfluxDbStrategy) Publish(point pkg.Point) error {
 		}
 	}
 	tagsMap["devName"] = point.Device
+
+	// 完成转换
+	convertTimer.Stop()
+
+	// 创建写入计时器
+	writeTimer := metrics.NewTimer("influxdb_write")
+
 	//common.Log.Debugf("正在发送 %+v", decodedFields)
 	// 创建一个数据点
 	p := influxdb2.NewPoint(
@@ -153,6 +182,9 @@ func (b *InfluxDbStrategy) Publish(point pkg.Point) error {
 	)
 	// 写入到 InfluxDB
 	b.writeAPI.WritePoint(p)
+
+	writeTimer.Stop()
+
 	b.logger.Info("InfluxDBStrategy published", zap.Any("point", point))
 	return nil
 }

@@ -1,5 +1,5 @@
 // strategy_test.go
-package strategy
+package sink
 
 import (
 	"context"

@@ -3,10 +3,11 @@ package connector
 import (
 	"context"
 	"gateway/internal/pkg"
-	. "github.com/smartystreets/goconvey/convey"
 	"net"
 	"testing"
 	"time"
+
+	. "github.com/smartystreets/goconvey/convey"
 )
 
 // 模拟 ConfigFromContext

@@ -1,12 +1,13 @@
-package strategy
+package sink
 
 import (
 	"context"
 	"gateway/internal/pkg"
-	"github.com/prometheus/client_golang/prometheus/testutil"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus/testutil"
 )
 
 func TestPrometheusStrategy(t *testing.T) {

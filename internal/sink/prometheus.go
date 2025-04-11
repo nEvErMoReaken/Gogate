@@ -1,14 +1,15 @@
-package strategy
+package sink
 
 import (
 	"context"
 	"fmt"
 	"gateway/internal/pkg"
+	"net/http"
+
 	"github.com/mitchellh/mapstructure"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/zap"
-	"net/http"
 )
 
 // 初始化函数，注册 Prometheus 策略
@@ -73,24 +74,45 @@ func (p *PrometheusStrategy) GetType() string {
 
 // Start Step.2
 func (p *PrometheusStrategy) Start(pointChan chan pkg.Point) {
+	metrics := pkg.GetPerformanceMetrics() // 获取性能指标实例
+
 	p.logger.Info("===PrometheusStrategy started===")
 
 	for {
 		select {
 		case <-p.ctx.Done():
 			p.Stop()
-			pkg.LoggerFromContext(p.ctx).Info("===PrometheusStrategy stopped===")
+			p.logger.Info("===PrometheusStrategy stopped===")
 		case point := <-pointChan:
+			// 创建发布计时器
+			publishTimer := metrics.NewTimer("prometheus_publish")
+
+			// 记录接收的点
+			metrics.IncMsgReceived("prometheus")
+
 			err := p.Publish(point)
+
 			if err != nil {
+				metrics.IncErrorCount()
+				metrics.IncMsgErrors("prometheus")
 				pkg.ErrChanFromContext(p.ctx) <- fmt.Errorf("PrometheusStrategy error occurred: %w", err)
+			} else {
+				// 记录成功处理的点
+				metrics.IncMsgProcessed("prometheus")
 			}
+
+			publishTimer.StopAndLog(p.logger)
 		}
 	}
 }
 
 // Publish 将数据发布到 Prometheus
 func (p *PrometheusStrategy) Publish(point pkg.Point) error {
+	metrics := pkg.GetPerformanceMetrics() // 获取性能指标实例
+
+	// 创建注册计时器
+	registerTimer := metrics.NewTimer("prometheus_register")
+
 	// 创建或更新指标
 	metricName := fmt.Sprintf("%s_fields", point.Device)
 	gauge, exists := p.metrics[metricName]
@@ -104,11 +126,20 @@ func (p *PrometheusStrategy) Publish(point pkg.Point) error {
 		)
 		// 注册指标
 		if err := prometheus.Register(gauge); err != nil {
+			metrics.IncErrorCount()
+			metrics.IncMsgErrors("prometheus_register")
 			p.logger.Error("Failed to register Prometheus metric", zap.Error(err))
+			registerTimer.Stop()
 			return fmt.Errorf("注册 Prometheus 指标失败: %+v", err)
 		}
 		p.metrics[metricName] = gauge
 	}
+
+	registerTimer.Stop()
+
+	// 创建更新计时器
+	updateTimer := metrics.NewTimer("prometheus_update")
+	fieldCount := 0
 
 	// 设置指标值
 	for key, valuePtr := range point.Field {
@@ -120,16 +151,25 @@ func (p *PrometheusStrategy) Publish(point pkg.Point) error {
 		case float64:
 			// 如果是 float64 类型，更新 Prometheus 指标
 			gauge.With(prometheus.Labels{"field": key}).Set(value)
+			fieldCount++
 		case string:
 			// 如果是 string 类型，可以根据业务需求进行处理，Prometheus 通常只接受数值类型
 			// 这里我们打印日志，如果需要其他处理方式（如转换为数值），也可以实现
+			metrics.IncMsgErrors("prometheus_string_type")
 			p.logger.Warn("Received string type, but Prometheus expects numerical values", zap.String("field", key), zap.String("value", value))
 		default:
 			// 其他类型也可以根据需要进行处理
+			metrics.IncMsgErrors("prometheus_unsupported_type")
 			p.logger.Warn("Unsupported data type for Prometheus metrics", zap.String("field", key), zap.Any("value", value))
 		}
 	}
-	p.logger.Debug("[PrometheusStrategy] 发布指标", zap.String("metricName", metricName))
+
+	updateDuration := updateTimer.Stop()
+
+	p.logger.Debug("[PrometheusStrategy] 发布指标",
+		zap.String("metricName", metricName),
+		zap.Int("fieldCount", fieldCount),
+		zap.Duration("duration", updateDuration))
 	return nil
 }
 

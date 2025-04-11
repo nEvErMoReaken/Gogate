@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"gateway/internal"
 	"gateway/internal/pkg"
+	"net/http"
+	_ "net/http/pprof" // 导入pprof
 	"os"
 	"os/signal"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -24,6 +27,18 @@ func syncLog(log *zap.Logger) {
 	}
 }
 
+// 性能指标处理函数
+func metricsHandler(w http.ResponseWriter, r *http.Request) {
+	metrics := pkg.GetPerformanceMetrics()
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+
+	// 写入指标报告
+	report := metrics.GetMetricsReport()
+	fmt.Fprintln(w, report)
+}
+
 func main() {
 
 	// 1. 初始化common yaml
@@ -39,6 +54,45 @@ func main() {
 	log.Info("程序启动", zap.String("version", config.Version))
 	log.Info("配置信息", zap.Any("common", config))
 	log.Info("==== 初始化流程开始 ====")
+
+	// 初始化性能指标
+	metrics := pkg.GetPerformanceMetrics()
+
+	// 定期记录性能指标到日志
+	go func() {
+		ticker := time.NewTicker(60 * time.Second)
+		defer ticker.Stop()
+
+		for range ticker.C {
+			metrics.LogMetrics(log)
+		}
+	}()
+
+	// 启动pprof性能分析服务和自定义指标服务
+	go func() {
+		pprofPort := 6060 // 默认pprof端口
+		log.Info("启动pprof和性能指标服务", zap.Int("port", pprofPort))
+
+		// 注册自定义指标处理程序
+		http.HandleFunc("/metrics", metricsHandler)
+
+		// 添加内存统计信息处理程序
+		http.HandleFunc("/memory", func(w http.ResponseWriter, r *http.Request) {
+			var m runtime.MemStats
+			runtime.ReadMemStats(&m)
+
+			fmt.Fprintf(w, "内存统计信息:\n")
+			fmt.Fprintf(w, "Alloc = %v KB\n", m.Alloc/1024)
+			fmt.Fprintf(w, "TotalAlloc = %v KB\n", m.TotalAlloc/1024)
+			fmt.Fprintf(w, "Sys = %v KB\n", m.Sys/1024)
+			fmt.Fprintf(w, "NumGC = %v\n", m.NumGC)
+			fmt.Fprintf(w, "GCCPUFraction = %v\n", m.GCCPUFraction)
+		})
+
+		if err := http.ListenAndServe(fmt.Sprintf(":%d", pprofPort), nil); err != nil {
+			log.Error("pprof服务启动失败", zap.Error(err))
+		}
+	}()
 
 	// 3. 创建上下文
 	ctx, cancel := context.WithCancel(context.Background())
@@ -70,18 +124,24 @@ func main() {
 			cancel()                    // 取消上下文
 			time.Sleep(1 * time.Second) // 给其他协程时间处理取消
 			syncLog(log)                // 使用安全的同步函数
+			pkg.CloseAllAsyncWriters()  // 关闭所有异步日志写入器
 			os.Exit(0)                  // 安全退出程序
 		case bad := <-errChan:
+			// 记录错误到性能指标
+			metrics.IncErrorCount()
+
 			log.Error("Error occurred", zap.Error(bad))
 			cancel() // 取消上下文
 			// 等待其他可能的错误
 			go func() {
 				for err := range errChan {
+					metrics.IncErrorCount()
 					log.Error("Error occurred before shutdown", zap.Error(err))
 				}
 			}()
 			time.Sleep(1 * time.Second) // 确保日志输出完整
 			syncLog(log)                // 使用安全的同步函数
+			pkg.CloseAllAsyncWriters()  // 关闭所有异步日志写入器
 			os.Exit(1)
 		}
 	}

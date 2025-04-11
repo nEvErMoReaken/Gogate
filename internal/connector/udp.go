@@ -5,11 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"gateway/internal/pkg"
-	"github.com/mitchellh/mapstructure"
-	"go.uber.org/zap"
 	"net"
 	"sync"
 	"time"
+
+	"github.com/mitchellh/mapstructure"
+	"go.uber.org/zap"
 )
 
 // UdpConnector 是 UDP版本的 Template 实现
@@ -88,11 +89,13 @@ func (u *UdpConnector) GetType() string {
 
 // Start 方法启动udp监听服务器的数据
 func (u *UdpConnector) Start(sourceChan chan pkg.DataSource) error {
-
 	log := pkg.LoggerFromContext(u.ctx)
+	metrics := pkg.GetPerformanceMetrics() // 获取性能指标实例
+
 	// 配置本地UDP监听地址
 	addr, err := net.ResolveUDPAddr("udp", u.config.Url)
 	if err != nil {
+		metrics.IncErrorCount()
 		log.Error("解析 UDP 地址失败", zap.Error(err))
 		return fmt.Errorf("解析 UDP 地址失败: %s\n", err)
 	}
@@ -100,6 +103,7 @@ func (u *UdpConnector) Start(sourceChan chan pkg.DataSource) error {
 	conn, err := net.ListenUDP("udp", addr)
 
 	if err != nil {
+		metrics.IncErrorCount()
 		log.Error("UDP监听程序启动失败", zap.Error(err))
 		return fmt.Errorf("UDP监听程序启动失败: %s\n", err)
 	}
@@ -110,6 +114,7 @@ func (u *UdpConnector) Start(sourceChan chan pkg.DataSource) error {
 			case <-u.ctx.Done():
 				log.Info("==收到停止信号，关闭 UDP监听 ==")
 				if err = conn.Close(); err != nil {
+					metrics.IncErrorCount()
 					log.Error("关闭 UDP 连接失败", zap.Error(err))
 				}
 			default:
@@ -133,13 +138,20 @@ func (u *UdpConnector) Start(sourceChan chan pkg.DataSource) error {
 					return
 				}
 				// 否则记录错误并继续
+				metrics.IncErrorCount()
+				metrics.IncMsgErrors("udp")
 				log.Error("从 UDP 服务器接收数据失败", zap.Error(err))
 				continue
 			}
+
+			// 记录接收到的消息
+			metrics.IncMsgReceived("udp")
+
 			//log.Debug(string(buffer[:n]))
 			addrStr := ddr.String()
 			if u.config.WhiteList {
 				if _, exists := u.config.IPAlias[addrStr]; !exists {
+					metrics.IncMsgErrors("udp_whitelist")
 					log.Warn("白名单启用，拒绝未在白名单中的连接", zap.String("remote", addrStr))
 				}
 			}
@@ -155,14 +167,19 @@ func (u *UdpConnector) Start(sourceChan chan pkg.DataSource) error {
 			}
 			// 将接收到的数据写入到 Sink 的 writer 中
 			if err = dataSource.WriteOne(buffer[:n]); err != nil {
+				metrics.IncErrorCount()
+				metrics.IncMsgErrors("udp")
 				log.Error("写入数据到 Sink 失败", zap.Error(err))
 				return
 			}
+
+			// 记录成功处理的消息
+			metrics.IncMsgProcessed("udp")
+
 			//	将缓冲区放回池中
 			u.bufferPool.Put(buffer)
 		}
 	}()
 
 	return nil
-
 }

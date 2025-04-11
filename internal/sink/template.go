@@ -1,9 +1,10 @@
-package strategy
+package sink
 
 import (
 	"context"
 	"fmt"
 	"gateway/internal/pkg"
+
 	"go.uber.org/zap"
 )
 
@@ -27,7 +28,7 @@ func Register(strategyType string, factory FactoryFunc) {
 // TemplateCollection 代表发送策略集 这里面是所有已启用的数据源
 type TemplateCollection map[string]Template
 
-func (c *TemplateCollection) Start(pointChan *pkg.StrategyDataSource) {
+func (c *TemplateCollection) Start(pointChan *pkg.Dispatch2DataSourceChan) {
 	for key, strategy := range *c {
 		go strategy.Start(pointChan.PointChan[key])
 	}
