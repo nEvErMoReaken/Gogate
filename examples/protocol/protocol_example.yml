@@ -1,0 +1,140 @@
+# 基础解析示例
+test_proto:
+  - desc: "解析头部信息"
+    size: 4
+    Dev:
+      dev1:
+        msg_type: "Bytes[0]"
+        payload_len: "Bytes[2]"
+      dev2:
+        msg_type: "Bytes[1]"
+    Vars:
+      test_var: "Bytes[2]"
+  - desc: "解析数据体"
+    size: 2
+    Label: "DataSection"
+    Dev:
+      dev3:
+        data1: "Bytes[0]"
+      dev4:
+        data_from_var: "Vars.test_var"
+        data2: "Bytes[1]"
+
+# 路由示例
+route_proto:
+  - desc: "路由头部"
+    size: 4
+    Dev:
+      dev_head:
+        msg_type: "Bytes[0]"
+        orig_val: "Bytes[2]"
+    Vars:
+      road: "Bytes[2]"
+  - desc: "路由决策"
+    size: 2
+    Dev:
+      dev_route_data:
+        data1: "Bytes[0]"
+        data2: "Bytes[1]"
+    Next:
+      - condition: "Vars.road == 0xFF"
+        target: "type1_handler"
+      - condition: "Vars.road == 0x55"
+        target: "type2_handler"
+  - desc: "类型1处理"
+    size: 1
+    Label: "type1_handler"
+    Dev:
+      dev_type1:
+        handler_data: "Bytes[0]"
+  - desc: "类型2处理"
+    size: 3
+    Label: "type2_handler"
+    Dev:
+      dev_type2:
+        handler_data1: "Bytes[0]"
+        handler_data2: "Bytes[1]"
+        handler_data3: "Bytes[2]"
+  - desc: "聚合处理"
+    size: 1
+    Label: "agg"
+    Dev:
+      dev_agg:
+        agg_data: "Bytes[0]"
+
+# 循环示例
+loop_proto:
+  - desc: "循环指示块"
+    size: 4
+    Dev:
+      dev_head:
+        msg_type: "Bytes[0]"
+        head_val: "Bytes[2]"
+    Vars:
+      loop_count: "Bytes[3]"
+      loop_index: "0"
+  - desc: "中间块"
+    size: 2
+    Dev:
+      dev_mid:
+        mid_data1: "Bytes[0]"
+        mid_data2: "Bytes[1]"
+  - desc: "循环开始块"
+    size: 1
+    Label: "loop_start"
+    Dev:
+      "dev_${loop_index}":
+        start_marker: "Bytes[0]"
+    Vars:
+      loop_count: "Vars.loop_count - 1"
+      loop_index: "Vars.loop_index + 1"
+  - desc: "循环体"
+    size: 1
+    Dev:
+      "dev_other_${loop_index}":
+        body_data: "Bytes[0]"
+  - desc: "循环结束与判断"
+    size: 1
+    Dev:
+      "dev_end_${loop_index}":
+        end_marker: "Bytes[0]"
+    Next:
+      - condition: "Vars.loop_count >= 0"
+        target: "loop_start"
+      - condition: "true"
+        target: "DEFAULT"
+  - desc: "循环后块"
+    size: 2
+    Dev:
+      dev_after_loop:
+        final_data1: "Bytes[0]"
+        final_data2: "Bytes[1]"
+
+# 路由到 "END" 提前停止示例
+end_target_proto:
+  - desc: "Section A - 设置条件"
+    size: 2
+    Dev:
+      dev_a:
+        data1: "Bytes[0]"
+    Vars:
+      stop_flag: "Bytes[1]" # 第二个字节决定是否停止
+  - desc: "Section B - 条件路由"
+    size: 1
+    Dev:
+      dev_b:
+        data_b: "Bytes[0]"
+    Next:
+      - condition: "Vars.stop_flag == 0xEE" # 如果 stop_flag 是 0xEE
+        target: "END"                   # 则处理流程在此停止
+      - condition: "true"                # 否则
+        target: "SectionC"              # 继续到 Section C
+  - desc: "Section C - 如果未停止则执行"
+    size: 1
+    Label: "SectionC"
+    Dev:
+      dev_c:
+        data_c: "Bytes[0]" # 这个 Section 只有在 stop_flag != 0xEE 时才会执行
+
+
+

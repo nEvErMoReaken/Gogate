@@ -1,0 +1,67 @@
+version: "1.0.0"
+
+# 日志配置
+log:
+  log_path: ./logs/gateway.log
+  max_size: 512        # 日志文件最大大小（MB）
+  max_backups: 10      # 保留的旧文件最大个数
+  max_age: 30          # 保留旧文件的最大天数
+  compress: true       # 是否压缩旧文件
+  level: info          # 日志级别：debug, info, warn, error, fatal
+  buffer_size: 1000    # 异步日志缓冲区大小
+  flush_interval_secs: 5 # 异步日志刷新间隔（秒）
+
+# 连接器配置
+connector:
+  type: tcpserver       # 连接器类型: tcpserver, tcpclient, udp, mqtt等
+  config:
+    check_crc: true
+    timeout: 5m
+    url: :8080          # TCP服务器监听地址
+    whiteList: false    # 是否启用白名单模式
+    ipAlias:            # IP地址别名映射
+      "127.0.0.1": "localhost"
+      "192.168.1.100": "device_1"
+
+# 解析器配置
+parser:
+  type: byte            # 解析器类型: byte, json, ioReader等
+  config:
+    protoFile: device_protocol # 协议文件名称，指向Others中定义的协议
+
+# 分发器配置
+dispatcher:
+  repeat_data_filter:   # 重复数据过滤规则
+    - dev_filter: "device_.*"
+      tele_filter: "status.*"
+    - dev_filter: "sensor_.*"
+      tele_filter: "temp.*"
+
+# 策略配置（可以定义多个）
+strategy:
+  - type: influxdb      # 策略类型：influxdb, mqtt, iotdb等
+    enable: true        # 是否启用
+    filter:             # 过滤条件
+      - dev_filter: ".*"
+        tele_filter: ".*"
+    config:             # 特定于策略类型的配置
+      url: http://localhost:8086
+      token: your_token_here
+      org: "my_org"
+      bucket: "my_bucket"
+      batch_size: 1000
+      tags:
+        - "device_type"
+        - "location"
+  
+  - type: mqtt
+    enable: false
+    filter:
+      - dev_filter: "alarm_.*"
+        tele_filter: "trigger"
+    config:
+      url: "tcp://broker.example.com:1883"
+      clientID: "gateway_publisher"
+      username: "mqtt_user"
+      password: "mqtt_password"
+      willTopic: "gateway/status"
