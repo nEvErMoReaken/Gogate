@@ -1,47 +1,79 @@
-# 第一阶段：安装开发依赖
-FROM node:20-alpine AS deps
-WORKDIR /app
-COPY ../web/package.json ../web/package-lock.json* ../web/pnpm-lock.yaml* ./
-# 使用pnpm安装依赖（如果存在pnpm-lock.yaml）或使用npm
-RUN if [ -f pnpm-lock.yaml ]; then \
-    npm install -g pnpm && \
-    pnpm install; \
-    else \
-    npm ci; \
-    fi
-
-# 第二阶段：构建应用
+# STAGE 1: Build
 FROM node:20-alpine AS builder
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
-COPY ../web/ .
-# 使用pnpm构建（如果存在pnpm-lock.yaml）或使用npm
-RUN if [ -f pnpm-lock.yaml ]; then \
-    npm install -g pnpm && \
-    pnpm build; \
-    else \
-    npm run build; \
-    fi
 
-# 第三阶段：创建生产镜像
-FROM node:20-alpine AS runner
+# 声明构建参数以接收代理设置
+ARG HTTP_PROXY_URL
+ARG HTTPS_PROXY_URL
+ARG NO_PROXY_HOSTS
+
+# 如果代理URL已提供，则设置相应的环境变量 (大写被Node/npm/pnpm工具识别)
+ENV HTTP_PROXY=${HTTP_PROXY_URL}
+ENV HTTPS_PROXY=${HTTPS_PROXY_URL}
+ENV NO_PROXY=${NO_PROXY_HOSTS}
+
 WORKDIR /app
+
+# 设置 npm registry (此步骤和后续npm install将使用代理)
+RUN npm config set registry https://registry.npmmirror.com
+
+# Install pnpm globally
+RUN npm install -g pnpm
+
+# Set pnpm registry (此步骤和后续pnpm install将使用代理)
+RUN pnpm config set registry https://registry.npmmirror.com
+
+# Copy package.json and pnpm-lock.yaml
+COPY ../web/package.json ../web/pnpm-lock.yaml ./
+
+# Install all dependencies (including devDependencies for build process)
+RUN pnpm install --frozen-lockfile
+
+# Copy the rest of the web application source code
+COPY ../web/ .
+
+# Build the application
+RUN pnpm build
+
+# STAGE 2: Production Runner
+FROM node:20-alpine AS runner
+
+# 再次声明构建参数
+ARG HTTP_PROXY_URL
+ARG HTTPS_PROXY_URL
+ARG NO_PROXY_HOSTS
+
+# 如果代理URL已提供，则设置环境变量
+ENV HTTP_PROXY=${HTTP_PROXY_URL}
+ENV HTTPS_PROXY=${HTTPS_PROXY_URL}
+ENV NO_PROXY=${NO_PROXY_HOSTS}
+
+WORKDIR /app
+
+# Set npm registry
+RUN npm config set registry https://registry.npmmirror.com
+
+# Install pnpm globally
+RUN npm install -g pnpm
+
+# Set pnpm registry
+RUN pnpm config set registry https://registry.npmmirror.com
 
 ENV NODE_ENV production
 
-# 仅复制必要的文件，减小镜像体积
-COPY --from=builder /app/build ./build
-COPY --from=builder /app/package.json ./package.json
+# Copy package.json and pnpm-lock.yaml from the source or builder stage
+COPY ../web/package.json ../web/pnpm-lock.yaml ./
 
-# 如果使用的是Vite，需要安装生产环境的依赖
-RUN npm install --production
+# Copy the build output from the builder stage
+COPY --from=builder /app/build ./build/
 
-# 设置运行用户为非root（安全最佳实践）
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 appuser
+# Install only production dependencies
+RUN pnpm install --prod --frozen-lockfile
+
+# Set non-root user for security
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 appuser
 USER appuser
 
 EXPOSE 3000
 
-# 启动应用
-CMD ["npm", "run", "start"]
+CMD [ "pnpm", "start" ]

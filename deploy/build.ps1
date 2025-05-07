@@ -28,15 +28,20 @@ try {
     exit 1
 }
 
-# 创建.env文件（如果不存在）
+# 创建.env文件（如果不存在），并包含代理设置占位符
 $EnvFile = Join-Path -Path $ScriptDir -ChildPath ".env"
 if (-not (Test-Path $EnvFile)) {
-    Write-Host "创建默认.env文件" -ForegroundColor $Yellow
+    Write-Host "创建默认.env文件于 $EnvFile" -ForegroundColor $Yellow
     @"
-# 日志级别
+# 日志级别 (例如: debug, info, warn, error)
 LOG_LEVEL=info
+
+# 网络代理设置 (如果你的构建环境需要通过代理访问互联网, 请取消注释并配置以下变量)
+# HTTP_PROXY_URL=http://your-proxy-username:your-proxy-password@your-proxy-address:port
+# HTTPS_PROXY_URL=http://your-proxy-username:your-proxy-password@your-proxy-address:port
+# NO_PROXY_HOSTS=localhost,127.0.0.1,.your-internal-domain.com,192.168.0.0/16
 "@ | Out-File -FilePath $EnvFile -Encoding utf8
-    Write-Host "已创建.env文件，请根据需要修改配置" -ForegroundColor $Green
+    Write-Host "已创建.env文件，请根据需要修改配置 (特别是代理设置)" -ForegroundColor $Green
 }
 
 # 构建选项

@@ -1,13 +1,23 @@
 # 使用官方Go镜像作为构建环境
 FROM golang:1.24-alpine AS builder
 
-# 设置Go代理加速依赖下载
+# 声明构建参数以接收代理设置
+ARG HTTP_PROXY_URL
+ARG HTTPS_PROXY_URL
+ARG NO_PROXY_HOSTS
+
+# 如果代理URL已提供，则设置相应的环境变量 (小写被Go和许多Linux工具识别)
+ENV http_proxy=${HTTP_PROXY_URL}
+ENV https_proxy=${HTTPS_PROXY_URL}
+ENV no_proxy=${NO_PROXY_HOSTS}
+
+# 设置Go模块代理加速依赖下载 (这与网络代理不同)
 ENV GOPROXY=https://goproxy.cn,direct
 
 # 设置工作目录
 WORKDIR /app
 
-# 复制go.mod和go.sum文件并下载依赖信息
+# 复制go.mod和go.sum文件并下载依赖信息 (此步骤将使用设置的http_proxy/https_proxy)
 COPY ../go.mod ../go.sum ./
 RUN go mod download
 
@@ -20,8 +30,19 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o admin ./cmd/admin
 # 使用最小化镜像
 FROM alpine:latest
 
-# 安装CA证书，确保HTTPS请求能够正常工作
-RUN apk --no-cache add ca-certificates tzdata && \
+# 再次声明构建参数，因为ARG的范围限定在它们被声明的构建阶段
+ARG HTTP_PROXY_URL
+ARG HTTPS_PROXY_URL
+ARG NO_PROXY_HOSTS
+
+# 如果代理URL已提供，则为apk等工具设置环境变量
+ENV http_proxy=${HTTP_PROXY_URL}
+ENV https_proxy=${HTTPS_PROXY_URL}
+ENV no_proxy=${NO_PROXY_HOSTS}
+
+# 更新apk仓库并安装CA证书和时区数据 (此步骤将使用代理)
+RUN apk update && \
+    apk --no-cache add ca-certificates tzdata && \
     update-ca-certificates
 
 # 设置时区
@@ -36,8 +57,8 @@ WORKDIR /app
 # 从构建阶段复制编译好的应用
 COPY --from=builder /app/admin .
 
-# 复制配置文件（如果有的话）
-COPY --from=builder /app/config ./config
+# 创建config目录并设置权限，以备运行时挂载卷
+RUN mkdir -p /app/config && chown appuser:appuser /app/config
 
 # 切换到非root用户
 USER appuser

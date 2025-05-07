@@ -5,12 +5,21 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile.backend
+      args:
+        # 从.env文件或环境变量中获取代理设置
+        - HTTP_PROXY_URL=${HTTP_PROXY_URL}
+        - HTTPS_PROXY_URL=${HTTPS_PROXY_URL}
+        - NO_PROXY_HOSTS=${NO_PROXY_HOSTS}
     container_name: gateway-backend
     restart: unless-stopped
     ports:
       - "8080:8080"
     environment:
       - LOG_LEVEL=${LOG_LEVEL:-info}
+      # 运行时代理设置 (如果应用本身需要通过代理访问外部服务)
+      # - http_proxy=${HTTP_PROXY_URL}
+      # - https_proxy=${HTTPS_PROXY_URL}
+      # - no_proxy=${NO_PROXY_HOSTS}
     volumes:
       - ../config:/app/config
     networks:
@@ -20,12 +29,21 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile.frontend
+      args:
+        # 从.env文件或环境变量中获取代理设置
+        - HTTP_PROXY_URL=${HTTP_PROXY_URL}
+        - HTTPS_PROXY_URL=${HTTPS_PROXY_URL}
+        - NO_PROXY_HOSTS=${NO_PROXY_HOSTS}
     container_name: gateway-frontend
     restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
       - BACKEND_URL=http://backend:8080
+      # 运行时代理设置 (如果应用本身需要通过代理访问外部服务)
+      # - HTTP_PROXY=${HTTP_PROXY_URL}
+      # - HTTPS_PROXY=${HTTPS_PROXY_URL}
+      # - NO_PROXY=${NO_PROXY_HOSTS}
     networks:
       - gateway-network
     depends_on:
