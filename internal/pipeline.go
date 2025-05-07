@@ -2,118 +2,46 @@ package internal
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
-	"gateway/internal/aggregator"
 	"gateway/internal/connector"
-	"gateway/internal/parser"
+	"gateway/internal/dispatcher"
 	"gateway/internal/pkg"
-	"gateway/internal/strategy"
-	"io"
-	"time"
+	"gateway/internal/sink"
 
 	"go.uber.org/zap"
 )
 
 // Pipeline 为函数的主逻辑
 type Pipeline struct {
-	connector    connector.Template
-	parser       parser.Template
-	aggregator   *aggregator.Aggregator
-	strategy     strategy.TemplateCollection
-	source01Chan chan pkg.DataSource
-	source02     *pkg.AggregatorDataSource
-	source03     *pkg.StrategyDataSource
-}
-
-// ShootOne 发射-回执一条数据，用于cli和测试
-func ShootOne(ctx context.Context, oriFrame string) (res string, err error) {
-	pkg.LoggerFromContext(ctx).Info("=== Shoot One ===")
-	tempParser, err := parser.New(pkg.WithLoggerAndModule(ctx, pkg.LoggerFromContext(ctx), "Parser"))
-	if err != nil {
-		return "", fmt.Errorf("failed to create Parser, %s ", err)
-	}
-
-	// 1. 判断当前环境类型
-	if tempParser.GetType() == "stream" {
-		// 1. 初始化数据源
-		reader, writer := io.Pipe()
-		source := pkg.StreamDataSource{
-			Reader: reader,
-			Writer: writer,
-		}
-		// ShootInput -> source01 -> parser -> source02 -> aggregator -> source03 -> ShowOutput
-		var source01 pkg.DataSource = &source
-		source02 := pkg.AggregatorDataSource{PointChan: make(chan pkg.Point), EndChan: make(chan struct{})}
-		source03 := pkg.StrategyDataSource{PointChan: make(map[string]chan pkg.Point)}
-
-		// 2. 初始化parser和aggregator
-
-		var a *aggregator.Aggregator
-		a = aggregator.New(ctx)
-		for _, StrategyConfig := range pkg.ConfigFromContext(ctx).Strategy {
-			source03.PointChan[StrategyConfig.Type] = make(chan pkg.Point, 10)
-		}
-		go a.Start(&source02, &source03)
-		go tempParser.Start(&source01, &source02)
-		var data []byte
-		data, err = hex.DecodeString(oriFrame)
-		if err != nil {
-			return "", err
-		}
-		_, err = writer.Write(data)
-		if err != nil {
-			return "", err
-		}
-		time.Sleep(400 * time.Millisecond)
-		// 2. 监听、汇总所有管道信息
-		for key, value := range source03.PointChan {
-		loop:
-			for {
-				select {
-				case v := <-value:
-					res += fmt.Sprintf("%s: %s\n", key, v.String())
-				default:
-					res += "no data"
-					break loop
-				}
-			}
-		}
-
-	} else if tempParser.GetType() == "message" {
-		return "", fmt.Errorf("only stream parser is supported")
-	}
-
-	return res, err
+	connector  connector.Template
+	dispatcher *dispatcher.Dispatcher
+	strategy   sink.TemplateCollection
 }
 
 // Start 启动管道
 func (p *Pipeline) Start(ctx context.Context) {
-	pkg.LoggerFromContext(ctx).Info("=== Starting Pipeline ===")
+	logger := pkg.LoggerFromContext(ctx)
+
+	logger.Info("=== Starting Pipeline ===")
 
 	// Step.1 启动连接器
-	err := p.connector.Start(p.source01Chan)
+	parser2dispatcher := make(pkg.Parser2DispatcherChan, 200)
+	dispatcher2sink := make(pkg.Dispatch2SinkChan, 200)
+	err := p.connector.Start(&parser2dispatcher)
+
 	if err != nil {
+		logger.Error("=== Connector Start Failed ===", zap.Error(err))
 		return
 	}
 
-	// Step.2 启动Parser
-	// 可接受的资源泄露
-	go func() {
-		for {
-			select {
-			case source01 := <-p.source01Chan:
-				p.parser.Start(&source01, p.source02)
-			}
-		}
-	}()
+	// Step.2 启动Dispatcher
+	p.dispatcher.Start(&parser2dispatcher, &dispatcher2sink)
 
-	// Step.3 启动Aggregator
-	go p.aggregator.Start(p.source02, p.source03)
-	// Step.4 启动Strategy
-	p.strategy.Start(p.source03)
-	pkg.LoggerFromContext(ctx).Info("=== Pipeline Start Success ===")
+	// Step.3 启动Strategy
 
+	p.strategy.Start(&dispatcher2sink)
+
+	logger.Info("=== Pipeline Start Success ===")
 }
 
 func NewPipeline(ctx context.Context) (*Pipeline, error) {
@@ -128,15 +56,10 @@ func NewPipeline(ctx context.Context) (*Pipeline, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create connector, %s ", err)
 	}
-	var p parser.Template
-	// 2. 初始化Parser, 此处仅校验用
-	p, err = parser.New(pkg.WithLoggerAndModule(ctx, pkg.LoggerFromContext(ctx), "Parser"))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create Parser, %s ", err)
-	}
+
 	// 3. 初始化Strategy
-	var s strategy.TemplateCollection
-	s, err = strategy.New(pkg.WithLoggerAndModule(ctx, pkg.LoggerFromContext(ctx), "Strategy"))
+	var s sink.TemplateCollection
+	s, err = sink.New(pkg.WithLoggerAndModule(ctx, pkg.LoggerFromContext(ctx), "Strategy"))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Startegy, %s ", err)
 	}
@@ -149,30 +72,13 @@ func NewPipeline(ctx context.Context) (*Pipeline, error) {
 	}
 
 	// 4. 初始化Aggregator
-	var a *aggregator.Aggregator
-	a = aggregator.New(ctx)
-
-	// 5. 初始化数据源
-	source01Chan := make(chan pkg.DataSource, 200)
-	source02 := pkg.AggregatorDataSource{PointChan: make(chan pkg.Point, 200), EndChan: make(chan struct{}, 20)}
-	source03 := pkg.StrategyDataSource{PointChan: make(map[string]chan pkg.Point)}
-	for key := range s {
-		source03.PointChan[key] = make(chan pkg.Point, 200)
-	}
-
-	// 6. 简单校验
-	if c.GetType() != p.GetType() {
-		return nil, fmt.Errorf("connector and parser type mismatch, %s != %s", c.GetType(), p.GetType())
-	}
+	var a *dispatcher.Dispatcher
+	a = dispatcher.New(ctx, &pkg.ConfigFromContext(ctx).Dispatcher)
 
 	pkg.LoggerFromContext(ctx).Info(" Pipeline Info ", zap.Any("connector", pkg.ConfigFromContext(ctx).Connector.Type), zap.Any("parser", pkg.ConfigFromContext(ctx).Parser.Type), zap.Any("strategy", showList))
 	return &Pipeline{
-		connector:    c,
-		parser:       p,
-		strategy:     s,
-		aggregator:   a,
-		source01Chan: source01Chan,
-		source02:     &source02,
-		source03:     &source03,
+		connector:  c,
+		dispatcher: a,
+		strategy:   s,
 	}, nil
 }
