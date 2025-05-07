@@ -3,29 +3,42 @@ package pkg
 import (
 	"context"
 	"fmt"
-	"github.com/spf13/viper"
 	"io/fs"
 	"os"
 	"path/filepath"
+
+	"github.com/spf13/viper"
 )
 
 // Config 根Config
 type Config struct {
-	Parser    ParserConfig           `mapstructure:"parser"`
-	Connector ConnectorConfig        `mapstructure:"connector"`
-	Strategy  []StrategyConfig       `mapstructure:"strategy"`
-	Version   string                 `mapstructure:"version"`
-	Log       LogConfig              `mapstructure:"log"`
-	Others    map[string]interface{} `mapstructure:",remain"`
+	Parser     ParserConfig           `mapstructure:"parser"`
+	Connector  ConnectorConfig        `mapstructure:"connector"`
+	Dispatcher DispatcherConfig       `mapstructure:"dispatcher"`
+	Strategy   []StrategyConfig       `mapstructure:"strategy"`
+	Version    string                 `mapstructure:"version"`
+	Log        LogConfig              `mapstructure:"log"`
+	Others     map[string]interface{} `mapstructure:",remain"`
+}
+
+type DispatcherConfig struct {
+	RepeatDataFilters []DataFilter `mapstructure:"repeat_data_filter"` // 重复数据过滤规则
+}
+
+type DataFilter struct {
+	DevFilter  string `mapstructure:"dev_filter"`
+	TeleFilter string `mapstructure:"tele_filter"`
 }
 
 type LogConfig struct {
-	LogPath    string `mapstructure:"log_path"`
-	MaxSize    int    `mapstructure:"max_size"`
-	MaxBackups int    `mapstructure:"max_backups"`
-	MaxAge     int    `mapstructure:"max_age"`
-	Compress   bool   `mapstructure:"compress"`
-	Level      string `mapstructure:"level"`
+	LogPath           string `mapstructure:"log_path"`
+	MaxSize           int    `mapstructure:"max_size"`
+	MaxBackups        int    `mapstructure:"max_backups"`
+	MaxAge            int    `mapstructure:"max_age"`
+	Compress          bool   `mapstructure:"compress"`
+	Level             string `mapstructure:"level"`
+	BufferSize        int    `mapstructure:"buffer_size"`         // 异步日志缓冲区大小
+	FlushIntervalSecs int    `mapstructure:"flush_interval_secs"` // 异步日志刷新间隔（秒）
 }
 
 // 定义一个不导出的 key 类型，避免 context key 冲突
@@ -47,7 +60,7 @@ func ConfigFromContext(ctx context.Context) *Config {
 type StrategyConfig struct {
 	Type   string                 `mapstructure:"type"`   // 策略类型
 	Enable bool                   `mapstructure:"enable"` // 是否启用
-	Filter []string               `mapstructure:"filter"` // 策略过滤条件
+	Filter []DataFilter           `mapstructure:"filter"` // 策略过滤条件
 	Para   map[string]interface{} `mapstructure:"config"` // 自定义配置项
 }
 
