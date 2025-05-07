@@ -2,10 +2,11 @@ package pkg
 
 import (
 	"context"
+	"testing"
+
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
-	"testing"
 )
 
 // TestNewLogger 测试 NewLogger 是否能够正确创建一个 logger
