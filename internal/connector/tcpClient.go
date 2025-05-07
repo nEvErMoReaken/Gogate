@@ -3,25 +3,28 @@ package connector
 import (
 	"context"
 	"fmt"
+	"gateway/internal/parser"
 	"gateway/internal/pkg"
-	"github.com/mitchellh/mapstructure"
-	"go.uber.org/zap"
-	"io"
 	"net"
 	"strings"
 	"time"
+
+	"github.com/mitchellh/mapstructure"
+	"go.uber.org/zap"
 )
 
 // TcpClientConnector Connector的TcpClient版本实现
 type TcpClientConnector struct {
 	ctx          context.Context
 	clientConfig *tcpClientConfig
+	done         chan struct{}
 }
 
 type tcpClientConfig struct {
 	ServerAddrs    []string      `mapstructure:"serverAddrs"`    // 服务器地址列表
 	Timeout        time.Duration `mapstructure:"timeout"`        // 超时时间
 	ReconnectDelay time.Duration `mapstructure:"reconnectDelay"` // 重连间隔
+	BufferSize     int           `mapstructure:"bufferSize"`     // 环形缓冲区大小
 }
 
 // init 函数注册 TcpClientConnector
@@ -43,12 +46,12 @@ func NewTcpClient(ctx context.Context) (Template, error) {
 		}
 		config.Connector.Para["timeout"] = duration
 	}
-	// 处理 timeout 字段
-	if timeoutStr, ok := config.Connector.Para["reconnectdelay"].(string); ok {
-		duration, err := time.ParseDuration(timeoutStr)
+	// 处理 reconnectdelay 字段
+	if reconnectDelayStr, ok := config.Connector.Para["reconnectdelay"].(string); ok {
+		duration, err := time.ParseDuration(reconnectDelayStr)
 		if err != nil {
-			pkg.LoggerFromContext(ctx).Error("解析超时配置失败", zap.Error(err))
-			return nil, fmt.Errorf("解析超时配置失败: %s", err)
+			pkg.LoggerFromContext(ctx).Error("解析重连间隔配置失败", zap.Error(err))
+			return nil, fmt.Errorf("解析重连间隔配置失败: %s", err)
 		}
 		config.Connector.Para["reconnectdelay"] = duration
 	}
@@ -81,91 +84,91 @@ func NewTcpClient(ctx context.Context) (Template, error) {
 	return &TcpClientConnector{
 		ctx:          ctx,
 		clientConfig: &clientConfig,
+		done:         make(chan struct{}),
 	}, nil
 }
 
-func (t *TcpClientConnector) GetType() string {
-	return "stream"
-}
-
 // Start 方法启动客户端连接到服务器
-func (t *TcpClientConnector) Start(sourceChan chan pkg.DataSource) error {
-
+func (t *TcpClientConnector) Start(sink *pkg.Parser2DispatcherChan) error {
+	log := pkg.LoggerFromContext(t.ctx)
+	log.Info("===正在启动Connector: TcpClient===")
 	for _, serverAddr := range t.clientConfig.ServerAddrs {
-		ds := pkg.NewStreamDataSource()
-		sourceChan <- ds
 		// 对每个服务器地址启动一个协程
-		go t.manageConnection(serverAddr, ds)
+		go func(addr string) {
+			select {
+			case <-t.done:
+				return
+			default:
+				err := t.handleConnection(addr, *sink)
+				if err != nil {
+					pkg.LoggerFromContext(t.ctx).Error("处理连接失败", zap.Error(err))
+				}
+			}
+		}(serverAddr)
 	}
 	return nil
 }
 
-// manageConnection 管理对单个服务器的连接，包括重连逻辑
-func (t *TcpClientConnector) manageConnection(serverAddr string, ds *pkg.StreamDataSource) {
+// handleConnection 处理对单个服务器的连接，包括重连逻辑
+func (t *TcpClientConnector) handleConnection(serverAddr string, sink pkg.Parser2DispatcherChan) error {
 	log := pkg.LoggerFromContext(t.ctx)
+	metrics := pkg.GetPerformanceMetrics() // 获取性能指标实例
 
 	for {
-		select {
-		case <-t.ctx.Done():
-			log.Info("收到停止信号，关闭连接", zap.String("serverAddr", serverAddr))
-			return
-		default:
-
-		}
-		// 尝试连接到服务器
-		conn, err := net.DialTimeout("tcp", serverAddr, t.clientConfig.ReconnectDelay)
-
+		// 1. 尝试连接到服务器
+		conn, err := net.DialTimeout("tcp", serverAddr, t.clientConfig.Timeout)
 		if err != nil {
-			log.Warn(fmt.Sprintf("无法连接到服务器 ，%s 秒后重试", t.clientConfig.ReconnectDelay), zap.String("serverAddr", serverAddr), zap.Error(err))
+			metrics.IncErrorCount()
+			metrics.IncMsgErrors("tcpclient_connect")
+			log.Warn(fmt.Sprintf("无法连接到服务器，%s 后重试", t.clientConfig.ReconnectDelay), zap.String("serverAddr", serverAddr), zap.Error(err))
 			time.Sleep(t.clientConfig.ReconnectDelay)
 			continue
 		}
+
+		// 2. 设置连接超时时间
+		if err = conn.SetReadDeadline(time.Now().Add(t.clientConfig.Timeout)); err != nil {
+			metrics.IncErrorCount()
+			metrics.IncMsgErrors("tcpclient_timeout")
+			log.Error("设置连接超时失败", zap.String("serverAddr", serverAddr), zap.Error(err))
+			conn.Close()
+			time.Sleep(t.clientConfig.ReconnectDelay)
+			continue
+		}
+
 		log.Info("成功连接到服务器", zap.String("serverAddr", serverAddr))
-		// 在退出循环前确保关闭连接
-		func(conn net.Conn) {
-			defer func(conn net.Conn) {
-				err = conn.Close()
-				if err != nil {
-					log.Error("关闭连接失败", zap.String("serverAddr", serverAddr), zap.Error(err))
-				}
-			}(conn)
 
-			// 设置连接超时时间
-			if err = conn.SetReadDeadline(time.Now().Add(t.clientConfig.Timeout)); err != nil {
-				log.Error("设置连接超时失败", zap.String("serverAddr", serverAddr), zap.Error(err))
-				return
-			}
+		// 3. 创建环形缓冲区
+		ringBuffer, err := pkg.NewRingBuffer(conn, uint32(t.clientConfig.BufferSize))
+		if err != nil {
+			log.Error("创建环形缓冲区失败", zap.Error(err))
+			conn.Close()
+			time.Sleep(t.clientConfig.ReconnectDelay)
+			continue
+		}
 
-			buffer := make([]byte, 1024)
-			for {
-				select {
-				case <-t.ctx.Done():
-					log.Info("收到停止信号，关闭连接", zap.String("serverAddr", serverAddr))
-					return
-				default:
-					// 从 TCP 连接读取数据
-					var n int
-					n, err = conn.Read(buffer)
-					log.Debug("读取到数据", zap.String("buffer", string(buffer[:n])))
-					if err != nil {
-						if err == io.EOF {
-							log.Info("服务器关闭连接", zap.String("serverAddr", serverAddr))
-						} else {
-							log.Error("读取数据失败", zap.Error(err))
-						}
-						return // 读取失败，退出以重连
-					}
+		// 4. 创建字节解析器
+		byteParser, err := parser.NewByteParser(t.ctx)
+		if err != nil {
+			log.Error("创建字节解析器失败", zap.Error(err))
+			conn.Close()
+			time.Sleep(t.clientConfig.ReconnectDelay)
+			continue
+		}
 
-					// 将读取的数据写入到 Sink 的 writer 中
-					if _, err = ds.WriteASAP(buffer[:n]); err != nil {
-						log.Error("写入数据到 Sink 失败", zap.Error(err))
-						return // 写入失败，退出以重连
-					}
-				}
-			}
-		}(conn)
-		// 等待再重连
-		log.Info("正在尝试重连", zap.String("serverAddr", serverAddr))
-		time.Sleep(t.clientConfig.ReconnectDelay)
+		// 5. 启动解析器处理数据, 该方法会阻塞，直到连接断开
+		err = byteParser.StartWithRingBuffer(ringBuffer, sink)
+		if err != nil {
+			log.Error("启动字节解析器失败", zap.Error(err))
+			conn.Close()
+			time.Sleep(t.clientConfig.ReconnectDelay)
+			continue
+		}
+		// 6. 只有.done() 方法被调用时，才会退出循环
+		return nil
 	}
+}
+
+// Done 手动关闭连接器
+func (t *TcpClientConnector) Done() {
+	close(t.done)
 }

@@ -4,13 +4,13 @@ import (
 	"context"
 	"fmt"
 	"gateway/internal/pkg"
+
 	"go.uber.org/zap"
 )
 
 // Template 是所有数据源的通用接口
 type Template interface {
-	Start(chan pkg.DataSource) error // 启动连接器
-	GetType() string
+	Start(*pkg.Parser2DispatcherChan) error // 启动连接器
 }
 
 // FactoryFunc 代表一个数据源的工厂函数, 返回数据源和连接器实例
