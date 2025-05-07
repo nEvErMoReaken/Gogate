@@ -1,13 +1,14 @@
-package strategy
+package sink
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
 	"gateway/internal/pkg"
-	"go.uber.org/zap"
 	"strings"
 	"time"
+
+	"go.uber.org/zap"
 
 	MQTT "github.com/eclipse/paho.mqtt.golang"
 	"github.com/mitchellh/mapstructure"
@@ -125,7 +126,9 @@ func (m *MqttStrategy) GetType() string {
 }
 
 // Start Step.2
-func (m *MqttStrategy) Start(pointChan chan pkg.Point) {
+func (m *MqttStrategy) Start(pointChan chan *pkg.PointPackage) {
+	metrics := pkg.GetPerformanceMetrics() // 获取性能指标实例
+
 	defer m.client.Disconnect(250)
 	m.logger.Info("===MqttStrategy started===")
 	// 发布网关上线的状态
@@ -135,44 +138,89 @@ OuterLoop:
 		select {
 		case <-m.ctx.Done():
 			m.Stop()
-			pkg.LoggerFromContext(m.ctx).Info("===MqttStrategy stopped===")
+			m.logger.Info("===MqttStrategy stopped===")
 			break OuterLoop
-		case point := <-pointChan:
-			err := m.Publish(point)
+		case pointPackage := <-pointChan:
+			// 创建发布计时器
+			publishTimer := metrics.NewTimer("mqtt_strategy_publish")
+
+			// 记录接收的点
+			metrics.IncMsgReceived("mqtt_strategy")
+
+			err := m.Publish(pointPackage)
+
 			if err != nil {
-				pkg.LoggerFromContext(m.ctx).Error("MqttStrategy error occurred", zap.Error(err))
+				metrics.IncErrorCount()
+				metrics.IncMsgErrors("mqtt_strategy")
+				m.logger.Error("MqttStrategy error occurred", zap.Error(err))
+			} else {
+				// 记录成功处理的点
+				metrics.IncMsgProcessed("mqtt_strategy")
 			}
+
+			publishTimer.StopAndLog(m.logger)
 		}
 	}
 }
 
-func (m *MqttStrategy) Publish(point pkg.Point) error {
+func (m *MqttStrategy) Publish(pointPackage *pkg.PointPackage) error {
+	metrics := pkg.GetPerformanceMetrics() // 获取性能指标实例
+
+	// 创建JSON转换计时器
+	jsonTimer := metrics.NewTimer("mqtt_strategy_json")
+
 	// 创建一个新的 map[string]interface{} 来存储解引用的字段
 	decodedFields := make(map[string]interface{})
-	for key, valuePtr := range point.Field {
-		if valuePtr == nil {
-			continue // 跳过 nil 值
+	for _, point := range pointPackage.Points {
+		for key, valuePtr := range point.Field {
+			if valuePtr == nil {
+				continue // 跳过 nil 值
+			}
+
+			decodedFields[key] = valuePtr
+		}
+		decodedFields["ts"] = pointPackage.Ts
+
+		// 将 map 序列化为 JSON
+		jsonData, err := json.Marshal(decodedFields)
+
+		jsonTimer.Stop()
+
+		if err != nil {
+			metrics.IncErrorCount()
+			metrics.IncMsgErrors("mqtt_strategy_json")
+			return fmt.Errorf("序列化 JSON 失败: %+v", err)
 		}
 
-		decodedFields[key] = valuePtr
+		// 创建发送计时器
+		sendTimer := metrics.NewTimer("mqtt_strategy_send")
+
+		// 分割device.vobc.123.1.1这样的设备名称，填入mqtt话题格式中
+		split := strings.Split(point.Device, ".")
+		topic := "gateway"
+		for i := 0; i < len(split); i++ {
+			topic += "/"
+			topic += split[i]
+		}
+		topic += "/fields"
+		// final topic like that: /gateway/device/vobc/123/1/1
+		token := m.client.Publish(topic, 0, true, jsonData)
+
+		// 等待发布完成
+		if token.Wait() && token.Error() != nil {
+			metrics.IncErrorCount()
+			metrics.IncMsgErrors("mqtt_strategy_publish")
+			sendTimer.Stop()
+			return fmt.Errorf("MQTT发布失败: %v", token.Error())
+		}
+
+		sendDuration := sendTimer.Stop()
+
+		m.logger.Debug("[MqttStrategy]发布消息",
+			zap.String("topic", topic),
+			zap.String("data", string(jsonData)),
+			zap.Duration("duration", sendDuration))
 	}
-	decodedFields["ts"] = point.Ts
-	// 将 map 序列化为 JSON
-	jsonData, err := json.Marshal(decodedFields)
-	if err != nil {
-		return fmt.Errorf("序列化 JSON 失败: %+v", err)
-	}
-	// 分割device.vobc.123.1.1这样的设备名称，填入mqtt话题格式中
-	split := strings.Split(point.Device, ".")
-	topic := "gateway"
-	for i := 0; i < len(split); i++ {
-		topic += "/"
-		topic += split[i]
-	}
-	topic += "/fields"
-	// final topic like that: /gateway/device/vobc/123/1/1
-	m.client.Publish(topic, 0, true, jsonData)
-	m.logger.Debug("[MqttStrategy]发布消息", zap.String("topic", topic), zap.String("data", string(jsonData)))
 	return nil
 }
 

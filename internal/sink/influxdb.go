@@ -1,14 +1,15 @@
-package strategy
+package sink
 
 import (
 	"context"
 	"fmt"
 	"gateway/internal/pkg"
+	"strconv"
+
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/influxdata/influxdb-client-go/v2/api"
 	"github.com/mitchellh/mapstructure"
 	"go.uber.org/zap"
-	"strconv"
 )
 
 // 拓展数据源步骤
@@ -81,27 +82,43 @@ func (b *InfluxDbStrategy) GetType() string {
 }
 
 // Start Step.2
-func (b *InfluxDbStrategy) Start(pointChan chan pkg.Point) {
+func (b *InfluxDbStrategy) Start(sink chan *pkg.PointPackage) {
+	metrics := pkg.GetPerformanceMetrics() // 获取性能指标实例
+
 	defer b.client.Close()
-	pkg.LoggerFromContext(b.ctx).Debug("===InfluxDbStrategy started===")
+	b.logger.Debug("===InfluxDbStrategy started===")
 	for {
 		select {
 		case <-b.ctx.Done():
 			b.Stop()
-			pkg.LoggerFromContext(b.ctx).Debug("===InfluxDbStrategy stopped===")
+			b.logger.Debug("===InfluxDbStrategy stopped===")
 			return
-		case point := <-pointChan:
+		case point := <-sink:
+			// 创建发布计时器
+			publishTimer := metrics.NewTimer("influxdb_publish")
+
+			// 记录接收的点
+			metrics.IncMsgReceived("influxdb")
+
 			err := b.Publish(point)
+
 			if err != nil {
+				metrics.IncErrorCount()
+				metrics.IncMsgErrors("influxdb")
 				pkg.ErrChanFromContext(b.ctx) <- fmt.Errorf("InfluxDbStrategy error occurred: %w", err)
+			} else {
+				// 记录成功处理的点
+				metrics.IncMsgProcessed("influxdb")
 			}
+
+			publishTimer.StopAndLog(b.logger)
 		}
 	}
 }
 
-func (b *InfluxDbStrategy) Publish(point pkg.Point) error {
+func (b *InfluxDbStrategy) Publish(pointPackage *pkg.PointPackage) error {
 	// ～～～将数据发布到 InfluxDB 的逻辑～～～
-	b.logger.Debug("正在发送 %+v", zap.Any("point", point))
+	b.logger.Debug("正在发送 %+v", zap.Any("point", pointPackage))
 
 	// 创建一个新的 map[string]interface{} 来存储解引用的字段
 	decodedFields := make(map[string]interface{})
@@ -114,46 +131,52 @@ func (b *InfluxDbStrategy) Publish(point pkg.Point) error {
 	}
 	tagsMap := make(map[string]string)
 	// 遍历 point.Field
-	for key, valuePtr := range point.Field {
-		if valuePtr == nil {
-			continue // 如果值为 nil，直接跳过
-		}
-
-		value := valuePtr
-		// 判断 key 是否在 tags 中
-		if _, isTag := tagsSet[key]; isTag {
-			// 如果是 tags 中的字段，处理类型转换
-			switch v := value.(type) {
-			case int:
-				tagsMap[key] = strconv.Itoa(v)
-			case int64:
-				tagsMap[key] = strconv.Itoa(int(v))
-			case float64:
-				tagsMap[key] = strconv.FormatFloat(v, 'f', -1, 64)
-			case string:
-				tagsMap[key] = v
-			case bool:
-				tagsMap[key] = strconv.FormatBool(v)
-			default:
-				b.logger.Warn("Unexpected type for key %s in tagsMap", zap.Any("key", key))
+	for _, point := range pointPackage.Points {
+		for key, valuePtr := range point.Field {
+			if valuePtr == nil {
+				continue // 如果值为 nil，直接跳过
 			}
-		} else {
-			// 如果不是 tags 中的字段，直接放入 decodedFields
-			decodedFields[key] = value
+
+			value := valuePtr
+			// 判断 key 是否在 tags 中
+			if _, isTag := tagsSet[key]; isTag {
+				// 如果是 tags 中的字段，处理类型转换
+				switch v := value.(type) {
+				case int:
+					tagsMap[key] = strconv.Itoa(v)
+				case int64:
+					tagsMap[key] = strconv.Itoa(int(v))
+				case float64:
+					tagsMap[key] = strconv.FormatFloat(v, 'f', -1, 64)
+				case string:
+					tagsMap[key] = v
+				case bool:
+					tagsMap[key] = strconv.FormatBool(v)
+				default:
+					b.logger.Warn("Unexpected type for key %s in tagsMap", zap.Any("key", key))
+				}
+			} else {
+				// 如果不是 tags 中的字段，直接放入 decodedFields
+				decodedFields[key] = value
+			}
 		}
+		tagsMap["devName"] = point.Device
+
+		//common.Log.Debugf("正在发送 %+v", decodedFields)
+		// 创建一个数据点
+		p := influxdb2.NewPoint(
+			point.Device,    // measurement
+			tagsMap,         // tags
+			decodedFields,   // fields (converted)
+			pointPackage.Ts, // timestamp
+		)
+		// 写入到 InfluxDB
+		b.writeAPI.WritePoint(p)
+
+		b.logger.Info("InfluxDBStrategy published", zap.Any("point", point), zap.String("frameId", pointPackage.FrameId))
+
 	}
-	tagsMap["devName"] = point.Device
-	//common.Log.Debugf("正在发送 %+v", decodedFields)
-	// 创建一个数据点
-	p := influxdb2.NewPoint(
-		point.Device,  // measurement
-		tagsMap,       // tags
-		decodedFields, // fields (converted)
-		point.Ts,      // timestamp
-	)
-	// 写入到 InfluxDB
-	b.writeAPI.WritePoint(p)
-	b.logger.Info("InfluxDBStrategy published", zap.Any("point", point))
+
 	return nil
 }
 

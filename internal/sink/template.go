@@ -1,16 +1,17 @@
-package strategy
+package sink
 
 import (
 	"context"
 	"fmt"
 	"gateway/internal/pkg"
+
 	"go.uber.org/zap"
 )
 
 // Template 定义了所有发送策略的通用接口
 type Template interface {
-	GetType() string      // Step:1 强制要求所有策略都有一个核心结构
-	Start(chan pkg.Point) // Step:3 强制要求所有策略都有一个启动方法
+	GetType() string              // Step:1 强制要求所有策略都有一个核心结构
+	Start(chan *pkg.PointPackage) // Step:3 强制要求所有策略都有一个启动方法
 }
 
 // FactoryFunc 代表一个发送策略的工厂函数
@@ -27,9 +28,9 @@ func Register(strategyType string, factory FactoryFunc) {
 // TemplateCollection 代表发送策略集 这里面是所有已启用的数据源
 type TemplateCollection map[string]Template
 
-func (c *TemplateCollection) Start(pointChan *pkg.StrategyDataSource) {
+func (c *TemplateCollection) Start(sinkMap *pkg.Dispatch2SinkChan) {
 	for key, strategy := range *c {
-		go strategy.Start(pointChan.PointChan[key])
+		go strategy.Start((*sinkMap)[key])
 	}
 }
 

@@ -39,4 +39,4 @@ strategy 接口定义了下游数据源的发送策略，包括：
 	func (b *MyStrategy) Start() {
 	}
 */
-package strategy
+package sink
