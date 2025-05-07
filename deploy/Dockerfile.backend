@@ -18,11 +18,13 @@ ENV GOPROXY=https://goproxy.cn,direct
 WORKDIR /app
 
 # 复制go.mod和go.sum文件并下载依赖信息 (此步骤将使用设置的http_proxy/https_proxy)
-COPY ../go.mod ../go.sum ./
+# 源路径相对于构建上下文 (项目根目录)
+COPY go.mod go.sum ./
 RUN go mod download
 
-# 复制源代码
-COPY .. .
+# 复制源代码 (整个项目上下文到/app目录)
+# 源路径相对于构建上下文 (项目根目录)
+COPY . .
 
 # 编译Go程序，专门针对admin应用
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o admin ./cmd/admin
@@ -72,3 +74,4 @@ EXPOSE 8080
 
 # 运行应用
 CMD ["./admin"]
+

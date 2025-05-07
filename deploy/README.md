@@ -102,3 +102,5 @@ docker-compose -f deploy/docker-compose.yml build
 - 容器使用桥接网络互相通信
 - 配置文件以卷的形式挂载到容器中
 - 前后端容器均使用非root用户运行，增强安全性
+
+
