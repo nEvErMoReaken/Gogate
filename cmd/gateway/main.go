@@ -28,7 +28,7 @@ func syncLog(log *zap.Logger) {
 }
 
 // 性能指标处理函数
-func metricsHandler(w http.ResponseWriter, r *http.Request) {
+func metricsHandler(w http.ResponseWriter, _ *http.Request) {
 	metrics := pkg.GetPerformanceMetrics()
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
