@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"gateway/internal/parser"
 	"gateway/internal/pkg"
-	"io"
 	"net"
 	"time"
 
@@ -13,18 +13,31 @@ import (
 	"go.uber.org/zap"
 )
 
+/*
+数据链路 ==>
+
+TCP连接
+   ↓
+环形缓冲区（RingBuffer）
+   ↓
+帧解析器（拆包、粘包、半包处理）
+   ↓
+业务处理（聚合、发送、落库等）
+
+*/
+
 // TcpServerConnector Connector的TcpServer版本实现
 type TcpServerConnector struct {
 	ctx          context.Context
-	chReady      chan pkg.DataSource
 	serverConfig *TcpServerConfig
 }
 
 type TcpServerConfig struct {
-	WhiteList bool              `mapstructure:"whiteList"`
-	IPAlias   map[string]string `mapstructure:"ipAlias"`
-	Url       string            `mapstructure:"url"`
-	Timeout   time.Duration     `mapstructure:"timeout"`
+	WhiteList  bool              `mapstructure:"whiteList"`
+	IPAlias    map[string]string `mapstructure:"ipAlias"`
+	Url        string            `mapstructure:"url"`
+	Timeout    time.Duration     `mapstructure:"timeout"`
+	BufferSize int               `mapstructure:"bufferSize"` // 添加bufferSize配置
 }
 
 func init() {
@@ -52,6 +65,11 @@ func NewTcpServer(ctx context.Context) (Template, error) {
 		config.Connector.Para["timeout"] = duration // 替换为 time.Duration
 	}
 
+	// 给bufferSize字段设置默认值
+	if _, ok := config.Connector.Para["buffersize"]; !ok {
+		config.Connector.Para["buffersize"] = 1024
+	}
+
 	// 3. 初始化配置结构
 	var serverConfig TcpServerConfig
 	err := mapstructure.Decode(config.Connector.Para, &serverConfig)
@@ -61,12 +79,14 @@ func NewTcpServer(ctx context.Context) (Template, error) {
 
 	return &TcpServerConnector{
 		ctx:          ctx,
-		chReady:      make(chan pkg.DataSource, 1),
 		serverConfig: &serverConfig,
 	}, nil
 }
 
-func (t *TcpServerConnector) Start(sourceChan chan pkg.DataSource) error {
+// ==== 接口实现 ====
+
+// Step1: Start
+func (t *TcpServerConnector) Start(sink *pkg.Parser2DispatcherChan) error {
 	log := pkg.LoggerFromContext(t.ctx)
 	log.Info("===正在启动Connector: TcpServer===")
 	// 1. 监听指定的端口
@@ -83,86 +103,67 @@ func (t *TcpServerConnector) Start(sourceChan chan pkg.DataSource) error {
 			log.Error("关闭监听器失败", zap.Error(err))
 		}
 	}()
+	// 3. 接受连接
 	go func() {
 		for {
-			// 该循环会一直阻塞，直到有新地连接到来
-			// 只有两种情况会退出循环：1.监听器关闭 2.接受连接失败
-			// 所以需要该循环理论上无法自我逃逸，必须依赖外部的 Close 方法来关闭监听器
 			var conn net.Conn
 			conn, err = listener.Accept()
 			if err != nil {
-				// 检查错误是否由于监听器已关闭
+				// 只有在监听器被明确关闭时才退出循环
 				if errors.Is(err, net.ErrClosed) {
-					log.Debug("监听器已关闭，停止接受连接")
-					return
-				} else if errors.Is(err, io.EOF) {
-					log.Info("收到 EOF 信号，停止接受连接")
-					continue
-				} else {
-					log.Error("接受连接失败", zap.Error(err))
-					continue
+					log.Info("TCPServer 监听器已关闭，停止接受连接")
+					return // 或break，取决于您的循环结构
 				}
+
+				// 其他错误记录后继续接受连接
+				log.Error("TCPServer 接受连接失败", zap.Error(err))
+				// 可选：短暂延迟避免CPU高占用
+				time.Sleep(100 * time.Millisecond)
+				continue
 			}
 			connID := conn.RemoteAddr().String()
 			// 不在这里关闭连接，让下层代码（例如读取操作完毕后）来管理关闭
-			pkg.LoggerFromContext(t.ctx).Info("建立连接", zap.String("remote", conn.RemoteAddr().String()))
+			log.Info("建立连接", zap.String("remote", conn.RemoteAddr().String()))
 			err = t.initConn(conn)
 			if err != nil {
-				pkg.LoggerFromContext(t.ctx).Error("初始化连接失败，关闭连接", zap.String("remote", conn.RemoteAddr().String()), zap.Error(err))
+				log.Error("初始化连接失败，关闭连接", zap.String("remote", conn.RemoteAddr().String()), zap.Error(err))
 				err = conn.Close()
 				if err != nil {
-					pkg.LoggerFromContext(t.ctx).Warn("关闭连接失败", zap.String("remote", conn.RemoteAddr().String()), zap.Error(err))
+					log.Warn("关闭连接失败", zap.String("remote", conn.RemoteAddr().String()), zap.Error(err))
 				}
+				continue
 			}
-			ds := pkg.NewStreamDataSource()
-			sourceChan <- ds
 
-			go t.handleConn(conn, connID, ds)
+			go func() {
+				err := t.handleConn(conn, connID, *sink)
+				if err != nil {
+					log.Error("处理连接失败", zap.Error(err))
+					conn.Close()
+				}
+			}()
 		}
 	}()
 	return nil
 }
 
-func (t *TcpServerConnector) handleConn(conn net.Conn, connID string, source *pkg.StreamDataSource) {
+func (t *TcpServerConnector) handleConn(conn net.Conn, connID string, sink pkg.Parser2DispatcherChan) error {
 	log := pkg.LoggerFromContext(t.ctx)
-	// 创建缓冲区用于读取数据
-	buffer := make([]byte, 1024)
-	defer func() {
-		err := conn.Close()
-		if err != nil {
-			log.Error("关闭连接失败", zap.String("remote", connID), zap.Error(err))
-			return
-		}
-		log.Info("连接已正确关闭", zap.String("remote", connID))
-	}()
-OuterLoop:
-	for {
-		select {
-		case <-t.ctx.Done():
-			return
-		default:
-			// 从 TCP 连接读取数据
-			n, err := conn.Read(buffer)
-			if err != nil {
-				if err == io.EOF {
-					log.Info("收到EOF,连接断开", zap.String("remote", connID))
-					break OuterLoop
-				}
-				log.Error("读取数据失败", zap.Error(err))
-				break OuterLoop
-			}
-
-			// 将读取的数据写入到 Sink 的 writer 中
-			if _, err = source.WriteASAP(buffer[:n]); err != nil {
-				log.Error("写入数据到 Sink 失败", zap.Error(err))
-				break OuterLoop
-			}
-		}
+	// 从 TCP 连接读取数据
+	n, err := pkg.NewRingBuffer(conn, uint32(t.serverConfig.BufferSize))
+	if err != nil {
+		log.Error("创建环形缓冲区失败", zap.Error(err))
 	}
-}
-
-func (t *TcpServerConnector) GetType() string {
-	return "stream"
+	// 创建字节解析器
+	byteParser, err := parser.NewByteParser(t.ctx)
+	if err != nil {
+		log.Error("创建字节解析器失败", zap.Error(err))
+	}
+	// 启动字节解析器
+	err = byteParser.StartWithRingBuffer(n, sink)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (t *TcpServerConnector) initConn(conn net.Conn) error {
