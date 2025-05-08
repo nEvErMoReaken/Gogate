@@ -16,7 +16,7 @@ test_proto:
     Dev:
       dev3:
         data1: "Bytes[0]"
-      dev4:
+      dev1:
         data_from_var: "Vars.test_var"
         data2: "Bytes[1]"
 
