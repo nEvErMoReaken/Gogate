@@ -303,7 +303,7 @@ route_proto:
     *   *(流程继续到下一个物理节点或根据此节点的 Next 规则)*
 
 总结图：
-![dd](../_asset/exam1.png)
+![dd](./_asset/exam1.png)
 
 
 **场景 2: 路由到 `type2_handler`**

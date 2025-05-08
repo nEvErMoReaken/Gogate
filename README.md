@@ -57,7 +57,7 @@ sink:
 ### 2.1 如果网关的解析是对一段字节进行解析 - Bparser
 
 
-详见[字节解析说明](./examples/README.md)
+详见[字节解析说明](./BParser.md)
 
 ### 2.2 如果是对一段json进行解析 - Jparser
 
