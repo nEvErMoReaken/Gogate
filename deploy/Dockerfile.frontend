@@ -29,6 +29,7 @@ COPY web/package.json web/pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 
 # Copy the rest of the web application source code from the web directory (relative to build context)
+# This will also copy server.mjs if it's in web/
 COPY web/. .
 
 # Build the application
@@ -52,30 +53,45 @@ WORKDIR /app
 # Set npm registry
 RUN npm config set registry https://registry.npmmirror.com
 
-# Install pnpm globally
+# Install pnpm globally (still needed for pnpm install --prod)
 RUN npm install -g pnpm
 
 # Set pnpm registry
 RUN pnpm config set registry https://registry.npmmirror.com
 
 ENV NODE_ENV production
+# 后端API的内部URL，由自定义服务器的代理使用
+ENV BACKEND_INTERNAL_URL=http://backend:8080
+# PORT环境变量，自定义服务器会监听这个端口
+ENV PORT=3000
 
-# Copy package.json and pnpm-lock.yaml from the web directory (relative to build context)
+# 复制 package.json 和 pnpm-lock.yaml 以安装生产依赖
 COPY web/package.json web/pnpm-lock.yaml ./
 
-# Copy the build output from the builder stage
+# 复制自定义服务器脚本
+# (在builder阶段通过 `COPY web/. .` 已经复制到 /app, 这里确保它从正确的位置被最终的runner使用)
+# 如果 server.mjs 在 web/ 目录下，构建上下文是项目根目录，它会被复制到 /app/server.mjs
+# 所以这里不需要再次从 builder 复制，而是确保它在当前 /app 目录中存在
+# 实际上，如果 server.mjs 在 web/ 目录中，它会被 builder 阶段的 `COPY web/. .` 复制到 /app，
+# 然后在 runner 阶段，如果也执行 `COPY web/server.mjs ./server.mjs` (假设它在context的web/下)，
+# 它会被再次从构建上下文（项目的web/目录）复制过来。这是可以的。
+# 或者，我们可以从builder阶段复制它，如果它在builder中也被更新或处理的话。
+# 为了简单和一致性，我们从构建上下文复制它（假设它在 web/server.mjs）
+COPY --from=builder /app/server.mjs ./server.mjs
+
+# 复制构建产物 (client 和 server builds)
 COPY --from=builder /app/build ./build/
 
-# Install only production dependencies
+# 安装仅生产依赖 (应包含 express 和 http-proxy-middleware)
 RUN pnpm install --prod --frozen-lockfile
 
-# Set non-root user for security
+# 设置非root用户
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 appuser
 USER appuser
 
-EXPOSE 3000
+# 使用环境变量暴露端口
+EXPOSE ${PORT}
 
-# Define the command to run your app
-# This might be different based on your package.json scripts (e.g., pnpm start)
-CMD [ "pnpm", "start" ] # Or use "npm", "run", "start" if your start script is generic via npm passthrough
+# 使用新的启动命令，通过node直接运行自定义服务器脚本
+CMD [ "node", "./server.mjs" ]
