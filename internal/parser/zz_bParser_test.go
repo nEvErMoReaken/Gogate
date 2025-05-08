@@ -85,8 +85,8 @@ test_proto:
 
   - desc: "Post Type 1 Section" # 索引 3
     size: 1 # 处理接下来的1个字节
-    Dev:
-      dev_post_type1:
+      dev_post_type1:    Dev:
+
         post_data: "Bytes[0]"
     Next:
       - condition: "true"
