@@ -2178,6 +2178,17 @@ const FlowCanvas = memo(forwardRef<FlowCanvasHandle, FlowCanvasProps>(({ initial
             setNodes(parsed.nodes);
             setEdges(parsed.edges);
 
+            // 新增逻辑：在节点和边设置完成后调整视图
+            if (reactFlowInstance && (parsed.nodes.length > 0 || parsed.edges.length > 0)) {
+                window.requestAnimationFrame(() => {
+                    // 在 requestAnimationFrame 回调中再次检查 reactFlowInstance
+                    if (reactFlowInstance) {
+                        reactFlowInstance.fitView();
+                        console.log("[FlowCanvas useEffect] fitView called after initial parse via requestAnimationFrame.");
+                    }
+                });
+            }
+
             // 可以选择在此处添加日志，协助调试
             console.log(`[FlowCanvas useEffect] Successfully parsed and set ${parsed.nodes.length} nodes and ${parsed.edges.length} edges.`);
         } catch (error) {
@@ -2189,7 +2200,7 @@ const FlowCanvas = memo(forwardRef<FlowCanvasHandle, FlowCanvasProps>(({ initial
             toast.error("解析YAML定义时出错，已清空画布。");
         }
         // 依赖 initialYaml，所以在组件挂载和 initialYaml 变化时都会执行
-    }, [initialYaml, setNodes, setEdges]);
+    }, [initialYaml, setNodes, setEdges, reactFlowInstance]); // <-- Add reactFlowInstance to dependencies
     // --- 结束增强 ---
 
     // Other states remain the same
@@ -2302,7 +2313,7 @@ const FlowCanvas = memo(forwardRef<FlowCanvasHandle, FlowCanvasProps>(({ initial
                 console.log("[FlowCanvas] YAML内容未变化，跳过更新");
             }
         }
-    }, [reactFlowInstance, initialYaml, onYamlChange]); // <-- Remove versionId, version deps
+    }, [reactFlowInstance, initialYaml, onYamlChange]);
 
     // --- NEW: Node Hover Handlers ---
     const onNodeMouseEnter = useCallback((event: React.MouseEvent, node: Node) => {
@@ -4074,7 +4085,6 @@ export default function OrchestrationEditor() {
                         initialYaml={yamlContent}
                         onYamlChange={handleYamlChange}
                         versionId={versionId}
-                        key={yamlContent}
                     />
                 </ReactFlowProvider>
             </div>
