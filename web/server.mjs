@@ -1,13 +1,13 @@
 // web/server.mjs
 import { createRequestHandler } from "@react-router/express";
-import { installGlobals } from "@react-router/node";
+// import { installGlobals } from "@react-router/node";
 import express from "express";
 import { createProxyMiddleware } from 'http-proxy-middleware';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 // Polyfills for node environment (e.g., fetch)
-installGlobals();
+// installGlobals();
 
 // ESM equivalent of __dirname
 const __filename = fileURLToPath(import.meta.url);
