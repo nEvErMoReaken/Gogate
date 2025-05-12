@@ -18,23 +18,31 @@ const (
 test_proto:
   - desc: "解析头部信息 Section 0"
     size: 4
-    Dev:
-      dev1:
-        msg_type: "Bytes[0]"
-        payload_len: "Bytes[2]"
-      dev2:
-        msg_type: "Bytes[1]"
+    Points:
+      - Tag:
+          id: "'dev1'"
+        Field:
+          msg_type: "Bytes[0]"
+          payload_len: "Bytes[2]"
+      - Tag:
+          id: "'dev2'"
+        Field:
+          msg_type: "Bytes[1]"
     Vars:
       test_var: "Bytes[2]" # 用第三个字节设置变量
   - desc: "解析数据体 Section 1"
     size: 2 # 假设数据体长度为 2
     Label: "DataSection"
-    Dev:
-      dev3:
-        data1: "Bytes[0]"
-      dev4:
-        data_from_var: "Vars.test_var" # 使用之前设置的变量
-        data2: "Bytes[1]"
+    Points:
+      - Tag:
+          id: "'dev3'"
+        Field:
+          data1: "Bytes[0]"
+      - Tag:
+          id: "'dev4'"
+        Field:
+          data_from_var: "Vars.test_var" # 使用之前设置的变量
+          data2: "Bytes[1]"
 `
 	INVALID_YAML_NOT_LIST = `
 test_proto:
@@ -54,20 +62,24 @@ test_proto:
 test_proto:
   - desc: "路由头部 Section 0" # 索引 0
     size: 4
-    Dev:
-      dev_head:
-        msg_type: "Bytes[0]"
-        orig_val: "Bytes[2]" # 获取用于路由的值
+    Points:
+      - Tag:
+          id: "'dev_head'"
+        Field:
+          msg_type: "Bytes[0]"
+          orig_val: "Bytes[2]" # 获取用于路由的值
     Vars:
       road: "Bytes[2]" # 设置路由变量,值为0xFF或0x55或0x11
     # 默认路由到下一节(索引1)
 
   - desc: "路由决策 Section 1" # 索引 1
     size: 2 # 处理接下来的2个字节
-    Dev:
-      dev_route_data:
-        data1: "Bytes[0]"
-        data2: "Bytes[1]"
+    Points:
+      - Tag:
+          id: "'dev_route_data'"
+        Field:
+          data1: "Bytes[0]"
+          data2: "Bytes[1]"
     Next: # 在处理完本节数据后应用的规则
       - condition: "Vars.road == 0xFF" # 根据第0节设置的变量进行路由
         target: "type1_handler"
@@ -78,16 +90,20 @@ test_proto:
   - desc: "Type 1 Handler Section" # 索引 2
     size: 1 # 处理接下来的1个字节
     Label: "type1_handler"
-    Dev:
-      dev_type1:
-        handler_data: "Bytes[0]"
+    Points:
+      - Tag:
+          id: "'dev_type1'"
+        Field:
+          handler_data: "Bytes[0]"
     # 默认路由到下一节(索引3)
 
   - desc: "Post Type 1 Section" # 索引 3
     size: 1 # 处理接下来的1个字节
-      dev_post_type1:    Dev:
-
-        post_data: "Bytes[0]"
+    Points:
+      - Tag:
+          id: "'dev_post_type1'"
+        Field:
+          post_data: "Bytes[0]"
     Next:
       - condition: "true"
         target: "agg" # 路由到聚合
@@ -95,19 +111,23 @@ test_proto:
   - desc: "Type 2 Handler Section" # 索引 4
     size: 3 # 处理接下来的3个字节
     Label: "type2_handler"
-    Dev:
-      dev_type2:
-        handler_data1: "Bytes[0]"
-        handler_data2: "Bytes[1]"
-        handler_data3: "Bytes[2]"
+    Points:
+      - Tag:
+          id: "'dev_type2'"
+        Field:
+          handler_data1: "Bytes[0]"
+          handler_data2: "Bytes[1]"
+          handler_data3: "Bytes[2]"
     # 默认路由到下一节(索引5),即agg
 
   - desc: "Aggregation Section" # 索引 5
     size: 1 # 处理最后1个字节
     Label: "agg"
-    Dev:
-      dev_agg:
-        agg_data: "Bytes[0]"
+    Points:
+      - Tag:
+          id: "'dev_agg'"
+        Field:
+          agg_data: "Bytes[0]"
     # 处理结束(无下一节)
 `
 	// LOOP_TEST_YAML 定义循环处理逻辑 (再次修正: 缩进, 索引使用)
@@ -115,10 +135,12 @@ test_proto:
 test_proto:
   - desc: "循环指示块 Section 0" # 索引 0
     size: 4
-    Dev:
-      dev_head:
-        msg_type: "Bytes[0]"
-        head_val: "Bytes[2]"
+    Points:
+      - Tag:
+          id: "'dev_head'"
+        Field:
+          msg_type: "Bytes[0]"
+          head_val: "Bytes[2]"
     Vars:
       loop_count: "Bytes[3]" # 从第4个字节初始化循环计数器 (例如 0x02 代表循环3次: 2, 1, 0)
       loop_index: "0"        # 正确初始化 loop_index (字符串)
@@ -126,19 +148,22 @@ test_proto:
 
   - desc: "中间块 Section 1" # 索引 1
     size: 2
-    Dev:
-      dev_mid:
-        mid_data1: "Bytes[0]"
-        mid_data2: "Bytes[1]"
+    Points:
+      - Tag:
+          id: "'dev_mid'"
+        Field:
+          mid_data1: "Bytes[0]"
+          mid_data2: "Bytes[1]"
     # 默认路由到下一节(索引 2)
 
   - desc: "循环开始块 Section 2" # 索引 2
     size: 1
     Label: "loop_start"
-    Dev:
-      # 使用当前 loop_index 生成设备名 (index: 0, 1, 2)
-      "dev_${loop_index}":
-        start_marker: "Bytes[0]"
+    Points:
+      - Tag:
+          id: "'dev_' + string(Vars.loop_index)"
+        Field:
+          start_marker: "Bytes[0]"
     Vars:
       loop_count: "Vars.loop_count - 1" # 计数器递减
       loop_index: "Vars.loop_index + 1" # 正确的索引递增
@@ -146,18 +171,20 @@ test_proto:
 
   - desc: "循环体 Section 3" # 索引 3
     size: 1
-    Dev:
-      # 使用 S2 递增后的 loop_index (index: 1, 2, 3)
-      "dev_other_${loop_index}":
-        body_data: "Bytes[0]"
+    Points:
+      - Tag:
+          id: "'dev_other_' + string(Vars.loop_index)"
+        Field:
+          body_data: "Bytes[0]"
     # 默认路由到下一节(索引 4)
 
   - desc: "循环结束与判断 Section 4" # 索引 4
     size: 1
-    Dev:
-      # 使用 S2 递增后的 loop_index (index: 1, 2, 3)
-      "dev_end_${loop_index}":
-        end_marker: "Bytes[0]"
+    Points:
+      - Tag:
+          id: "'dev_end_' + string(Vars.loop_index)"
+        Field:
+          end_marker: "Bytes[0]"
     Next:
       - condition: "Vars.loop_count >= 0" # 循环条件 (比较 S2 递减后的 count)
         target: "loop_start"          # 跳转回循环开始
@@ -166,10 +193,12 @@ test_proto:
 
   - desc: "循环后块 Section 5" # 索引 5
     size: 2
-    Dev:
-      dev_after_loop:
-        final_data1: "Bytes[0]"
-        final_data2: "Bytes[1]"
+    Points:
+      - Tag:
+          id: "'dev_after_loop'"
+        Field:
+          final_data1: "Bytes[0]"
+          final_data2: "Bytes[1]"
     # 结束
 `
 	// END_TARGET_TEST_YAML 定义提前结束处理逻辑
@@ -177,16 +206,20 @@ test_proto:
 test_proto:
   - desc: "Section A - 设置条件"
     size: 2
-    Dev:
-      dev_a:
-        data1: "Bytes[0]"
+    Points:
+      - Tag:
+          id: "'dev_a'"
+        Field:
+          data1: "Bytes[0]"
     Vars:
       stop_flag: "Bytes[1]" # 第二个字节决定是否停止
   - desc: "Section B - 条件路由"
     size: 1
-    Dev:
-      dev_b:
-        data_b: "Bytes[0]"
+    Points:
+      - Tag:
+          id: "'dev_b'"
+        Field:
+          data_b: "Bytes[0]"
     Next:
       - condition: "Vars.stop_flag == 0xEE" # 如果 stop_flag 是 0xEE
         target: "END"                   # 则处理流程在此停止
@@ -195,9 +228,11 @@ test_proto:
   - desc: "Section C - 如果未停止则执行"
     size: 1
     Label: "SectionC"
-    Dev:
-      dev_c:
-        data_c: "Bytes[0]" # 这个 Section 只有在 stop_flag != 0xEE 时才会执行
+    Points:
+      - Tag:
+          id: "'dev_c'"
+        Field:
+          data_c: "Bytes[0]" # 这个 Section 只有在 stop_flag != 0xEE 时才会执行
 `
 	// DEAD_LOOP_TEST_YAML 定义一个会导致死循环的配置
 	DEAD_LOOP_TEST_YAML = `
@@ -205,9 +240,11 @@ test_proto:
   - desc: "无限循环入口"
     size: 1
     Label: "loop_entry"
-    Dev:
-      dev_loop:
-        data: "Bytes[0]"
+    Points:
+      - Tag:
+          id: "'dev_loop'"
+        Field:
+          data: "Bytes[0]"
     Next:
       - condition: "true"
         target: "loop_entry" # 直接指向自身，导致死循环
@@ -229,10 +266,12 @@ test_proto:
   - desc: "Section 2 - Target AA"
     size: 2
     Label: "TargetAA"
-    Dev:
-      dev_AA:
-        data1: "Bytes[0]"
-        data2: "Bytes[1]"
+    Points:
+      - Tag:
+          id: "'dev_AA'"
+        Field:
+          data1: "Bytes[0]"
+          data2: "Bytes[1]"
     Next:
       - condition: "true"
         target: "END"
@@ -241,9 +280,11 @@ test_proto:
   - desc: "Section 3 - Target BB"
     size: 1
     Label: "TargetBB"
-    Dev:
-      dev_BB:
-        data: "Bytes[0]"
+    Points:
+      - Tag:
+          id: "'dev_BB'"
+        Field:
+          data: "Bytes[0]"
     # 结束
 `
 	// GLOBALMAP_TEST_YAML 测试全局映射功能
@@ -251,21 +292,25 @@ test_proto:
 test_proto:
   - desc: "Section 1 - 从GlobalMap获取常量"
     size: 2
-    Dev:
-      dev_global_const:
-        static_value: "GlobalMap.constant_value"         # 使用全局常量
-        static_map_value: "GlobalMap.map_values.key1"    # 使用嵌套的全局常量
+    Points:
+      - Tag:
+          id: "'dev_global_const'"
+        Field:
+          static_value: "GlobalMap.constant_value"         # 使用全局常量
+          static_map_value: "GlobalMap.map_values.key1"    # 使用嵌套的全局常量
     Vars:
       threshold: "GlobalMap.threshold"                   # 从全局映射设置阈值变量
       dev_prefix: "GlobalMap.device_prefix"              # 设置设备前缀变量
 
   - desc: "Section 2 - 使用全局映射变量"
     size: 2
-    Dev:
-      global_device:                                     # 使用静态设备名而不是模板
-        value1: "Bytes[0]"
-        value2: "Bytes[1]"
-        prefix_value: "Vars.dev_prefix"                  # 在字段中使用变量值而不是设备名中
+    Points:
+      - Tag:
+          id: "'global_device'"
+        Field:
+          value1: "Bytes[0]"
+          value2: "Bytes[1]"
+          prefix_value: "Vars.dev_prefix"                  # 在字段中使用变量值而不是设备名中
     Next:
       - condition: "Bytes[0] > Vars.threshold"           # 基于全局阈值的条件路由
         target: "HighValue"
@@ -275,10 +320,12 @@ test_proto:
   - desc: "Section 3 - 高于阈值的处理"
     size: 1
     Label: "HighValue"
-    Dev:
-      dev_high:
-        calc_value: "Bytes[0] * GlobalMap.multiplier"    # 使用全局乘数计算
-        result_type: "GlobalMap.result_types.high"       # 设置结果类型
+    Points:
+      - Tag:
+          id: "'dev_high'"
+        Field:
+          calc_value: "Bytes[0] * GlobalMap.multiplier"    # 使用全局乘数计算
+          result_type: "GlobalMap.result_types.high"       # 设置结果类型
     Next:
       - condition: "true"
         target: "END"
@@ -286,10 +333,12 @@ test_proto:
   - desc: "Section 4 - 低于阈值的处理"
     size: 1
     Label: "LowValue"
-    Dev:
-      dev_low:
-        calc_value: "Bytes[0] / GlobalMap.divisor"       # 使用全局除数计算
-        result_type: "GlobalMap.result_types.low"        # 设置结果类型
+    Points:
+      - Tag:
+          id: "'dev_low'"
+        Field:
+          calc_value: "Bytes[0] / GlobalMap.divisor"       # 使用全局除数计算
+          result_type: "GlobalMap.result_types.low"        # 设置结果类型
     Next:
       - condition: "true"
         target: "END"
@@ -554,7 +603,22 @@ func TestByteParserProcessing(t *testing.T) {
 					totalPoints := 0
 					for _, p := range result.Points {
 						if p != nil {
-							groupedPoints[p.Device] = append(groupedPoints[p.Device], p.Field)
+							// Use a tag field (e.g., "id") as the device identifier for grouping
+							deviceID, ok := p.Tag["id"]
+							if !ok {
+								// If no id tag, try device or name tags
+								deviceID, ok = p.Tag["device"]
+								if !ok {
+									deviceID, ok = p.Tag["name"]
+									if !ok {
+										// If all else fails, use "unknown" + index
+										deviceID = fmt.Sprintf("unknown_%d", len(groupedPoints))
+									}
+								}
+							}
+
+							deviceIDStr := fmt.Sprintf("%v", deviceID) // Convert to string (it could be any type)
+							groupedPoints[deviceIDStr] = append(groupedPoints[deviceIDStr], p.Field)
 							totalPoints++
 						}
 					}
@@ -731,7 +795,16 @@ func TestByteParserProcessing(t *testing.T) {
 
 			inputData := []byte{0x01, 0x02, 0xAA}
 			out := make([]*pkg.Point, 0, 5)
-			env := &BEnv{Bytes: nil, Vars: make(map[string]interface{}), Fields: make(map[string]interface{}), GlobalMap: parser.Env.GlobalMap}
+			env := &BEnv{
+				Bytes:     nil,
+				Vars:      make(map[string]interface{}),
+				GlobalMap: parser.Env.GlobalMap,
+				Points: []pkg.Point{
+					{Tag: make(map[string]interface{}), Field: make(map[string]interface{})},
+					{Tag: make(map[string]interface{}), Field: make(map[string]interface{})},
+					{Tag: make(map[string]interface{}), Field: make(map[string]interface{})},
+				},
+			}
 			byteState := NewByteState(env, parser.LabelMap, parser.Nodes)
 			byteState.Data = inputData
 

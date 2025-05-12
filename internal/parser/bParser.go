@@ -147,7 +147,11 @@ func NewByteParser(ctx context.Context) (*ByteParser, error) {
 	env := BEnv{
 		GlobalMap: c.GlobalMap,
 		Vars:      make(map[string]interface{}), // 初始化 Vars map
-		Fields:    make(map[string]interface{}), // 初始化 Fields map
+		Points: []pkg.Point{
+			{Tag: make(map[string]interface{}), Field: make(map[string]interface{})},
+			{Tag: make(map[string]interface{}), Field: make(map[string]interface{})},
+			{Tag: make(map[string]interface{}), Field: make(map[string]interface{})},
+		},
 	}
 
 	// 4. 初始化 Section 链表

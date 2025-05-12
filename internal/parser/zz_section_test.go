@@ -13,16 +13,21 @@ func TestSection(t *testing.T) {
 		Convey("Section基础功能", func() {
 			// 创建一个简单的Section
 			section := &Section{
-				Desc:  "测试Section",
-				Size:  2,
-				Dev:   map[string]map[string]any{"device1": {"value": "Bytes[0]", "count": "Bytes[1]"}},
+				Desc: "测试Section",
+				Size: 2,
+				PointsExpression: []PointExpression{
+					{
+						Tag:   map[string]string{"id": `"device1"`},
+						Field: map[string]string{"value": "Bytes[0]", "count": "Bytes[1]"},
+					},
+				},
 				Var:   map[string]any{"total": "Bytes[0] + Bytes[1]"},
 				Label: "TestLabel",
 				index: 0,
 			}
 
 			// 编译表达式
-			program, err := CompileSectionProgram(section.Dev, section.Var)
+			program, err := CompileSectionProgram(section.PointsExpression, section.Var)
 			So(err, ShouldBeNil)
 			section.Program = program
 
@@ -30,8 +35,12 @@ func TestSection(t *testing.T) {
 			env := &BEnv{
 				Bytes:     nil,
 				Vars:      make(map[string]interface{}),
-				Fields:    make(map[string]interface{}),
 				GlobalMap: make(map[string]interface{}),
+				Points: []pkg.Point{
+					{Tag: make(map[string]interface{}), Field: make(map[string]interface{})},
+					{Tag: make(map[string]interface{}), Field: make(map[string]interface{})},
+					{Tag: make(map[string]interface{}), Field: make(map[string]interface{})},
+				},
 			}
 			labelMap := map[string]int{"TestLabel": 0}
 			nodes := []BProcessor{section}
@@ -40,7 +49,7 @@ func TestSection(t *testing.T) {
 
 			// 这里修正：初始化一个point，将其加入out切片
 			point := &pkg.Point{
-				Device: "device1",
+				Tag: map[string]interface{}{"id": "device1"},
 				Field: map[string]interface{}{
 					"value": byte(10),
 					"count": byte(20),
@@ -61,7 +70,7 @@ func TestSection(t *testing.T) {
 
 				// 检查输出点 - 这里需要实际检查输出slice，而不是内部变量
 				So(len(out), ShouldBeGreaterThan, 0)
-				So(out[0].Device, ShouldEqual, "device1")
+				So(out[0].Tag["id"], ShouldEqual, "device1")
 				So(out[0].Field["value"], ShouldEqual, byte(10))
 				So(out[0].Field["count"], ShouldEqual, byte(20))
 			})
@@ -76,14 +85,19 @@ func TestSection(t *testing.T) {
 
 			// 创建后续Section
 			section := &Section{
-				Desc:  "测试Skip后的Section",
-				Size:  2,
-				Dev:   map[string]map[string]any{"device2": {"value": "Bytes[0]", "count": "Bytes[1]"}},
+				Desc: "测试Skip后的Section",
+				Size: 2,
+				PointsExpression: []PointExpression{
+					{
+						Tag:   map[string]string{"id": `"device2"`},
+						Field: map[string]string{"value": "Bytes[0]", "count": "Bytes[1]"},
+					},
+				},
 				index: 1,
 			}
 
 			// 编译表达式
-			program, err := CompileSectionProgram(section.Dev, nil)
+			program, err := CompileSectionProgram(section.PointsExpression, nil)
 			So(err, ShouldBeNil)
 			section.Program = program
 
@@ -91,48 +105,60 @@ func TestSection(t *testing.T) {
 			env := &BEnv{
 				Bytes:     nil,
 				Vars:      make(map[string]interface{}),
-				Fields:    make(map[string]interface{}),
 				GlobalMap: make(map[string]interface{}),
+				Points: []pkg.Point{
+					{Tag: make(map[string]interface{}), Field: make(map[string]interface{})},
+					{Tag: make(map[string]interface{}), Field: make(map[string]interface{})},
+					{Tag: make(map[string]interface{}), Field: make(map[string]interface{})},
+				},
 			}
 			nodes := []BProcessor{skip, section}
 			byteState := NewByteState(env, nil, nodes)
 			byteState.Data = []byte{1, 2, 3, 4, 5}
 
 			// 这里修正：初始化一个point，将其加入out切片
-			point := &pkg.Point{
-				Device: "device2",
-				Field: map[string]interface{}{
-					"value": byte(3),
-					"count": byte(4),
-				},
-			}
-			out := []*pkg.Point{point}
+			// point := &pkg.Point{ // This point and out are no longer needed here due to test restructuring
+			// 	// Device: "device2",
+			// 	Tag: map[string]interface{}{"id": "device2"},
+			// 	Field: map[string]interface{}{
+			// 		"value": byte(4),
+			// 		"count": byte(5),
+			// 	},
+			// }
+			// out := []*pkg.Point{point}
+
+			// Let's initialize out as empty for clarity in skip, and the assertion will be on the 'out' returned by the section.
+			outForSkip := []*pkg.Point{}
 
 			Convey("Skip.ProcessWithBytes应正确跳过字节", func() {
-				_, next, err := skip.ProcessWithBytes(context.Background(), byteState, out)
+				_, next, err := skip.ProcessWithBytes(context.Background(), byteState, outForSkip)
 				So(err, ShouldBeNil)
 				So(next, ShouldEqual, section)
 				So(byteState.Cursor, ShouldEqual, 3)
 			})
 
 			Convey("连续处理Skip和Section", func() {
+				// Reset ByteState cursor for this specific test case if needed, or ensure it flows from previous
+				byteState.Cursor = 0       // Reset for clean run
+				outLocal := []*pkg.Point{} // Start with fresh out for this test flow
+
 				// 先执行Skip
-				out, next, err := skip.ProcessWithBytes(context.Background(), byteState, out)
+				outLocal, next, err := skip.ProcessWithBytes(context.Background(), byteState, outLocal)
 				So(err, ShouldBeNil)
 				So(next, ShouldEqual, section)
 				So(byteState.Cursor, ShouldEqual, 3)
 
 				// 再执行Section
-				_, next, err = next.ProcessWithBytes(context.Background(), byteState, out)
+				outLocal, next, err = next.ProcessWithBytes(context.Background(), byteState, outLocal)
 				So(err, ShouldBeNil)
 				So(next, ShouldBeNil)
 				So(byteState.Cursor, ShouldEqual, 5)
 
 				// 检查输出点
-				So(len(out), ShouldBeGreaterThan, 0)
-				So(out[0].Device, ShouldEqual, "device2")
-				So(out[0].Field["value"], ShouldEqual, byte(3))
-				So(out[0].Field["count"], ShouldEqual, byte(4))
+				So(len(outLocal), ShouldEqual, 1) // Expecting one point from the section
+				So(outLocal[0].Tag["id"], ShouldEqual, "device2")
+				So(outLocal[0].Field["value"], ShouldEqual, byte(4))
+				So(outLocal[0].Field["count"], ShouldEqual, byte(5))
 			})
 		})
 
@@ -141,49 +167,67 @@ func TestSection(t *testing.T) {
 			env := &BEnv{
 				Bytes:     []byte{10, 20},
 				Vars:      make(map[string]interface{}),
-				Fields:    make(map[string]interface{}),
 				GlobalMap: make(map[string]interface{}),
+				Points: []pkg.Point{
+					{Tag: make(map[string]interface{}), Field: make(map[string]interface{})},
+					{Tag: make(map[string]interface{}), Field: make(map[string]interface{})},
+					{Tag: make(map[string]interface{}), Field: make(map[string]interface{})},
+				},
 			}
 
 			// 创建节点
 			section1 := &Section{
-				Desc:  "条件路由节点",
-				Size:  2,
-				Dev:   map[string]map[string]any{"device": {"value": "Bytes[0]"}},
-				Var:   map[string]any{"condition": "Bytes[0] > 5"},
+				Desc: "条件路由节点",
+				Size: 2,
+				PointsExpression: []PointExpression{
+					{
+						Tag:   map[string]string{"id": `"device"`},
+						Field: map[string]string{"value": "Bytes[0]"},
+					},
+				},
+				Var:   map[string]any{"condition_var": "Bytes[0] > 5"},
 				index: 0,
 			}
 
 			section2 := &Section{
-				Desc:  "目标节点1",
-				Size:  1,
-				Dev:   map[string]map[string]any{"device": {"result": "1"}},
+				Desc: "目标节点1",
+				Size: 1,
+				PointsExpression: []PointExpression{
+					{
+						Tag:   map[string]string{"id": `"device"`},
+						Field: map[string]string{"result": `"1"`},
+					},
+				},
 				Label: "Target1",
 				index: 1,
 			}
 
 			section3 := &Section{
-				Desc:  "目标节点2",
-				Size:  1,
-				Dev:   map[string]map[string]any{"device": {"result": "2"}},
+				Desc: "目标节点2",
+				Size: 1,
+				PointsExpression: []PointExpression{
+					{
+						Tag:   map[string]string{"id": `"device"`},
+						Field: map[string]string{"result": `"2"`},
+					},
+				},
 				Label: "Target2",
 				index: 2,
 			}
 
 			// 编译表达式
-			program1, err := CompileSectionProgram(section1.Dev, section1.Var)
+			program1, err := CompileSectionProgram(section1.PointsExpression, section1.Var)
 			So(err, ShouldBeNil)
 			section1.Program = program1
 
-			program2, err := CompileSectionProgram(section2.Dev, nil)
+			program2, err := CompileSectionProgram(section2.PointsExpression, nil)
 			So(err, ShouldBeNil)
 			section2.Program = program2
 
-			program3, err := CompileSectionProgram(section3.Dev, nil)
+			program3, err := CompileSectionProgram(section3.PointsExpression, nil)
 			So(err, ShouldBeNil)
 			section3.Program = program3
 
-			// 修正：让Route测试通过 - 既然没有NextRules，就不会有错误
 			section1.NextRules = []Rule{}
 
 			// 创建标签映射
@@ -196,127 +240,117 @@ func TestSection(t *testing.T) {
 			nodes := []BProcessor{section1, section2, section3}
 
 			Convey("无条件时应默认到下一个节点", func() {
-				// 重置 NextRules
 				section1.NextRules = []Rule{}
 				next, err := section1.Route(MockContext(), env, labelMap, nodes)
 				So(err, ShouldBeNil)
-				So(next, ShouldEqual, section2) // 默认到下一个节点
+				So(next, ShouldEqual, section2)
 			})
 
 			Convey("添加路由规则后测试", func() {
 				rules := []Rule{{Condition: "true", Target: "Target2"}}
-				err := CompileNextRoute(rules) // 直接编译 rules 切片
+				err := CompileNextRoute(rules)
 				So(err, ShouldBeNil)
-				section1.NextRules = rules // 使用编译后的 rules
+				section1.NextRules = rules
 
 				next, err := section1.Route(MockContext(), env, labelMap, nodes)
 				So(err, ShouldBeNil)
-				So(next, ShouldEqual, section3) // 应该路由到Target2 (section3)
+				So(next, ShouldEqual, section3)
 			})
 
 			Convey("特殊目标END应返回nil", func() {
 				rules := []Rule{{Condition: "true", Target: "END"}}
-				err := CompileNextRoute(rules) // 直接编译 rules 切片
+				err := CompileNextRoute(rules)
 				So(err, ShouldBeNil)
-				section1.NextRules = rules // 使用编译后的 rules
+				section1.NextRules = rules
 
 				next, err := section1.Route(MockContext(), env, labelMap, nodes)
 				So(err, ShouldBeNil)
-				So(next, ShouldBeNil) // END目标应返回nil
+				So(next, ShouldBeNil)
 			})
 
 			Convey("基于变量的条件路由", func() {
-				// 设置变量用于条件判断
 				env.Vars["routeVar"] = 100
 
 				rules := []Rule{
-					{Condition: "Vars.routeVar < 50", Target: "Target1"},   // 不匹配
-					{Condition: "Vars.routeVar == 100", Target: "Target2"}, // 匹配
+					{Condition: "Vars.routeVar < 50", Target: "Target1"},
+					{Condition: "Vars.routeVar == 100", Target: "Target2"},
 				}
-				err := CompileNextRoute(rules) // 直接编译 rules 切片
+				err := CompileNextRoute(rules)
 				So(err, ShouldBeNil)
-				section1.NextRules = rules // 使用编译后的 rules
+				section1.NextRules = rules
 
 				next, err := section1.Route(MockContext(), env, labelMap, nodes)
 				So(err, ShouldBeNil)
-				So(next, ShouldEqual, section3) // 应路由到 Target2
+				So(next, ShouldEqual, section3)
 			})
 
 			Convey("多规则评估 - 第一个匹配规则生效", func() {
 				env.Vars["routeVar"] = 100
 
 				rules := []Rule{
-					{Condition: "Vars.routeVar == 100", Target: "Target1"}, // 匹配
-					{Condition: "Vars.routeVar > 50", Target: "Target2"},   // 也匹配
+					{Condition: "Vars.routeVar == 100", Target: "Target1"},
+					{Condition: "Vars.routeVar > 50", Target: "Target2"},
 				}
-				err := CompileNextRoute(rules) // 直接编译 rules 切片
+				err := CompileNextRoute(rules)
 				So(err, ShouldBeNil)
-				section1.NextRules = rules // 使用编译后的 rules
+				section1.NextRules = rules
 
 				next, err := section1.Route(MockContext(), env, labelMap, nodes)
 				So(err, ShouldBeNil)
-				So(next, ShouldEqual, section2) // Target1 的规则在前面，应路由到 section2
+				So(next, ShouldEqual, section2)
 			})
 
 			Convey("无匹配规则应返回错误", func() {
 				env.Vars["routeVar"] = 10
 
 				rules := []Rule{
-					{Condition: "Vars.routeVar > 50", Target: "Target1"},   // 不匹配
-					{Condition: "Vars.routeVar == 100", Target: "Target2"}, // 不匹配
+					{Condition: "Vars.routeVar > 50", Target: "Target1"},
+					{Condition: "Vars.routeVar == 100", Target: "Target2"},
 				}
-				err := CompileNextRoute(rules) // 直接编译 rules 切片
+				err := CompileNextRoute(rules)
 				So(err, ShouldBeNil)
-				section1.NextRules = rules // 使用编译后的 rules
+				section1.NextRules = rules
 
 				_, err = section1.Route(MockContext(), env, labelMap, nodes)
 				So(err, ShouldNotBeNil)
-				// 修正断言，匹配实际错误信息中的核心部分 (移除多余空格)
 				So(err.Error(), ShouldContainSubstring, "所有路由规则都不匹配")
 			})
 
 			Convey("条件表达式运行时错误", func() {
-				// 使用一个会导致类型错误的条件
 				rules := []Rule{{Condition: "Vars.nonExistentVar > 10", Target: "Target1"}}
-				// 注意：CompileNextRoute 不会捕捉运行时错误，只捕捉编译时错误
-				err := CompileNextRoute(rules) // 直接编译 rules 切片
-				So(err, ShouldBeNil)           // 编译应该通过
-				section1.NextRules = rules     // 使用编译后的 rules
+				err := CompileNextRoute(rules)
+				So(err, ShouldBeNil)
+				section1.NextRules = rules
 
 				_, err = section1.Route(MockContext(), env, labelMap, nodes)
-				So(err, ShouldNotBeNil) // 运行时应该出错
-				// 修正断言，匹配更新后的错误信息
+				So(err, ShouldNotBeNil)
 				So(err.Error(), ShouldContainSubstring, "执行路由条件表达式失败")
 			})
 
 			Convey("目标标签不存在应返回错误", func() {
-				// 路由到一个 labelMap 中不存在的标签
 				rules := []Rule{{Condition: "true", Target: "MissingTarget"}}
-				err := CompileNextRoute(rules) // 直接编译 rules 切片
+				err := CompileNextRoute(rules)
 				So(err, ShouldBeNil)
-				section1.NextRules = rules // 使用编译后的 rules
+				section1.NextRules = rules
 
 				_, err = section1.Route(MockContext(), env, labelMap, nodes)
 				So(err, ShouldNotBeNil)
-				// 期望 Route 函数内部能检测到标签缺失
 				So(err.Error(), ShouldContainSubstring, "路由目标标签 'MissingTarget' 在标签映射中未找到")
 			})
 
 			Convey("目标索引越界应返回错误", func() {
-				// 添加一个标签，但其索引超出 nodes 范围
 				invalidLabelMap := map[string]int{
 					"Target1":           1,
 					"Target2":           2,
-					"OutOfBoundsTarget": 10, // 这个索引超出了 nodes 的长度 (3)
+					"OutOfBoundsTarget": 10,
 				}
 				rules := []Rule{{Condition: "true", Target: "OutOfBoundsTarget"}}
-				err := CompileNextRoute(rules) // 直接编译 rules 切片
+				err := CompileNextRoute(rules)
 				So(err, ShouldBeNil)
-				section1.NextRules = rules // 使用编译后的 rules
+				section1.NextRules = rules
 
 				_, err = section1.Route(MockContext(), env, invalidLabelMap, nodes)
 				So(err, ShouldNotBeNil)
-				// 修正断言，检查更可靠的核心错误信息
 				So(err.Error(), ShouldContainSubstring, "超出节点范围")
 			})
 		})
@@ -324,15 +358,20 @@ func TestSection(t *testing.T) {
 		Convey("动态设备名测试", func() {
 			// 创建带有变量的设备名的Section
 			section := &Section{
-				Desc:  "动态设备名测试",
-				Size:  2,
-				Dev:   map[string]map[string]any{"device${index}": {"value": "Bytes[0]"}},
+				Desc: "动态设备名测试",
+				Size: 2,
+				PointsExpression: []PointExpression{
+					{
+						Tag:   map[string]string{"id": `"device" + string(Vars.index)`},
+						Field: map[string]string{"value": "Bytes[0]"},
+					},
+				},
 				Var:   map[string]any{"index": "Bytes[1]"},
 				index: 0,
 			}
 
 			// 编译表达式
-			program, err := CompileSectionProgram(section.Dev, section.Var)
+			program, err := CompileSectionProgram(section.PointsExpression, section.Var)
 			So(err, ShouldBeNil)
 			section.Program = program
 
@@ -340,29 +379,28 @@ func TestSection(t *testing.T) {
 			env := &BEnv{
 				Bytes:     nil,
 				Vars:      make(map[string]interface{}),
-				Fields:    make(map[string]interface{}),
 				GlobalMap: make(map[string]interface{}),
+				Points: []pkg.Point{
+					{Tag: make(map[string]interface{}), Field: make(map[string]interface{})},
+					{Tag: make(map[string]interface{}), Field: make(map[string]interface{})},
+					{Tag: make(map[string]interface{}), Field: make(map[string]interface{})},
+				},
 			}
 			nodes := []BProcessor{section}
 			byteState := NewByteState(env, nil, nodes)
 			byteState.Data = []byte{42, 5}
 
 			// 这里修正：初始化一个point，将其加入out切片
-			point := &pkg.Point{
-				Device: "device5",
-				Field: map[string]interface{}{
-					"value": byte(42),
-				},
-			}
-			out := []*pkg.Point{point}
+			out := []*pkg.Point{}
 
 			Convey("动态设备名应正确解析", func() {
-				_, _, err := section.ProcessWithBytes(context.Background(), byteState, out)
+				processedOut, _, err := section.ProcessWithBytes(context.Background(), byteState, out)
 				So(err, ShouldBeNil)
 				So(byteState.Env.Vars["index"], ShouldEqual, byte(5))
-				So(len(out), ShouldBeGreaterThan, 0)
-				So(out[0].Device, ShouldEqual, "device5")
-				So(out[0].Field["value"], ShouldEqual, byte(42))
+
+				So(len(processedOut), ShouldEqual, 1)
+				So(processedOut[0].Tag["id"], ShouldEqual, "device5")
+				So(processedOut[0].Field["value"], ShouldEqual, byte(42))
 			})
 		})
 	})

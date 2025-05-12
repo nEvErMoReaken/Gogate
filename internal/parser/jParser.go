@@ -6,9 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"gateway/internal/pkg"
-	"maps"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/expr-lang/expr"
@@ -19,71 +17,10 @@ import (
 
 // jParserConfig 定义 JParser 的配置结构
 type jParserConfig struct {
-	// Fields 定义了输出字段名到表达式的映射。
-	// 表达式应该访问解析后的 JSON 数据，通常命名为 'Data'。
-	// 例如: "temperature": "Data['sensorA']['temp']"
-	Fields map[string]string `mapstructure:"fields"`
-	// Device 指定生成的 Point 的设备名称。
-	Device string `mapstructure:"device"`
+	// Points 定义了输出点。
+	Points []PointExpression `mapstructure:"points"`
 	// GlobalMap (可选) 存储全局变量，可在表达式中访问。
 	GlobalMap map[string]interface{} `mapstructure:"globalMap"`
-}
-
-// JEnv 是 JSON 处理的表达式执行环境。
-type JEnv struct {
-	// Data 存储解组后的 JSON 数据 (map[string]interface{})。
-	Data map[string]interface{}
-	// Fields 存储由 F() 函数设置的输出字段。
-	Fields map[string]interface{}
-	// GlobalMap 存储全局配置变量。
-	GlobalMap map[string]interface{}
-}
-
-// Reset 清空 JEnv 的 Data 和 Fields，以便复用。
-func (e *JEnv) Reset() {
-	// 清空 map 最高效的方式是重新创建
-	e.Data = make(map[string]interface{})
-	e.Fields = make(map[string]interface{})
-	// GlobalMap 不需要重置，它是共享的
-}
-
-// F 在 Fields 映射中设置一个键值对，并返回 nil。
-// 这是 expr 表达式中用于设置输出字段的函数。
-func (e *JEnv) F(key string, val interface{}) any {
-	e.Fields[key] = val
-	return nil
-}
-
-// JEnvPool 是 JEnv 对象的 sync.Pool，用于复用。
-type JEnvPool struct {
-	sync.Pool
-}
-
-// NewJEnvPool 创建一个新的 JEnvPool。
-func NewJEnvPool(globalMap map[string]interface{}) *JEnvPool {
-	return &JEnvPool{
-		Pool: sync.Pool{
-			New: func() any {
-				// 初始化时创建空的 map
-				return &JEnv{
-					Data:      make(map[string]interface{}),
-					Fields:    make(map[string]interface{}),
-					GlobalMap: globalMap, // 共享全局 map
-				}
-			},
-		},
-	}
-}
-
-// Get 从池中获取一个 JEnv 实例。
-func (p *JEnvPool) Get() *JEnv {
-	return p.Pool.Get().(*JEnv)
-}
-
-// Put 将一个 JEnv 实例放回池中。
-func (p *JEnvPool) Put(e *JEnv) {
-	e.Reset() // 重置状态
-	p.Pool.Put(e)
 }
 
 // BuildJExprOptions 返回用于编译 JSON 处理表达式的 expr 选项。
@@ -122,22 +59,23 @@ func NewJsonParser(ctx context.Context) (*JParser, error) {
 	logger.Debug("jParser config loaded", zap.Any("config", jC))
 
 	// 2. 验证配置
-	if jC.Device == "" {
-		err := errors.New("jParser config requires a non-empty 'device' field")
+	if len(jC.Points) == 0 {
+		err := errors.New("jParser config requires a non-empty 'points' list")
 		logger.Error(err.Error())
 		return nil, err
 	}
-	if len(jC.Fields) == 0 {
-		err := errors.New("jParser config requires a non-empty 'fields' map")
-		logger.Error(err.Error())
-		return nil, err
-	}
-	logger.Info("jParser config validated", zap.String("device", jC.Device), zap.Int("field_count", len(jC.Fields)))
+
+	logger.Info("jParser config validated", zap.String("Points", fmt.Sprintf("%v", jC.Points)), zap.Int("point_count", len(jC.Points)))
 
 	// 3. 构建组合的表达式源码
 	var calls []string
-	for fieldName, expression := range jC.Fields {
-		calls = append(calls, fmt.Sprintf("F(%q, %s)", fieldName, expression))
+	for i, point := range jC.Points {
+		for field, expr := range point.Field {
+			calls = append(calls, fmt.Sprintf("F%d(%q, %s)", i+1, field, expr))
+		}
+		for tag, expr := range point.Tag {
+			calls = append(calls, fmt.Sprintf("T%d(%q, %s)", i+1, tag, expr))
+		}
 	}
 	// 添加最终的 nil 返回值，确保表达式总有返回值
 	source := strings.Join(calls, "; ") + "; nil"
@@ -158,7 +96,7 @@ func NewJsonParser(ctx context.Context) (*JParser, error) {
 		jEnvPool:      NewJEnvPool(jC.GlobalMap), // 使用新的 Pool 名称
 		program:       program,
 	}
-	logger.Info("JParser initialized successfully", zap.String("device", parser.jParserConfig.Device))
+	logger.Info("JParser initialized successfully", zap.String("points", fmt.Sprintf("%v", parser.jParserConfig.Points)))
 	return parser, nil
 }
 
@@ -252,24 +190,29 @@ func (j *JParser) process(js []byte) ([]*pkg.Point, error) { // 返回切片和�
 		logger.Error("Failed running compiled expression", zap.Error(err), zap.Any("json_data", env.Data))
 		return nil, fmt.Errorf("运行表达式失败: %w", err) // 包装错误
 	}
-	logger.Debug("Expression run completed", zap.Any("generated_fields", env.Fields))
+	logger.Debug("Expression run completed", zap.Any("generated_fields", env.Points))
 
 	// 4. 检查是否生成了字段
-	if len(env.Fields) == 0 {
+	if len(env.Points) == 0 {
 		logger.Warn("Expression run generated no fields", zap.ByteString("raw_json", js), zap.Any("json_data", env.Data))
 		// 这种情况不一定是错误，可能只是当前 JSON 没有匹配的字段
 		return []*pkg.Point{}, nil // 返回空切片，表示没有点生成
 	}
 
-	// 5. 创建单个 Point
-	point := &pkg.Point{
-		Device: j.jParserConfig.Device, // 使用配置中的设备名
-		Field:  maps.Clone(env.Fields), // 必须克隆，因为 env 会被回收
+	// 5. 克隆 Point
+	pointList := []*pkg.Point{}
+	for _, point := range env.Points {
+		// 只添加有内容的Point（Tag或Field不为空）
+		if len(point.Tag) > 0 || len(point.Field) > 0 {
+			pointList = append(pointList, &pkg.Point{
+				Tag:   point.Tag,
+				Field: point.Field,
+			})
+		}
 	}
 
-	pointList := []*pkg.Point{point} // 结果是一个包含单个点的切片
-
-	logger.Debug("Point generated successfully", zap.String("device", point.Device), zap.Any("fields", point.Field))
+	// metrics.IncMsgProcessed("jParser") // 在 Start 中处理
+	logger.Debug("Point generated successfully", zap.Any("fields", pointList))
 	// metrics.IncMsgProcessed("jParser") // 在 Start 中处理
 
 	return pointList, nil

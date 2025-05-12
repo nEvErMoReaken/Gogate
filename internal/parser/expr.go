@@ -5,6 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
+
+	"gateway/internal/pkg"
 
 	"github.com/expr-lang/expr"
 	"github.com/expr-lang/expr/vm"
@@ -18,11 +21,11 @@ type BEnv struct {
 	// Bytes 是当前 Section 处理的原始字节切片
 	Bytes []byte
 	// Vars 存储由 V() 函数设置的运行时变量
-	Vars map[string]interface{}
-	// Fields 存储由 F() 函数设置的输出字段
-	Fields map[string]interface{}
+	Vars map[string]any
+	// Points 是当前 Section 映射后的点, 最多支持 3 个点， 不允许用户直接修改 Points
+	Points []pkg.Point
 	// GlobalMap 存储全局配置变量
-	GlobalMap map[string]interface{}
+	GlobalMap map[string]any
 }
 
 // Reset 清空 BEnv 的 Vars、Fields 和 Bytes，以便复用。
@@ -34,19 +37,17 @@ func (e *BEnv) Reset() {
 	for k := range e.Vars {
 		delete(e.Vars, k)
 	}
-	for k := range e.Fields {
-		delete(e.Fields, k)
-	}
+	e.ResetPoints()
 	e.Bytes = nil
 }
 
-// ResetFields 清空 BEnv 的 Fields，以便复用。
+// ResetPoints 清空 BEnv 的 Points，以便复用。
 //
 // 输入: 无
 // 输出: 无
-func (e *BEnv) ResetFields() {
-	for k := range e.Fields {
-		delete(e.Fields, k)
+func (e *BEnv) ResetPoints() {
+	for i := 0; i < len(e.Points); i++ {
+		e.Points[i].Reset()
 	}
 }
 
@@ -59,12 +60,12 @@ func (e *BEnv) ResetFields() {
 //
 // 输出:
 //   - any: 总是返回 nil
-func (e *BEnv) V(key string, val interface{}) any {
+func (e *BEnv) V(key string, val any) any {
 	e.Vars[key] = val
 	return nil // Return nil
 }
 
-// F 在 Fields 映射中设置一个键值对，并返回 nil。
+// T1 用于设置第一个点的 Tag
 // 这是 expr 表达式中用于设置输出字段的函数。
 //
 // 输入:
@@ -73,8 +74,52 @@ func (e *BEnv) V(key string, val interface{}) any {
 //
 // 输出:
 //   - any: 总是返回 nil
-func (e *BEnv) F(key string, val interface{}) any {
-	e.Fields[key] = val
+func (e *BEnv) T1(key string, val any) any {
+	e.Points[0].Tag[key] = val
+	return nil // Return nil
+}
+
+// T2 用于设置第二个点的 Tag
+// 这是 expr 表达式中用于设置输出字段的函数。
+//
+// 输入:
+//   - key: 字段名
+//   - val: 字段值
+
+func (e *BEnv) T2(key string, val any) any {
+	e.Points[1].Tag[key] = val
+	return nil // Return nil
+}
+
+// T3 用于设置第三个点的 Tag
+func (e *BEnv) T3(key string, val any) any {
+	e.Points[2].Tag[key] = val
+	return nil // Return nil
+}
+
+// F1 用于设置第一个点的 Field
+// 这是 expr 表达式中用于设置输出字段的函数。
+//
+// 输入:
+//   - key: 字段名
+//   - val: 字段值
+//
+// 输出:
+//   - any: 总是返回 nil
+func (e *BEnv) F1(key string, val any) any {
+	e.Points[0].Field[key] = val
+	return nil // Return nil
+}
+
+// F2 用于设置第二个点的 Field
+func (e *BEnv) F2(key string, val any) any {
+	e.Points[1].Field[key] = val
+	return nil // Return nil
+}
+
+// F3 用于设置第三个点的 Field
+func (e *BEnv) F3(key string, val any) any {
+	e.Points[2].Field[key] = val
 	return nil // Return nil
 }
 
@@ -97,124 +142,32 @@ func CompileNextRoute(nextRoute []Rule) error {
 }
 
 // CompileSectionProgram 编译 Section 程序。
-//
 // 输入:
-//   - fields: 字段名到表达式的映射
+//   - points: 点名到表达式的映射
 //   - vars: 变量名到表达式的映射
 //
 // 输出:
 //   - *vm.Program: 编译后的程序
 //   - error: 编译过程中遇到的错误
-//
-// Deprecated: Use CompileVarsProgram or CompileDevPrograms instead.
-func CompileSectionProgram(dev map[string]map[string]any, vars map[string]any) (map[string]*vm.Program, error) {
-	programs := make(map[string]*vm.Program)
+func CompileSectionProgram(points []PointExpression, vars map[string]any) (*vm.Program, error) {
 
-	for devName, fields := range dev {
-		source := BuildSectionProgramSource(fields, vars)
+	injectVars := BuildVarsProgramSource(vars)
+	injectPoints := BuildPointsProgramSource(points)
+	SectionSource := injectVars + injectPoints + "nil;" // 确保表达式有返回值
 
-		// Handle empty sections (no program needed)
-		if source == "" {
-			return nil, fmt.Errorf("将 fields 和 vars 转换为 F/V 调用语句失败")
-		}
-
-		// Key does not exist, compile and store
-		program, err := expr.Compile(source, BuildSectionExprOptions()...)
-		if err != nil {
-			return nil, fmt.Errorf("编译 Section 程序失败 (source: %s): %w", source, err)
-		}
-		programs[devName] = program
-	}
-	return programs, nil
-}
-
-// CompileVarsProgram 编译用于设置变量的 Section 程序。
-//
-// 输入:
-//   - vars: 变量名到表达式的映射
-//
-// 输出:
-//   - *vm.Program: 编译后的 V 调用程序，如果 vars 为空则返回 nil。
-//   - error: 编译过程中遇到的错误
-func CompileVarsProgram(vars map[string]any) (*vm.Program, error) {
-	if len(vars) == 0 {
-		return nil, nil // 没有变量定义，无需编译
-	}
-	source := BuildVarsProgramSource(vars)
-	if source == "" {
-		// BuildVarsProgramSource 理论上在 vars 不为空时不会返回空字符串
-		return nil, fmt.Errorf("内部错误：BuildVarsProgramSource 返回了空字符串")
-	}
-
-	program, err := expr.Compile(source, BuildSectionExprOptions()...)
+	program, err := expr.Compile(SectionSource, BuildSectionExprOptions()...)
 	if err != nil {
-		return nil, fmt.Errorf("编译 Vars 程序失败 (source: %s): %w", source, err)
+		return nil, fmt.Errorf("编译 Section 程序失败 (source: %s): %w", SectionSource, err)
 	}
 	return program, nil
 }
 
-// CompileDevPrograms 编译用于为每个设备设置字段的 Section 程序。
-//
+// BuildVarsProgramSource 将 vars 映射转换为 V 调用语句字符串。
 // 输入:
-//   - dev: 设备名到 {字段名到表达式} 的映射
-//
-// 输出:
-//   - map[string]*vm.Program: 设备名到编译后 F 调用程序的映射。
-//   - error: 编译过程中遇到的错误
-func CompileDevPrograms(dev map[string]map[string]any) (map[string]*vm.Program, error) {
-	programs := make(map[string]*vm.Program)
-
-	for devName, fields := range dev {
-		source := BuildFieldsProgramSource(fields) // 只使用 Fields 生成 F 调用
-
-		// 如果一个设备没有定义字段，跳过编译
-		if source == "" {
-			continue
-		}
-
-		program, err := expr.Compile(source, BuildSectionExprOptions()...)
-		if err != nil {
-			return nil, fmt.Errorf("编译 Dev 程序失败 (dev: %s, source: %s): %w", devName, source, err)
-		}
-		programs[devName] = program
-	}
-	return programs, nil
-}
-
-// BuildSectionProgramSource 将 fields 和 vars 映射转换为 F/V 调用语句字符串。
-// 生成的字符串格式为 "F(...); V(...); ...; nil"。
-//
-// 输入:
-//   - fields: 字段名到表达式的映射
 //   - vars: 变量名到表达式的映射
 //
 // 输出:
-//   - string: 组合后的 F/V 调用语句字符串，如果 fields 和 vars 都为空，则返回空字符串
-//
-// Deprecated: Use BuildVarsProgramSource or BuildFieldsProgramSource instead.
-func BuildSectionProgramSource(fields map[string]any, vars map[string]any) string {
-	var calls []string
-
-	// Add V calls for vars, 先处理变量, fields 就可以使用变量了
-	for k, v := range vars {
-		calls = append(calls, fmt.Sprintf("V(%q, %v)", k, v))
-	}
-
-	// Add F calls for fields (order doesn't strictly matter but process fields first)
-	for k, v := range fields {
-		calls = append(calls, fmt.Sprintf("F(%q, %v)", k, v))
-	}
-
-	if len(calls) == 0 {
-		return "" // Return empty if no calls generated
-	}
-
-	// Join with semicolon and add final nil return value
-	return strings.Join(calls, "; ") + "; nil"
-}
-
-// BuildVarsProgramSource 将 vars 映射转换为 V 调用语句字符串。
-// 生成的字符串格式为 "V(...); V(...); ...; nil"。
+//   - string: 生成的字符串格式为 "V(...); V(...); ...; nil"。
 func BuildVarsProgramSource(vars map[string]any) string {
 	if len(vars) == 0 {
 		return "" // 如果没有变量定义，返回空字符串
@@ -225,23 +178,35 @@ func BuildVarsProgramSource(vars map[string]any) string {
 		calls = append(calls, fmt.Sprintf("V(%q, %v)", k, v))
 	}
 	// 添加最终的 nil 返回值，确保表达式有返回值
-	return strings.Join(calls, "; ") + "; nil"
+	return strings.Join(calls, "; ") + ";"
 }
 
-// BuildFieldsProgramSource 将 fields 映射转换为 F 调用语句字符串。
-// 生成的字符串格式为 "F(...); F(...); ...; nil"。
-// 注意：此函数现在假设 F 函数的签名为 F(fieldName, value)
-func BuildFieldsProgramSource(fields map[string]any) string {
-	if len(fields) == 0 {
+// BuildPointsProgramSource 将 points 映射转换为 F/T 调用语句字符串。
+// 输入:
+//   - points: 点名到表达式的映射
+//
+// 输出:
+//   - string: 生成的字符串格式为 "F1(...); T1(...); F2(...); T2(...); F3(...); T3(...); nil"。
+func BuildPointsProgramSource(points []PointExpression) string {
+	if len(points) == 0 {
 		return "" // 如果没有字段定义，返回空字符串
 	}
 	var calls []string
-	for k, v := range fields {
-		// %v 会将表达式原样放入
-		calls = append(calls, fmt.Sprintf("F(%q, %v)", k, v))
+	for i, point := range points {
+		if len(point.Field) > 3 {
+			break
+		}
+		// 为每个 Field 创建单独的函数调用
+		for fieldName, fieldExpr := range point.Field {
+			calls = append(calls, fmt.Sprintf("F%d(%q, %v)", i+1, fieldName, fieldExpr))
+		}
+		// 为每个 Tag 创建单独的函数调用
+		for tagName, tagExpr := range point.Tag {
+			calls = append(calls, fmt.Sprintf("T%d(%q, %v)", i+1, tagName, tagExpr))
+		}
 	}
 	// 添加最终的 nil 返回值
-	return strings.Join(calls, "; ") + "; nil"
+	return strings.Join(calls, "; ") + ";"
 }
 
 // BuildSectionExprOptions 返回用于编译 Section 程序 (F/V 调用) 的 expr 选项。
@@ -292,4 +257,120 @@ var helpers = []expr.Option{
 		// Provide the correct type signature for expr
 		new(func([]byte, string) int),
 	),
+	// 添加 sprintf 函数
+	expr.Function(
+		"sprintf",
+		func(params ...any) (any, error) {
+			if len(params) < 1 {
+				return nil, errors.New("sprintf 需要至少一个参数")
+			}
+			format, ok := params[0].(string)
+			if !ok {
+				return nil, fmt.Errorf("sprintf 第一个参数需要 string, 得到 %T", params[0])
+			}
+			return fmt.Sprintf(format, params[1:]...), nil
+		},
+		new(func(string, ...interface{}) string),
+	),
+	// 添加 string 函数，将任意类型转换为字符串
+	expr.Function(
+		"string",
+		func(params ...any) (any, error) {
+			if len(params) != 1 {
+				return nil, errors.New("string 需要一个参数")
+			}
+			return fmt.Sprintf("%v", params[0]), nil
+		},
+		new(func(interface{}) string),
+	),
+}
+
+// JEnv 是 JSON 处理的表达式执行环境。
+type JEnv struct {
+	// Data 存储解组后的 JSON 数据 (map[string]interface{})。
+	Data map[string]interface{}
+	// Points 存储由 F() 函数设置的输出点。
+	Points []pkg.Point
+	// GlobalMap 存储全局配置变量。
+	GlobalMap map[string]interface{}
+}
+
+// Reset 清空 JEnv 的 Data 和 Points，以便复用。
+func (e *JEnv) Reset() {
+	// 清空 map 最高效的方式是重新创建
+	e.Data = make(map[string]interface{})
+	e.Points = make([]pkg.Point, 0)
+	// GlobalMap 不需要重置，它是共享的
+}
+
+// F1 用于设置第一个点的 Field
+func (e *JEnv) F1(key string, val any) any {
+	e.Points[0].Field[key] = val
+	return nil // Return nil
+}
+
+// F2 用于设置第二个点的 Field
+func (e *JEnv) F2(key string, val any) any {
+	e.Points[1].Field[key] = val
+	return nil // Return nil
+}
+
+// F3 用于设置第三个点的 Field
+func (e *JEnv) F3(key string, val any) any {
+	e.Points[2].Field[key] = val
+	return nil // Return nil
+}
+
+// T1 用于设置第一个点的 Tag
+func (e *JEnv) T1(key string, val any) any {
+	e.Points[0].Tag[key] = val
+	return nil // Return nil
+}
+
+// T2 用于设置第二个点的 Tag
+func (e *JEnv) T2(key string, val any) any {
+	e.Points[1].Tag[key] = val
+	return nil // Return nil
+}
+
+// T3 用于设置第三个点的 Tag
+func (e *JEnv) T3(key string, val any) any {
+	e.Points[2].Tag[key] = val
+	return nil // Return nil
+}
+
+// JEnvPool 是 JEnv 对象的 sync.Pool，用于复用。
+type JEnvPool struct {
+	sync.Pool
+}
+
+// NewJEnvPool 创建一个新的 JEnvPool。
+func NewJEnvPool(globalMap map[string]interface{}) *JEnvPool {
+	return &JEnvPool{
+		Pool: sync.Pool{
+			New: func() any {
+				// 初始化时创建空的 map 和三个预初始化的 Point
+				return &JEnv{
+					Data: make(map[string]interface{}),
+					Points: []pkg.Point{
+						{Tag: make(map[string]interface{}), Field: make(map[string]interface{})},
+						{Tag: make(map[string]interface{}), Field: make(map[string]interface{})},
+						{Tag: make(map[string]interface{}), Field: make(map[string]interface{})},
+					},
+					GlobalMap: globalMap, // 共享全局 map
+				}
+			},
+		},
+	}
+}
+
+// Get 从池中获取一个 JEnv 实例。
+func (p *JEnvPool) Get() *JEnv {
+	return p.Pool.Get().(*JEnv)
+}
+
+// Put 将一个 JEnv 实例放回池中。
+func (p *JEnvPool) Put(e *JEnv) {
+	e.Reset() // 重置状态
+	p.Pool.Put(e)
 }

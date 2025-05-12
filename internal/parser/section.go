@@ -25,16 +25,8 @@ type Section struct {
 	Desc string `mapstructure:"desc"`
 	// Size 指定该 Section 处理的字节数
 	Size int `mapstructure:"size"`
-	// Dev 定义设备名映射，用于 F() 调用设置设备名
-	// 格式如下：
-	// "dev": {
-	//   "dev_name":
-	//		"field_name1" : "Bytes[0]"   expr 表达式
-	//  	"field_name1" : "Bytes[1]"   expr 表达式2
-	//   "dev_name2":
-	//         ....
-	// }
-	Dev map[string]map[string]any `mapstructure:"Dev"`
+	// Points 表达式
+	PointsExpression []PointExpression `mapstructure:"Points"`
 	// Vars 定义变量表达式映射，用于 V() 调用设置变量
 	Var map[string]any `mapstructure:"Vars"`
 	// Label 指定该 Section 的标签，用于跳转
@@ -42,9 +34,26 @@ type Section struct {
 	// NextRules 指定该 Section 的下一个 Section，用于标识和分类,改名避免与方法重复
 	NextRules []Rule `mapstructure:"Next"`
 	// --- 内部字段 ---
-	index       int                    // 当前 Section 的索引
-	VarsProgram *vm.Program            // 存储单独编译的 Vars 程序
-	Program     map[string]*vm.Program // 存储每个 Dev 的 Fields 程序 (原 Program 字段)
+	index   int         // 当前 Section 的索引
+	Program *vm.Program // 存储本节点编译后的表达式
+}
+
+// PointExpression 定义点表达式
+// 格式如下：
+//
+//	"Points": {
+//	  "Tag": {
+//	    "tag1": "Bytes[0]",
+//	    "tag2": "Bytes[1]"
+//	  },
+//	  "Field": {
+//	    "field1": "Bytes[2]",
+//	    "field2": "Bytes[3]"
+//	  }
+//	}
+type PointExpression struct {
+	Tag   map[string]string `mapstructure:"Tag"`
+	Field map[string]string `mapstructure:"Field"`
 }
 
 type Rule struct {
@@ -153,14 +162,9 @@ func BuildSequence(configList []map[string]any) ([]BProcessor, map[string]int, e
 			}
 
 			// --- 修改：调用新的编译函数 ---
-			tmpSec.VarsProgram, err = CompileVarsProgram(tmpSec.Var)
+			tmpSec.Program, err = CompileSectionProgram(tmpSec.PointsExpression, tmpSec.Var)
 			if err != nil {
 				return nil, nil, fmt.Errorf("编译 Section %d (Desc: %s) 的 Vars 失败: %w", index, tmpSec.Desc, err)
-			}
-
-			tmpSec.Program, err = CompileDevPrograms(tmpSec.Dev)
-			if err != nil {
-				return nil, nil, fmt.Errorf("编译 Section %d (Desc: %s) 的 Dev 失败: %w", index, tmpSec.Desc, err)
 			}
 
 			err = CompileNextRoute(tmpSec.NextRules)
@@ -224,27 +228,20 @@ func (s *Section) ProcessWithRing(ctx context.Context, state *StreamState, out [
 
 	state.Env.Bytes = rawData
 
-	// ---- 执行表达式 ----
-	for devName, program := range s.Program {
-		// e. 展开设备名
-		deviceName, err := parseToDevice(state.Env.Vars, devName) // Pass map value
-		if err != nil {
-			return nil, fmt.Errorf("解析设备名模板 '%s' 失败: %w", deviceName, err)
-		}
-		_, err = expr.Run(program, state.Env)
-		if err != nil {
-			return nil, fmt.Errorf("执行表达式失败: %w", err)
-		}
-		// f. 组装数据点 (克隆 Fields)
-		if len(state.Env.Fields) > 0 {
-			point := &pkg.Point{
-				Device: deviceName,
-				Field:  maps.Clone(state.Env.Fields),
-			}
-			out = append(out, point)
-			state.Env.ResetFields()
-		}
+	_, err = expr.Run(s.Program, state.Env)
+	if err != nil {
+		return nil, fmt.Errorf("执行表达式失败: %w", err)
 	}
+	// f. 组装数据点 (克隆 Fields)
+	for _, point := range state.Env.Points {
+		point := &pkg.Point{
+			Tag:   maps.Clone(point.Tag),
+			Field: maps.Clone(point.Field),
+		}
+		out = append(out, point)
+		state.Env.ResetPoints()
+	}
+
 	// ----- 路由 ----
 	next, err := s.Route(ctx, state.Env, state.LabelMap, state.Nodes)
 	return next, err
@@ -267,8 +264,8 @@ const (
 //   - error: 路由过程中遇到的错误，成功时为 nil
 func (s *Section) Route(ctx context.Context, env *BEnv, labelMap map[string]int, nodes []BProcessor) (BProcessor, error) {
 	log := pkg.LoggerFromContext(ctx)
-	var nextIndex int = WRONG // 使用 nextIndex 避免与 BProcessor next 混淆
-	var targetLabel string    // 存储匹配规则的目标标签
+	var nextIndex = WRONG  // 使用 nextIndex 避免与 BProcessor next 混淆
+	var targetLabel string // 存储匹配规则的目标标签
 
 	log.Debug("节点开始路由评估", zap.Int("index", s.index), zap.String("desc", s.Desc))
 	// 打印关键变量值
@@ -414,71 +411,37 @@ func (s *Section) ProcessWithBytes(ctx context.Context, state *ByteState, out []
 	rawData := state.Data[state.Cursor:end]
 	log.Debug("获取数据片段", zap.Int("cursor", state.Cursor), zap.Int("end", end), zap.Int("length", len(rawData)), zap.Any("data", rawData))
 
-	// --- 普通 Section 处理逻辑 ---
+	// III. 执行表达式
 	state.Env.Bytes = rawData
 	log.Debug("处理开始前变量状态", zap.Any("vars", state.Env.Vars))
 
-	// --- 修改：先执行 VarsProgram (如果存在) ---
-	if s.VarsProgram != nil {
-		log.Debug("执行 VarsProgram...")
-		_, err := expr.Run(s.VarsProgram, state.Env)
-		if err != nil {
-			log.Error("执行 VarsProgram 失败", zap.Error(err))
-			return out, nil, fmt.Errorf("执行 Vars 程序失败: %w", err)
-		}
-		log.Debug("VarsProgram 执行后变量状态", zap.Any("vars", state.Env.Vars))
-		// 可选：添加更详细的类型日志
-		// varsWithType := make(map[string]string)
-		// for k, v := range state.Env.Vars {
-		// 	varsWithType[k] = fmt.Sprintf("value: %v, type: %T", v, v)
-		// }
-		// log.Debug("VarsProgram 执行后变量状态 (带类型)", zap.Any("varsWithType", varsWithType))
-	} else {
-		log.Debug("没有 VarsProgram 需要执行")
+	_, err := expr.Run(s.Program, state.Env)
+	if err != nil {
+		return nil, nil, fmt.Errorf("执行表达式失败: %w", err)
 	}
-	// --- 修改结束 ---
 
-	// --- 修改：现在循环只处理 Dev/Fields ---
-	for devName, program := range s.Program { // s.Program 现在只包含 Dev 的 Fields 程序
-		log.Debug("开始处理设备 Fields", zap.String("name", devName))
-
-		// a. 执行 Fields 表达式 (F 调用)
-		_, err := expr.Run(program, state.Env) // 这个 program 只包含 F 调用
-		if err != nil {
-			// 返回当前 out (可能已被之前的 dev 修改) 和错误
-			log.Error("执行 Fields 表达式失败", zap.String("name", devName), zap.Error(err))
-			return out, nil, fmt.Errorf("执行 Fields 程序失败 (dev: %s): %w", devName, err)
-		}
-		// log.Debug("Fields 表达式执行后 Fields 状态", zap.Any("fields", state.Env.Fields)) // Fields 日志可能过多
-
-		// b. 展开设备名 (现在 V 已经被设置，可以安全展开)
-		deviceName, err := parseToDevice(state.Env.Vars, devName) // Pass map value
-		if err != nil {
-			// 返回当前 out 和错误
-			log.Error("解析设备名模板失败", zap.String("name", devName), zap.Error(err))
-			return out, nil, fmt.Errorf("解析设备名模板 '%s' 失败: %w", devName, err)
-		}
-		log.Debug("解析后的设备名", zap.String("name", deviceName))
-
-		// c. 组装数据点 (克隆 Fields)
-		if len(state.Env.Fields) > 0 {
-			log.Debug("创建数据点", zap.Int("field_count", len(state.Env.Fields)))
+	// IV. 组装数据点 (克隆 Fields)
+	for _, point := range state.Env.Points {
+		// 只有当Point包含非空的Tag或Field时才添加到输出
+		if len(point.Tag) > 0 || len(point.Field) > 0 {
 			point := &pkg.Point{
-				Device: deviceName,
-				Field:  maps.Clone(state.Env.Fields),
+				Tag:   maps.Clone(point.Tag),
+				Field: maps.Clone(point.Field),
 			}
-			out = append(out, point) // 修改本地 out
-			state.Env.ResetFields()  // 清空 Fields 为下一个设备准备
-		} else {
-			log.Debug("没有字段数据需要创建数据点")
+			out = append(out, point)
 		}
 	}
+	// 重置所有点
+	state.Env.ResetPoints()
+
 	// 在所有 Dev 处理完成后移动光标
 	state.Cursor = end
 	log.Debug("处理完成，光标移至位置", zap.Int("cursor", state.Cursor))
 	log.Debug("处理完成后最终变量状态", zap.Any("vars", state.Env.Vars)) // 确认最终 Vars 状态
 
 	log.Debug("准备执行路由...")
+
+	// V. 执行路由
 	next, err := s.Route(ctx, state.Env, state.LabelMap, state.Nodes)
 	if err != nil {
 		log.Error("路由失败", zap.Error(err))

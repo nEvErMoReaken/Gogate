@@ -20,10 +20,16 @@ func TestJParser(t *testing.T) {
 		Convey("JParser配置解码和验证", func() {
 			Convey("应该成功解码和验证有效配置", func() {
 				validConfigMap := map[string]interface{}{
-					"device": "test-device-1",
-					"fields": map[string]interface{}{
-						"temp": "Data['main']['temp']",
-						"hum":  "Data['main']['humidity']",
+					"points": []map[string]interface{}{
+						{
+							"tag": map[string]interface{}{
+								"id": "'test-device-1'",
+							},
+							"field": map[string]interface{}{
+								"temp": "Data['main']['temp']",
+								"hum":  "Data['main']['humidity']",
+							},
+						},
 					},
 					"globalMap": map[string]interface{}{
 						"location": "lab",
@@ -34,13 +40,19 @@ func TestJParser(t *testing.T) {
 				So(err, ShouldBeNil)
 
 				// Manually perform the checks similar to those in NewJsonParser
-				So(jC.Device, ShouldEqual, "test-device-1")
-				So(len(jC.Fields) > 0, ShouldBeTrue)
+				So(len(jC.Points), ShouldEqual, 1)
+				So(jC.Points[0].Tag["id"], ShouldEqual, "'test-device-1'")
+				So(len(jC.Points[0].Field) > 0, ShouldBeTrue)
 
 				// Simulate compilation check
 				var calls []string
-				for fieldName, expression := range jC.Fields {
-					calls = append(calls, fmt.Sprintf("F(%q, %s)", fieldName, expression))
+				for i, point := range jC.Points {
+					for fieldName, expression := range point.Field {
+						calls = append(calls, fmt.Sprintf("F%d(%q, %s)", i+1, fieldName, expression))
+					}
+					for tagName, expression := range point.Tag {
+						calls = append(calls, fmt.Sprintf("T%d(%q, %s)", i+1, tagName, expression))
+					}
 				}
 				source := strings.Join(calls, "; ") + "; nil"
 				_, compileErr := expr.Compile(source, BuildJExprOptions()...)
@@ -49,33 +61,51 @@ func TestJParser(t *testing.T) {
 
 			Convey("解码成功但因缺少设备配置而验证失败", func() {
 				invalidConfigMap := map[string]interface{}{
-					"fields": map[string]interface{}{
-						"temp": "Data['main']['temp']",
+					"points": []map[string]interface{}{
+						{
+							"field": map[string]interface{}{
+								"temp": "Data['main']['temp']",
+							},
+						},
 					},
 				}
 				var jC jParserConfig
 				err := mapstructure.Decode(invalidConfigMap, &jC)
 				So(err, ShouldBeNil) // Decode should work
 				// Check the validation condition
-				So(jC.Device == "", ShouldBeTrue)
+				So(len(jC.Points), ShouldEqual, 1)
+				So(len(jC.Points[0].Tag), ShouldEqual, 0) // 没有tag
 			})
 
 			Convey("解码成功但因缺少字段配置而验证失败", func() {
 				invalidConfigMap := map[string]interface{}{
-					"device": "test-device-2",
+					"points": []map[string]interface{}{
+						{
+							"tag": map[string]interface{}{
+								"id": "'test-device-2'",
+							},
+						},
+					},
 				}
 				var jC jParserConfig
 				err := mapstructure.Decode(invalidConfigMap, &jC)
 				So(err, ShouldBeNil)
 				// Check the validation condition
-				So(len(jC.Fields) == 0, ShouldBeTrue)
+				So(len(jC.Points), ShouldEqual, 1)
+				So(len(jC.Points[0].Field), ShouldEqual, 0) // 没有字段
 			})
 
 			Convey("解码成功但因表达式语法无效而编译失败", func() {
 				invalidConfigMap := map[string]interface{}{
-					"device": "test-device-3",
-					"fields": map[string]interface{}{
-						"temp": "Data['main']['temp", // Syntax error
+					"points": []map[string]interface{}{
+						{
+							"tag": map[string]interface{}{
+								"id": "'test-device-3'",
+							},
+							"field": map[string]interface{}{
+								"temp": "Data['main']['temp", // Syntax error
+							},
+						},
 					},
 				}
 				var jC jParserConfig
@@ -84,8 +114,13 @@ func TestJParser(t *testing.T) {
 
 				// Simulate compilation check
 				var calls []string
-				for fieldName, expression := range jC.Fields {
-					calls = append(calls, fmt.Sprintf("F(%q, %s)", fieldName, expression))
+				for i, point := range jC.Points {
+					for fieldName, expression := range point.Field {
+						calls = append(calls, fmt.Sprintf("F%d(%q, %s)", i+1, fieldName, expression))
+					}
+					for tagName, expression := range point.Tag {
+						calls = append(calls, fmt.Sprintf("T%d(%q, %s)", i+1, tagName, expression))
+					}
 				}
 				source := strings.Join(calls, "; ") + "; nil"
 				_, compileErr := expr.Compile(source, BuildJExprOptions()...)
@@ -99,12 +134,18 @@ func TestJParser(t *testing.T) {
 
 			// 1. Set up the main parser used for most tests
 			validConfigMap := map[string]interface{}{
-				"device": "sensor-007",
-				"fields": map[string]interface{}{
-					"temperature": "Data != nil && 'values' in Data && Data['values'] != nil && 'temp' in Data['values'] ? Data['values']['temp'] : nil",
-					"humidity":    "Data != nil && 'values' in Data && Data['values'] != nil && 'hum' in Data['values'] ? Data['values']['hum'] : nil",
-					"pressure":    "Data != nil && 'pressure' in Data ? Data['pressure'] : nil",
-					"loc":         "GlobalMap['loc_id']",
+				"points": []map[string]interface{}{
+					{
+						"tag": map[string]interface{}{
+							"id": "'sensor-007'",
+						},
+						"field": map[string]interface{}{
+							"temperature": "Data != nil && 'values' in Data && Data['values'] != nil && 'temp' in Data['values'] ? Data['values']['temp'] : nil",
+							"humidity":    "Data != nil && 'values' in Data && Data['values'] != nil && 'hum' in Data['values'] ? Data['values']['hum'] : nil",
+							"pressure":    "Data != nil && 'pressure' in Data ? Data['pressure'] : nil",
+							"loc":         "GlobalMap['loc_id']",
+						},
+					},
 				},
 				"globalMap": map[string]interface{}{
 					"loc_id": "zone-A",
@@ -113,8 +154,13 @@ func TestJParser(t *testing.T) {
 			var validJC jParserConfig
 			_ = mapstructure.Decode(validConfigMap, &validJC)
 			var calls []string
-			for fn, exprStr := range validJC.Fields {
-				calls = append(calls, fmt.Sprintf("F(%q, %s)", fn, exprStr))
+			for i, point := range validJC.Points {
+				for fieldName, expression := range point.Field {
+					calls = append(calls, fmt.Sprintf("F%d(%q, %s)", i+1, fieldName, expression))
+				}
+				for tagName, expression := range point.Tag {
+					calls = append(calls, fmt.Sprintf("T%d(%q, %s)", i+1, tagName, expression))
+				}
 			}
 			source := strings.Join(calls, "; ") + "; nil"
 			validProgram, errCompile1 := expr.Compile(source, BuildJExprOptions()...)
@@ -130,14 +176,29 @@ func TestJParser(t *testing.T) {
 
 			// 2. Setup the parser specifically designed to handle empty JSON
 			configHandlesEmptyMap := map[string]interface{}{
-				"device": "empty-test",
-				"fields": map[string]interface{}{
-					"exists": "'key' in Data",
+				"points": []map[string]interface{}{
+					{
+						"tag": map[string]interface{}{
+							"id": "'empty-test'",
+						},
+						"field": map[string]interface{}{
+							"exists": "'key' in Data",
+						},
+					},
 				},
 			}
 			var jcEmpty jParserConfig
 			_ = mapstructure.Decode(configHandlesEmptyMap, &jcEmpty)
-			sourceEmpty := "F(\"exists\", 'key' in Data); nil"
+			var callsEmpty []string
+			for i, point := range jcEmpty.Points {
+				for fieldName, expression := range point.Field {
+					callsEmpty = append(callsEmpty, fmt.Sprintf("F%d(%q, %s)", i+1, fieldName, expression))
+				}
+				for tagName, expression := range point.Tag {
+					callsEmpty = append(callsEmpty, fmt.Sprintf("T%d(%q, %s)", i+1, tagName, expression))
+				}
+			}
+			sourceEmpty := strings.Join(callsEmpty, "; ") + "; nil"
 			programEmpty, errCompile2 := expr.Compile(sourceEmpty, BuildJExprOptions()...)
 			So(errCompile2, ShouldBeNil) // Assert successful compilation
 
@@ -168,7 +229,7 @@ func TestJParser(t *testing.T) {
 				So(len(pointList), ShouldEqual, 1)
 
 				point := pointList[0]
-				So(point.Device, ShouldEqual, "sensor-007")
+				So(point.Tag["id"], ShouldEqual, "sensor-007")
 				So(point.Field, ShouldResemble, map[string]interface{}{
 					"temperature": 25.5,
 					"humidity":    60.1,
@@ -201,7 +262,7 @@ func TestJParser(t *testing.T) {
 				So(pointList, ShouldNotBeNil)
 				So(len(pointList), ShouldEqual, 1)
 				point := pointList[0]
-				So(point.Device, ShouldEqual, "sensor-007")
+				So(point.Tag["id"], ShouldEqual, "sensor-007")
 				So(point.Field["temperature"], ShouldEqual, 26.0)
 				So(point.Field["humidity"], ShouldEqual, 59.0)
 				So(point.Field["loc"], ShouldEqual, "zone-A")
@@ -210,14 +271,29 @@ func TestJParser(t *testing.T) {
 
 			Convey("处理表达式结果为nil字段的JSON", func() {
 				configNoMatchMap := map[string]interface{}{
-					"device": "sensor-optional",
-					"fields": map[string]interface{}{
-						"optional": "'optional_val' in Data ? Data['optional_val'] : nil",
+					"points": []map[string]interface{}{
+						{
+							"tag": map[string]interface{}{
+								"id": "'sensor-optional'",
+							},
+							"field": map[string]interface{}{
+								"optional": "'optional_val' in Data ? Data['optional_val'] : nil",
+							},
+						},
 					},
 				}
 				var jcNoMatch jParserConfig
 				_ = mapstructure.Decode(configNoMatchMap, &jcNoMatch)
-				sourceNoMatch := "F(\"optional\", 'optional_val' in Data ? Data['optional_val'] : nil); nil"
+				var callsNoMatch []string
+				for i, point := range jcNoMatch.Points {
+					for fieldName, expression := range point.Field {
+						callsNoMatch = append(callsNoMatch, fmt.Sprintf("F%d(%q, %s)", i+1, fieldName, expression))
+					}
+					for tagName, expression := range point.Tag {
+						callsNoMatch = append(callsNoMatch, fmt.Sprintf("T%d(%q, %s)", i+1, tagName, expression))
+					}
+				}
+				sourceNoMatch := strings.Join(callsNoMatch, "; ") + "; nil"
 				programNoMatch, compileErr := expr.Compile(sourceNoMatch, BuildJExprOptions()...)
 				So(compileErr, ShouldBeNil)
 				parserNoMatch := &JParser{
@@ -234,7 +310,7 @@ func TestJParser(t *testing.T) {
 				So(pointList, ShouldNotBeNil)
 				So(len(pointList), ShouldEqual, 1) // Expect 1 point
 				point := pointList[0]
-				So(point.Device, ShouldEqual, "sensor-optional")
+				So(point.Tag["id"], ShouldEqual, "sensor-optional")
 				So(point.Field, ShouldResemble, map[string]interface{}{
 					"optional": nil,
 				})
@@ -249,7 +325,7 @@ func TestJParser(t *testing.T) {
 					So(pointList, ShouldNotBeNil)
 					So(len(pointList), ShouldEqual, 1)
 					point := pointList[0]
-					So(point.Device, ShouldEqual, "sensor-007")
+					So(point.Tag["id"], ShouldEqual, "sensor-007")
 					So(point.Field, ShouldResemble, map[string]interface{}{
 						"temperature": nil,
 						"humidity":    nil,
@@ -262,7 +338,7 @@ func TestJParser(t *testing.T) {
 					pointListEmpty, errEmpty := emptyHandlingParser.process(emptyJson) // Use emptyHandlingParser
 					So(errEmpty, ShouldBeNil)
 					So(len(pointListEmpty), ShouldEqual, 1)
-					So(pointListEmpty[0].Device, ShouldEqual, "empty-test")
+					So(pointListEmpty[0].Tag["id"], ShouldEqual, "empty-test")
 					So(pointListEmpty[0].Field, ShouldResemble, map[string]interface{}{
 						"exists": false,
 					})
@@ -272,19 +348,29 @@ func TestJParser(t *testing.T) {
 			Convey("处理带有null值的JSON", func() {
 				jsonData := []byte(`{ "values": { "temp": null, "hum": 55.5 } }`)
 				configHandlesNullMap := map[string]interface{}{
-					"device": "null-test",
-					"fields": map[string]interface{}{
-						"temp_is_null": "Data['values']['temp'] == nil",
-						"temp_val":     "Data['values']['temp'] ?? -999.0",
-						"humidity":     "Data['values']['hum']",
+					"points": []map[string]interface{}{
+						{
+							"tag": map[string]interface{}{
+								"id": "'null-test'",
+							},
+							"field": map[string]interface{}{
+								"temp_is_null": "Data['values']['temp'] == nil",
+								"temp_val":     "Data['values']['temp'] ?? -999.0",
+								"humidity":     "Data['values']['hum']",
+							},
+						},
 					},
 				}
 				var jcNull jParserConfig
 				_ = mapstructure.Decode(configHandlesNullMap, &jcNull)
-				callsNull := []string{
-					fmt.Sprintf("F(%q, %s)", "temp_is_null", jcNull.Fields["temp_is_null"]),
-					fmt.Sprintf("F(%q, %s)", "temp_val", jcNull.Fields["temp_val"]),
-					fmt.Sprintf("F(%q, %s)", "humidity", jcNull.Fields["humidity"]),
+				var callsNull []string
+				for i, point := range jcNull.Points {
+					for fieldName, expression := range point.Field {
+						callsNull = append(callsNull, fmt.Sprintf("F%d(%q, %s)", i+1, fieldName, expression))
+					}
+					for tagName, expression := range point.Tag {
+						callsNull = append(callsNull, fmt.Sprintf("T%d(%q, %s)", i+1, tagName, expression))
+					}
 				}
 				sourceNull := strings.Join(callsNull, "; ") + "; nil"
 				programNull, compileErr := expr.Compile(sourceNull, BuildJExprOptions()...)
@@ -299,7 +385,7 @@ func TestJParser(t *testing.T) {
 
 				So(errNull, ShouldBeNil)
 				So(len(pointListNull), ShouldEqual, 1)
-				So(pointListNull[0].Device, ShouldEqual, "null-test")
+				So(pointListNull[0].Tag["id"], ShouldEqual, "null-test")
 				So(pointListNull[0].Field, ShouldResemble, map[string]interface{}{
 					"temp_is_null": true,
 					"temp_val":     -999.0,

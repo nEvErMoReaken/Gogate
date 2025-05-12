@@ -43,7 +43,7 @@ Section是基本处理单元，处理固定大小的字节段：
 |------|------|------|------|
 | desc | 字符串 | 节点描述，用于日志和调试 |  ✔️ |
 | size | 整数 | 处理的字节数量 | ❌ |
-| Dev | 映射 | 设备数据字段定义 | ✔️ |
+| Points | 列表 | 数据点定义列表 | ✔️ |
 | Vars | 映射 | 变量定义 | ✔️ |
 | Label | 字符串 | 标签，用于路由跳转目标 | ✔️|
 | Next | 列表 | 路由规则 | ✔️ |
@@ -55,17 +55,21 @@ Section是基本处理单元，处理固定大小的字节段：
 | size | 整数 | 处理的字节数量 | ❌ |
 
 
-### 3.1 Dev字段
+### 3.1 Points字段
 
-定义设备和其字段，支持多设备：
+定义数据点列表，每个点包含Tag（标识）和Field（字段）：
 
 ```yaml
-Dev:
-  设备名1:
-    字段名1: "表达式1"  # 如 "Bytes[0]"
-    字段名2: "表达式2"  # 如 "Bytes[1] + 10"
-  设备名2:
-    字段名a: "表达式a"
+Points:
+  - Tag:
+      id: "'dev1'"        # 注意：字符串字面量需要使用单引号
+    Field:
+      字段名1: "Bytes[0]"  # 如 "Bytes[0]"
+      字段名2: "Bytes[1]"  # 如 "Bytes[1] + 10"
+  - Tag:
+      id: "'dev2'"
+    Field:
+      字段名a: "Bytes[2]"
 ```
 
 ### 3.2 Vars字段
@@ -74,8 +78,8 @@ Dev:
 
 ```yaml
 Vars:
-  变量名1: "表达式1"  # 如 "Bytes[2]"
-  变量名2: "表达式2"  # 如 "Vars.变量名1 * 2"
+  变量名1: "Bytes[2]"  # 如 "Bytes[2]"
+  变量名2: "Vars.变量名1 * 2"  # 如 "Vars.变量名1 * 2"
 ```
 
 ### 3.3 表达式语法
@@ -85,6 +89,7 @@ Vars:
 - 支持算术运算：+, -, *, /, %
 - 支持比较运算：==, !=, >, <, >=, <=
 - 支持逻辑运算：&&, ||, !
+- 字符串操作：`"'字符串字面量'"` (需要用单引号括起)，`string(变量)` (转换为字符串)，`'字符串1' + string(变量)`（字符串连接）
 
 ### 3.4 Label和Next字段
 
@@ -114,13 +119,20 @@ skip: 3  # 跳过3个字节
 
 ## 5. 动态设备名
 
-支持使用变量构建设备名：
+支持使用表达式动态生成设备标识：
 
 ```yaml
-Dev:
-  "设备${index}":  # 如 index=5 则生成 "设备5"
-    字段: "Bytes[0]"
+Points:
+  - Tag:
+      id: "'device' + string(Vars.index)"  # 使用string()函数将变量转换为字符串
+    Field:
+      data: "Bytes[0]"
 ```
+
+注意：
+- 在表达式中的字符串字面量必须用单引号括起，如 `'device'`
+- 使用 `string()` 函数将变量转换为字符串
+- 字符串连接使用 `+` 运算符
 
 ## 6. 循环处理
 
@@ -131,6 +143,35 @@ Dev:
 3. 设置循环条件和目标
 4. 处理循环体
 5. 在循环结束节点使用条件路由
+
+例如：
+
+```yaml
+# 初始化循环变量
+- desc: "初始化循环"
+  size: 1
+  Vars:
+    loop_count: "Bytes[0]"  # 循环次数
+    loop_index: "0"         # 初始索引
+
+# 循环开始
+- desc: "循环开始"
+  size: 1
+  Label: "loop_start"
+  Points:
+    - Tag:
+        id: "'device_' + string(Vars.loop_index)"  # 动态设备ID
+      Field:
+        data: "Bytes[0]"
+  Vars:
+    loop_count: "Vars.loop_count - 1"  # 递减计数器
+    loop_index: "Vars.loop_index + 1"  # 递增索引
+  Next:
+    - condition: "Vars.loop_count > 0"  # 循环条件
+      target: "loop_start"              # 回到循环开始
+    - condition: "true"                 # 默认条件
+      target: "DEFAULT"                 # 继续下一节点
+```
 
 ## 7. 配置示例
 
@@ -144,13 +185,16 @@ Dev:
 4. **详细注释**：在desc字段提供充分描述
 5. **正确的缩进**：保持YAML格式一致性，避免混用制表符和空格
 6. **测试验证**：编写测试验证配置正确性，确保所有路径都被测试到
+7. **正确的字符串格式**：字符串字面量使用单引号，如 `'deviceName'`
+8. **动态字符串拼接**：使用 `string()` 函数将变量转换为字符串，如 `'prefix_' + string(Vars.index)`
 
 ## 9. 常见问题排查
 
 1. YAML解析错误：检查缩进、确保未混用制表符与空格
 2. 路由不生效：检查条件表达式、验证标签定义
 3. 循环问题：确认循环变量正确递增/递减、路由条件准确
-4. 动态名称失败：验证变量已定义、模板格式正确
+4. 动态名称失败：验证变量已定义、使用 `string()` 函数进行类型转换
+5. 字符串问题：确保字符串字面量使用了单引号，如 `'deviceName'` 而不是 `deviceName`
 
 通过合理配置，您可以实现复杂的字节流协议解析，包括分支逻辑、循环结构和动态处理流程。
 
@@ -159,7 +203,7 @@ Dev:
 本章节将详细解析 `examples/protocol/protocol_example.yml` 文件中提供的各种配置示例，帮助您理解不同配置项如何协同工作以实现特定的解析逻辑。
 
 ### 10.1 基础解析示例 (`test_proto`)
-本示例展示了一个简化的两阶段解析流程，说明了 `Bytes` 引用、`Vars` 的使用以及 `Dev` 如何生成最终的 `Point` 数据。
+本示例展示了一个简化的两阶段解析流程，说明了 `Bytes` 引用、`Vars` 的使用以及 `Points` 如何生成最终的数据。
 
 **输入字节流:**
 `[ 01 | 02 | 03 | 04 | 05 | 06 | 07 | 08 ]`
@@ -169,23 +213,31 @@ Dev:
 test_proto:
   - desc: "解析头部信息 (Section 1)"
     size: 4
-    Dev:
-      dev1:
-        msg_type: "Bytes[0]"      # --> 01 (来自输入字节流)
-        payload_len: "Bytes[2]"   # --> 03 (来自输入字节流)
-      dev2:
-        msg_type: "Bytes[1]"      # --> 02 (来自输入字节流)
+    Points:
+      - Tag:
+          id: "'dev1'"
+        Field:
+          msg_type: "Bytes[0]"      # --> 01 (来自输入字节流)
+          payload_len: "Bytes[2]"   # --> 03 (来自输入字节流)
+      - Tag:
+          id: "'dev2'"
+        Field:
+          msg_type: "Bytes[1]"      # --> 02 (来自输入字节流)
     Vars:
       test_var: "Bytes[2]"        # Vars.test_var 初始化为 03
 
   - desc: "解析数据体 (Section 2)"
     size: 2                       # 处理字节流中接下来的 [05 | 06]
-    Dev:
-      dev3:
-        data1: "Bytes[0]"         # --> 05 (来自Section 2的Bytes)
-      dev1: # dev1 在此被追加/更新
-        data_from_var: "Vars.test_var" # --> 03 (来自Vars)
-        data2: "Bytes[1]"         # --> 06 (来自Section 2的Bytes)
+    Points:
+      - Tag:
+          id: "'dev3'"
+        Field:
+          data1: "Bytes[0]"         # --> 05 (来自Section 2的Bytes)
+      - Tag:
+          id: "'dev4'"
+        Field:
+          data_from_var: "Vars.test_var" # --> 03 (来自Vars)
+          data2: "Bytes[1]"         # --> 06 (来自Section 2的Bytes)
 ```
 
 **处理流程与数据状态演变:**
@@ -198,10 +250,10 @@ test_proto:
           test_var: 03  // 来自 Bytes[2] (03)
         }
         ```
-    *   **生成 `Point` 数据**:
+    *   **生成数据点**:
         ```text
-        Point { Device: "dev1", Field: { msg_type: 01, payload_len: 03 } }
-        Point { Device: "dev2", Field: { msg_type: 02 } }
+        Point { Tag: { id: "dev1" }, Field: { msg_type: 01, payload_len: 03 } }
+        Point { Tag: { id: "dev2" }, Field: { msg_type: 02 } }
         ```
     *   剩余字节流: `[ 05 | 06 | 07 | 08 ]`
 
@@ -213,19 +265,18 @@ test_proto:
           test_var: 03
         }
         ```
-    *   **生成 `Point` 数据**:
+    *   **生成数据点**:
         ```text
-        Point { Device: "dev3", Field: { data1: 05 } }
-        Point { Device: "dev1", Field: { data_from_var: 03, data2: 06 } } // dev1 的数据被追加
+        Point { Tag: { id: "dev3" }, Field: { data1: 05 } }
+        Point { Tag: { id: "dev4" }, Field: { data_from_var: 03, data2: 06 } }
         ```
-        *(注意: 实际中，同一设备同一批次的数据点通常会合并或有特定更新逻辑，这里仅为简化展示)*
     *   剩余字节流: `[ 07 | 08 ]`
 
-**最终 `Point` 结构 (概念性 Go 定义):**
+**最终结构:**
 ```go
 type Point struct {
-    Device string        // 设备标识
-    Field  map[string]any // 字段名称 (键: 字段名, 值: 解析得到的值)
+    Tag   map[string]any // 标识信息 (如 id: "dev1")
+    Field map[string]any // 字段数据 (如 msg_type: 01)
 }
 ```
 总结图：
@@ -239,19 +290,23 @@ type Point struct {
 route_proto:
   - desc: "路由头部" # Section 1
     size: 4
-    Dev:
-      dev_head:
-        msg_type: "Bytes[0]"
-        orig_val: "Bytes[2]"
+    Points:
+      - Tag:
+          id: "'dev_head'"
+        Field:
+          msg_type: "Bytes[0]"
+          orig_val: "Bytes[2]"
     Vars:
       road: "Bytes[2]" # 将输入字节流的第3个字节 (索引2) 存入 Vars.road
 
   - desc: "路由决策" # Section 2
     size: 2
-    Dev:
-      dev_route_data:
-        data1: "Bytes[0]"
-        data2: "Bytes[1]"
+    Points:
+      - Tag:
+          id: "'dev_route_data'"
+        Field:
+          data1: "Bytes[0]"
+          data2: "Bytes[1]"
     Next:
       - condition: "Vars.road == 0xFF" # 条件1
         target: "type1_handler"
@@ -261,25 +316,31 @@ route_proto:
   - desc: "类型1处理" # Section 3
     size: 1
     Label: "type1_handler"
-    Dev:
-      dev_type1:
-        handler_data: "Bytes[0]"
+    Points:
+      - Tag:
+          id: "'dev_type1'"
+        Field:
+          handler_data: "Bytes[0]"
 
   - desc: "类型2处理" # Section 4
     size: 3
     Label: "type2_handler"
-    Dev:
-      dev_type2:
-        handler_data1: "Bytes[0]"
-        handler_data2: "Bytes[1]"
-        handler_data3: "Bytes[2]"
+    Points:
+      - Tag:
+          id: "'dev_type2'"
+        Field:
+          handler_data1: "Bytes[0]"
+          handler_data2: "Bytes[1]"
+          handler_data3: "Bytes[2]"
 
   - desc: "聚合处理" # Section 5 (可选)
     size: 1
     Label: "agg"
-    Dev:
-      dev_agg:
-        agg_data: "Bytes[0]"
+    Points:
+      - Tag:
+          id: "'dev_agg'"
+        Field:
+          agg_data: "Bytes[0]"
 ```
 
 **流程说明与示例:**
@@ -290,17 +351,17 @@ route_proto:
 *   **1. 处理 "路由头部" (size: 4)**:
     *   消耗字节: `[ AA | BB | FF | CC ]`
     *   `Vars` 状态: `{ road: 0xFF }` (来自 `Bytes[2]`)
-    *   生成 `Point`: `{ Device: "dev_head", Field: { msg_type: 0xAA, orig_val: 0xFF } }`
+    *   生成数据点: `{ Tag: { id: "dev_head" }, Field: { msg_type: 0xAA, orig_val: 0xFF } }`
     *   剩余字节流: `[ 11 | 22 | 77 | ... ]`
 *   **2. 处理 "路由决策" (size: 2)**:
     *   消耗字节: `[ 11 | 22 ]`
-    *   生成 `Point`: `{ Device: "dev_route_data", Field: { data1: 0x11, data2: 0x22 } }`
+    *   生成数据点: `{ Tag: { id: "dev_route_data" }, Field: { data1: 0x11, data2: 0x22 } }`
     *   计算 `Next` 条件: `Vars.road == 0xFF` 为 `true`。
     *   跳转到: `target: "type1_handler"`。
     *   剩余字节流: `[ 77 | ... ]`
 *   **3. 处理 "类型1处理" (Label: `type1_handler`, size: 1)**:
     *   消耗字节: `[ 77 ]`
-    *   生成 `Point`: `{ Device: "dev_type1", Field: { handler_data: 0x77 } }`
+    *   生成数据点: `{ Tag: { id: "dev_type1" }, Field: { handler_data: 0x77 } }`
     *   剩余字节流: `[ ... ]`
     *   *(流程继续到下一个物理节点或根据此节点的 Next 规则)*
 
@@ -312,17 +373,17 @@ route_proto:
 *   **1. 处理 "路由头部" (size: 4)**:
     *   消耗字节: `[ DD | EE | 55 | FF ]`
     *   `Vars` 状态: `{ road: 0x55 }` (来自 `Bytes[2]`)
-    *   生成 `Point`: `{ Device: "dev_head", Field: { msg_type: 0xDD, orig_val: 0x55 } }`
+    *   生成数据点: `{ Tag: { id: "dev_head" }, Field: { msg_type: 0xDD, orig_val: 0x55 } }`
     *   剩余字节流: `[ 33 | 44 | 88 | 99 | AA | ... ]`
 *   **2. 处理 "路由决策" (size: 2)**:
     *   消耗字节: `[ 33 | 44 ]`
-    *   生成 `Point`: `{ Device: "dev_route_data", Field: { data1: 0x33, data2: 0x44 } }`
+    *   生成数据点: `{ Tag: { id: "dev_route_data" }, Field: { data1: 0x33, data2: 0x44 } }`
     *   计算 `Next` 条件: `Vars.road == 0xFF` 为 `false`。 `Vars.road == 0x55` 为 `true`。
     *   跳转到: `target: "type2_handler"`。
     *   剩余字节流: `[ 88 | 99 | AA | ... ]`
 *   **3. 处理 "类型2处理" (Label: `type2_handler`, size: 3)**:
     *   消耗字节: `[ 88 | 99 | AA ]`
-    *   生成 `Point`: `{ Device: "dev_type2", Field: { handler_data1: 0x88, handler_data2: 0x99, handler_data3: 0xAA } }`
+    *   生成数据点: `{ Tag: { id: "dev_type2" }, Field: { handler_data1: 0x88, handler_data2: 0x99, handler_data3: 0xAA } }`
     *   剩余字节流: `[ ... ]`
     *   *(流程继续...)*
 
@@ -336,42 +397,52 @@ route_proto:
 loop_proto:
   - desc: "循环指示块" # Section 1
     size: 4
-    Dev:
-      dev_head:
-        msg_type: "Bytes[0]"
-        head_val: "Bytes[2]"
+    Points:
+      - Tag:
+          id: "'dev_head'"
+        Field:
+          msg_type: "Bytes[0]"
+          head_val: "Bytes[2]"
     Vars:
       loop_count: "Bytes[3]"   # 假设读入的是循环次数 N
       loop_index: "0"          # 初始化索引
 
   - desc: "中间块" # Section 2
     size: 2
-    Dev:
-      dev_mid:
-        mid_data1: "Bytes[0]"
-        mid_data2: "Bytes[1]"
+    Points:
+      - Tag:
+          id: "'dev_mid'"
+        Field:
+          mid_data1: "Bytes[0]"
+          mid_data2: "Bytes[1]"
 
   - desc: "循环开始块" # Section 3
     size: 1
     Label: "loop_start"
-    Dev:
-      "dev_${Vars.loop_index}": # 动态设备名
-        start_marker: "Bytes[0]"
+    Points:
+      - Tag:
+          id: "'dev_' + string(Vars.loop_index)" # 动态设备名
+        Field:
+          start_marker: "Bytes[0]"
     Vars:
       loop_count: "Vars.loop_count - 1" # 次数减1
-      loop_index: "Vars.loop_index + 1" # 索引加1 (假定expr能处理类型或使用number())
+      loop_index: "Vars.loop_index + 1" # 索引加1
 
   - desc: "循环体" # Section 4
     size: 1
-    Dev:
-      "dev_other_${Vars.loop_index}": # 动态设备名
-        body_data: "Bytes[0]"
+    Points:
+      - Tag:
+          id: "'dev_other_' + string(Vars.loop_index)" # 动态设备名
+        Field:
+          body_data: "Bytes[0]"
 
   - desc: "循环结束与判断" # Section 5
     size: 1
-    Dev:
-      "dev_end_${Vars.loop_index}": # 动态设备名
-        end_marker: "Bytes[0]"
+    Points:
+      - Tag:
+          id: "'dev_end_' + string(Vars.loop_index)" # 动态设备名
+        Field:
+          end_marker: "Bytes[0]"
     Next:
       - condition: "Vars.loop_count >= 0" # 循环条件
         target: "loop_start"
@@ -380,10 +451,12 @@ loop_proto:
 
   - desc: "循环后块" # Section 6
     size: 2
-    Dev:
-      dev_after_loop:
-        final_data1: "Bytes[0]"
-        final_data2: "Bytes[1]"
+    Points:
+      - Tag:
+          id: "'dev_after_loop'"
+        Field:
+          final_data1: "Bytes[0]"
+          final_data2: "Bytes[1]"
 ```
 
 **流程说明与示例 (假设循环次数为 2):**
@@ -392,48 +465,66 @@ loop_proto:
 *   **1. 处理 "循环指示块" (size: 4)**:
     *   消耗字节: `[ 01 | 02 | 03 | 02 ]`
     *   `Vars` 状态: `{ loop_count: 2, loop_index: "0" }` (来自 `Bytes[3]`)
-    *   生成 `Point`: `{ Device: "dev_head", Field: { msg_type: 0x01, head_val: 0x03 } }`
+    *   生成数据点: `{ Tag: { id: "dev_head" }, Field: { msg_type: 0x01, head_val: 0x03 } }`
     *   剩余字节流: `[ AA | BB | C0 | D0 | E0 | C1 | D1 | E1 | FF | EE | ... ]`
 *   **2. 处理 "中间块" (size: 2)**:
     *   消耗字节: `[ AA | BB ]`
-    *   生成 `Point`: `{ Device: "dev_mid", Field: { mid_data1: 0xAA, mid_data2: 0xBB } }`
+    *   生成数据点: `{ Tag: { id: "dev_mid" }, Field: { mid_data1: 0xAA, mid_data2: 0xBB } }`
     *   剩余字节流: `[ C0 | D0 | E0 | C1 | D1 | E1 | FF | EE | ... ]`
 *   **--- 循环 1 开始 ---**
 *   **3. 处理 "循环开始块" (Label: `loop_start`, size: 1)**:
     *   消耗字节: `[ C0 ]`
-    *   `Vars.loop_index` 当前为 `"0"` (或 `0`) -> 生成 `Point`: `{ Device: "dev_0", Field: { start_marker: 0xC0 } }`
-    *   `Vars` 更新: `{ loop_count: 1, loop_index: "1" }` (假设 `+ 1` 正常工作)
+    *   `Vars.loop_index` 当前为 `"0"` -> 生成数据点: `{ Tag: { id: "dev_0" }, Field: { start_marker: 0xC0 } }`
+    *   `Vars` 更新: `{ loop_count: 1, loop_index: "1" }`
     *   剩余字节流: `[ D0 | E0 | C1 | D1 | E1 | FF | EE | ... ]`
 *   **4. 处理 "循环体" (size: 1)**:
     *   消耗字节: `[ D0 ]`
-    *   `Vars.loop_index` 当前为 `"1"` -> 生成 `Point`: `{ Device: "dev_other_1", Field: { body_data: 0xD0 } }`
+    *   `Vars.loop_index` 当前为 `"1"` -> 生成数据点: `{ Tag: { id: "dev_other_1" }, Field: { body_data: 0xD0 } }`
     *   剩余字节流: `[ E0 | C1 | D1 | E1 | FF | EE | ... ]`
 *   **5. 处理 "循环结束与判断" (size: 1)**:
     *   消耗字节: `[ E0 ]`
-    *   `Vars.loop_index` 当前为 `"1"` -> 生成 `Point`: `{ Device: "dev_end_1", Field: { end_marker: 0xE0 } }`
+    *   `Vars.loop_index` 当前为 `"1"` -> 生成数据点: `{ Tag: { id: "dev_end_1" }, Field: { end_marker: 0xE0 } }`
     *   计算 `Next` 条件: `Vars.loop_count` (值为 `1`) `>= 0` 为 `true`。
     *   跳转到: `target: "loop_start"`。
     *   剩余字节流: `[ C1 | D1 | E1 | FF | EE | ... ]`
 *   **--- 循环 2 开始 ---**
 *   **6. 处理 "循环开始块" (Label: `loop_start`, size: 1)**:
     *   消耗字节: `[ C1 ]`
-    *   `Vars.loop_index` 当前为 `"1"` -> 生成 `Point`: `{ Device: "dev_1", Field: { start_marker: 0xC1 } }`
+    *   `Vars.loop_index` 当前为 `"1"` -> 生成数据点: `{ Tag: { id: "dev_1" }, Field: { start_marker: 0xC1 } }`
     *   `Vars` 更新: `{ loop_count: 0, loop_index: "2" }`
     *   剩余字节流: `[ D1 | E1 | FF | EE | ... ]`
 *   **7. 处理 "循环体" (size: 1)**:
     *   消耗字节: `[ D1 ]`
-    *   `Vars.loop_index` 当前为 `"2"` -> 生成 `Point`: `{ Device: "dev_other_2", Field: { body_data: 0xD1 } }`
+    *   `Vars.loop_index` 当前为 `"2"` -> 生成数据点: `{ Tag: { id: "dev_other_2" }, Field: { body_data: 0xD1 } }`
     *   剩余字节流: `[ E1 | FF | EE | ... ]`
 *   **8. 处理 "循环结束与判断" (size: 1)**:
     *   消耗字节: `[ E1 ]`
-    *   `Vars.loop_index` 当前为 `"2"` -> 生成 `Point`: `{ Device: "dev_end_2", Field: { end_marker: 0xE1 } }`
+    *   `Vars.loop_index` 当前为 `"2"` -> 生成数据点: `{ Tag: { id: "dev_end_2" }, Field: { end_marker: 0xE1 } }`
     *   计算 `Next` 条件: `Vars.loop_count` (值为 `0`) `>= 0` 为 `true`。
     *   跳转到: `target: "loop_start"`。
     *   剩余字节流: `[ FF | EE | ... ]`
+*   **--- 循环 3 开始 ---**
+*   **9. 处理 "循环开始块" (Label: `loop_start`, size: 1)**:
+    *   消耗字节: `[ FF ]`
+    *   `Vars.loop_index` 当前为 `"2"` -> 生成数据点: `{ Tag: { id: "dev_2" }, Field: { start_marker: 0xFF } }`
+    *   `Vars` 更新: `{ loop_count: -1, loop_index: "3" }`
+    *   剩余字节流: `[ EE | ... ]`
+*   **10. 处理 "循环体" (size: 1)**:
+    *   消耗字节: `[ EE ]`
+    *   `Vars.loop_index` 当前为 `"3"` -> 生成数据点: `{ Tag: { id: "dev_other_3" }, Field: { body_data: 0xEE } }`
+    *   剩余字节流: `[ ... ]`
+*   **11. 处理 "循环结束与判断" (size: 1)**:
+    *   (假设还有更多字节) 消耗字节: `[ xx ]`
+    *   `Vars.loop_index` 当前为 `"3"` -> 生成数据点: `{ Tag: { id: "dev_end_3" }, Field: { end_marker: 0xx } }`
+    *   计算 `Next` 条件: `Vars.loop_count` (值为 `-1`) `>= 0` 为 `false`。
+    *   计算下一个条件: `condition: "true"` 为 `true`。
+    *   跳转到: `target: "DEFAULT"`（进入循环后块）
+    *   剩余字节流: `[ ... ]`
 *   **--- 循环结束 ---**
-*   **9. 处理 "循环后块" (size: 2)**:
-    *   消耗字节: (需要接下来的2个字节)
-    *   生成 `Point`: `{ Device: "dev_after_loop", ... }`
+*   **12. 处理 "循环后块" (size: 2)**:
+    *   (假设至少有2个字节剩余) 消耗字节: `[ yy | zz ]`
+    *   生成数据点: `{ Tag: { id: "dev_after_loop" }, Field: { final_data1: 0yy, final_data2: 0zz } }`
+    *   剩余字节流: `[ ... ]`
 
 ---
 
@@ -445,17 +536,21 @@ loop_proto:
 end_target_proto:
   - desc: "Section A - 设置条件"
     size: 2
-    Dev:
-      dev_a:
-        data1: "Bytes[0]"
+    Points:
+      - Tag:
+          id: "'dev_a'"
+        Field:
+          data1: "Bytes[0]"
     Vars:
       stop_flag: "Bytes[1]" # 第二个字节决定是否停止
 
   - desc: "Section B - 条件路由"
     size: 1
-    Dev:
-      dev_b:
-        data_b: "Bytes[0]"
+    Points:
+      - Tag:
+          id: "'dev_b'"
+        Field:
+          data_b: "Bytes[0]"
     Next:
       - condition: "Vars.stop_flag == 0xEE" # 条件：如果 stop_flag 等于 0xEE
         target: "END"                   # 特殊目标：立即结束处理
@@ -465,9 +560,11 @@ end_target_proto:
   - desc: "Section C - 如果未停止则执行"
     size: 1
     Label: "SectionC"
-    Dev:
-      dev_c:
-        data_c: "Bytes[0]"
+    Points:
+      - Tag:
+          id: "'dev_c'"
+        Field:
+          data_c: "Bytes[0]"
 ```
 
 **流程说明与示例:**
@@ -478,11 +575,11 @@ end_target_proto:
 *   **1. 处理 "Section A" (size: 2)**:
     *   消耗字节: `[ AA | EE ]`
     *   `Vars` 状态: `{ stop_flag: 0xEE }` (来自 `Bytes[1]`)
-    *   生成 `Point`: `{ Device: "dev_a", Field: { data1: 0xAA } }`
+    *   生成数据点: `{ Tag: { id: "dev_a" }, Field: { data1: 0xAA } }`
     *   剩余字节流: `[ BB | CC | ... ]`
 *   **2. 处理 "Section B" (size: 1)**:
     *   消耗字节: `[ BB ]`
-    *   生成 `Point`: `{ Device: "dev_b", Field: { data_b: 0xBB } }`
+    *   生成数据点: `{ Tag: { id: "dev_b" }, Field: { data_b: 0xBB } }`
     *   计算 `Next` 条件: `Vars.stop_flag == 0xEE` 为 `true`。
     *   执行 `target: "END"`。
     *   **整个协议处理流程立即停止。** "Section C" 不会被执行。
@@ -494,18 +591,18 @@ end_target_proto:
 *   **1. 处理 "Section A" (size: 2)**:
     *   消耗字节: `[ AA | DD ]`
     *   `Vars` 状态: `{ stop_flag: 0xDD }`
-    *   生成 `Point`: `{ Device: "dev_a", Field: { data1: 0xAA } }`
+    *   生成数据点: `{ Tag: { id: "dev_a" }, Field: { data1: 0xAA } }`
     *   剩余字节流: `[ BB | CC | ... ]`
 *   **2. 处理 "Section B" (size: 1)**:
     *   消耗字节: `[ BB ]`
-    *   生成 `Point`: `{ Device: "dev_b", Field: { data_b: 0xBB } }`
+    *   生成数据点: `{ Tag: { id: "dev_b" }, Field: { data_b: 0xBB } }`
     *   计算 `Next` 条件: `Vars.stop_flag == 0xEE` 为 `false`。
     *   计算下一个条件: `condition: "true"` 为 `true`。
     *   跳转到: `target: "SectionC"`。
     *   剩余字节流: `[ CC | ... ]`
 *   **3. 处理 "Section C" (Label: `SectionC`, size: 1)**:
     *   消耗字节: `[ CC ]`
-    *   生成 `Point`: `{ Device: "dev_c", Field: { data_c: 0xCC } }`
+    *   生成数据点: `{ Tag: { id: "dev_c" }, Field: { data_c: 0xCC } }`
     *   剩余字节流: `[ ... ]`
     *   *(流程继续...)*
 
@@ -515,7 +612,7 @@ end_target_proto:
 
 ### 11.1 `expr` 表达式引擎简介
 
-在您的YAML配置文件中，诸如 `Dev` 字段、`Vars` 字段以及 `Next` 规则中的 `condition` 字段，其动态行为是由 [Expr 表达式语言](https://expr-lang.org/docs/getting-started) 驱动的。
+在您的YAML配置文件中，诸如 `Points` 字段中的 `Tag`/`Field`、`Vars` 字段以及 `Next` 规则中的 `condition` 字段，其动态行为是由 [Expr 表达式语言](https://expr-lang.org/docs/getting-started) 驱动的。
 
 Expr 是一个为 Go 语言设计的简洁、快速且可扩展的表达式语言。其主要特性包括：
 *   **内存安全**：防止常见的内存相关漏洞。
@@ -525,7 +622,8 @@ Expr 是一个为 Go 语言设计的简洁、快速且可扩展的表达式语�
 
 在本协议解析器中，`expr` 负责：
 *   **数据提取与转换**：例如，从原始字节 (`Bytes[i]`) 中提取数据，或基于已有的 `Vars` 计算新值。
-*   **条件逻辑判断**：在 `Next` 路由规则中，根据当前 `Vars` 和 `globalmap` 的状态决定处理流程的走向。
+*   **条件逻辑判断**：在 `Next` 路由规则中，根据当前 `Vars` 和 `GlobalMap` 的状态决定处理流程的走向。
+*   **字符串处理**：通过 `string()` 函数将变量转换为字符串，以及使用 `+` 进行字符串连接。
 
 ### 11.2 处理流程：链式思想与条件路由
 
@@ -543,36 +641,42 @@ Expr 是一个为 Go 语言设计的简洁、快速且可扩展的表达式语�
         *   **循环处理**：通过将 `target` 指向当前节点或之前的节点，并配合 `Vars` 中的计数器或状态变量进行条件控制。
         *   **默认路径**：通常设置一个 `condition: "true"` 的规则作为保底，确保流程总有明确的下一跳。
 
-### 11.3 数据生命周期：`globalmap`, `Vars` 与 `point`
+### 11.3 数据生命周期：`GlobalMap`, `Vars` 与 `Point`
 
 在数据处理过程中，主要涉及以下几类数据，它们有不同的生命周期和作用：
 
-*   **`globalmap` (全局映射)**
+*   **`GlobalMap` (全局映射)**
     *   **角色**：通常用于存储在整个协议解析会话期间（例如，从设备连接开始到断开，或处理一个完整文件的过程）相对稳定或不常变的数据。这可能包括设备静态信息、全局配置参数、认证状态等。
-    *   **与 `expr` 的交互**：`expr` 表达式（在 `Dev`, `Vars` 或 `Next.condition` 中）可以**读取** `globalmap` 中的值，以用于计算或条件判断。例如：`"Vars.value > globalmap.threshold"`。
-    *   **更新**：`expr` 表达式本身不应直接修改 `globalmap`。`globalmap` 的初始化和更新通常由更高层的 Go 应用逻辑控制。
+    *   **与 `expr` 的交互**：`expr` 表达式（在 `Points.Tag`, `Points.Field`, `Vars` 或 `Next.condition` 中）可以**读取** `GlobalMap` 中的值，以用于计算或条件判断。例如：`"Vars.value > GlobalMap.threshold"`。
+    *   **更新**：`expr` 表达式本身不应直接修改 `GlobalMap`。`GlobalMap` 的初始化和更新通常由更高层的 Go 应用逻辑控制。
     *   **生命周期**：在一次完整的解析会话中通常只加载一次或在特定事件下更新，其内容在处理多个数据帧/包之间是共享和持续的。
 
 *   **`Vars` (局部/帧变量)**
     *   **角色**：用于存储在处理单个数据单元（如一个网络数据包、一条消息，可称之为一"帧"）时动态提取、计算和更新的变量。它们是流程中状态传递和中间结果保存的主要载体。
     *   **与 `expr` 的交互**：
-        *   **写入/修改**：`Section` 节点中的 `Dev` 和 `Vars` 字段内的 `expr` 表达式的主要作用就是计算结果并创建或更新 `Vars` 中的变量。例如：`Vars: { "payloadLength": "Bytes[0] * 256 + Bytes[1]" }`。
-        *   **读取**：`Next.condition` 中的 `expr` 表达式，以及后续 `Section` 中 `Dev` 和 `Vars` 字段的表达式，都会读取 `Vars` 的当前值。
+        *   **写入/修改**：`Section` 节点中的 `Points` 和 `Vars` 字段内的 `expr` 表达式的主要作用就是计算结果并创建或更新 `Vars` 中的变量。例如：`Vars: { "payloadLength": "Bytes[0] * 256 + Bytes[1]" }`。
+        *   **读取**：`Next.condition` 中的 `expr` 表达式，以及后续 `Section` 中 `Points` 和 `Vars` 字段的表达式，都会读取 `Vars` 的当前值。
     *   **生命周期**：
         1.  **初始化**：在开始处理每一"帧"新数据时，`Vars` 通常会被清空或重置为一组初始状态。
         2.  **迭代更新**：随着处理流程经过各个 `Section`，`Vars` 中的内容会根据 `expr` 表达式的定义被逐步填充和修改。
         3.  **最终状态**：当一"帧"数据处理完毕，`Vars` 中就包含了该帧的所有解析结果和相关的中间状态。
 
-*   **`point` (输出数据点)**
+*   **`Point` (输出数据点)**
     *   **角色**：代表协议解析流程的最终结构化输出。它通常是一个或一组包含有意义的测量值、状态或事件的数据记录，预备用于存储、上报或进一步分析。
-    *   **与 `expr` 的交互**：`expr` 表达式的核心任务是准备和计算构成 `point` 所需的原始数据和中间值，这些值都存储在 `Vars` 中。
-    *   **生成**：`point` 的最终形成（即从 `Vars` 和可能的 `globalmap` 中选择哪些字段、如何命名、形成何种结构）通常不是由单个 `expr` 表达式直接完成，而是当流程到达某个结束状态或特定输出节点时，由系统根据预设的映射规则或外部 Go 逻辑，从 `Vars` 中提取数据来构建。`expr` 确保了 `Vars` 中有正确和完整的数据供 `point` 生成使用。
+    *   **与 `expr` 的交互**：`expr` 表达式直接通过 `Points` 配置中的 `Tag` 和 `Field` 表达式生成数据点。这些表达式可以引用 `Bytes[]`, `Vars` 和 `GlobalMap` 内容。
+    *   **结构**：每个 `Point` 包含：
+        *   `Tag`: 包含设备标识信息的映射，如 `{ "id": "device_name" }`。
+        *   `Field`: 包含实际数据字段的映射，如 `{ "temperature": 25.5, "status": "ok" }`。
+    *   **生命周期**：
+        1.  **生成**：在每个 `Section` 处理过程中根据 `Points` 配置生成。
+        2.  **聚合**：多个相同 `Tag` 的 `Point` 可能会在后续处理中被合并或聚合。
+        3.  **输出**：处理完成后，`Point` 被传递到下游系统进行存储、分析或转发。
 
 ### 11.4 概念示例：简易传感器数据包解析
 
 假设有以下数据和流程：
 
-*   **`globalmap` (初始化时)**: `{ "sensor_unit": "Celsius", "data_offset": 5 }`
+*   **`GlobalMap` (初始化时)**: `{ "sensor_unit": "Celsius", "data_offset": 5 }`
 *   **输入数据"帧"**: 一串字节流
 
 **处理流程概念：**
@@ -584,25 +688,38 @@ Expr 是一个为 Go 语言设计的简洁、快速且可扩展的表达式语�
         *   `condition: "Vars.packet_type == 2"`, `target: "Section_ProcessSensorV2"`
 
 2.  **`Section_ProcessSensorV1`**:
-    *   `Vars`: `{ "raw_value": "Bytes[globalmap.data_offset]" }` (从 `globalmap.data_offset` 指定的偏移读取传感器原始值)
+    *   `Vars`: `{ "raw_value": "Bytes[GlobalMap.data_offset]" }` (从 `GlobalMap.data_offset` 指定的偏移读取传感器原始值)
     *   `Vars`: `{ "scaled_value": "Vars.raw_value / 10.0" }` (对原始值进行缩放)
+    *   `Points`:
+        ```yaml
+        Points:
+          - Tag:
+              id: "'sensor_v1'"
+            Field:
+              value: "Vars.scaled_value"
+              unit: "GlobalMap.sensor_unit"
+              raw: "Vars.raw_value"
+        ```
     *   `Next`: `condition: "true"`, `target: "Section_Output"`
 
-3.  **`Section_Output`**: (准备输出)
+3.  **`Section_Output`**: (结束处理)
     *   此时 `Vars` 可能包含: `{ "packet_type": 1, "raw_value": 250, "scaled_value": 25.0, ... }`
-    *   **`point` 生成 (概念性)**：系统基于当前 `Vars` 和 `globalmap` 生成一个数据点:
-        ```json
+    *   生成的 `Point` 可能是:
+        ```
         {
-          "type": "sensor_v1_reading",
-          "value": 25.0, // 来自 Vars.scaled_value
-          "unit": "Celsius", // 来自 globalmap.sensor_unit
-          "raw": 250 // 来自 Vars.raw_value
+          Tag: { "id": "sensor_v1" },
+          Field: {
+            "value": 25.0,       // 来自 Vars.scaled_value
+            "unit": "Celsius",    // 来自 GlobalMap.sensor_unit
+            "raw": 250           // 来自 Vars.raw_value
+          }
         }
         ```
 
 这个例子展示了：
-*   `expr` 表达式用于从字节流 (`Bytes[...]`) 和已有变量 (`Vars...`, `globalmap...`) 中提取和计算新值，填充到 `Vars`。
+*   `expr` 表达式用于从字节流 (`Bytes[...]`) 和已有变量 (`Vars...`, `GlobalMap...`) 中提取和计算新值，填充到 `Vars`。
 *   `expr` 表达式用于在 `Next` 规则中进行条件判断，实现路由。
-*   `globalmap` 提供上下文配置，`Vars` 在处理过程中累积数据，最终的数据用于生成 `point`。
+*   `GlobalMap` 提供上下文配置，`Vars` 在处理过程中累积数据，`Points` 定义如何生成最终的数据点输出。
+*   字符串字面量使用单引号，如 `"'sensor_v1'"`。
 
 通过理解这些核心概念，您可以更有效地设计和调试协议解析配置。

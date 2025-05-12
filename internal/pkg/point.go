@@ -8,8 +8,8 @@ import (
 
 // Point 是Parser和Strategy之间传递的数据结构
 type Point struct {
-	Device string         // 设备标识
-	Field  map[string]any // 字段名称
+	Tag   map[string]any // 设备标识
+	Field map[string]any // 字段名称
 }
 
 // PointPackage 准备好待发送的point
@@ -23,6 +23,16 @@ type PointPackage struct {
 func (p *Point) Merge(point Point) {
 	for k, v := range point.Field {
 		p.Field[k] = v
+	}
+}
+
+// Reset 方法用于重置 Point 实例
+func (p *Point) Reset() {
+	for k := range p.Field {
+		delete(p.Field, k)
+	}
+	for k := range p.Tag {
+		delete(p.Tag, k)
 	}
 }
 
@@ -40,8 +50,7 @@ func (p *Point) String() string {
 	fieldStr += "}"
 
 	// 格式化整个 Point
-	return fmt.Sprintf("Point(DeviceName=%s, Field=%s)",
-		p.Device, fieldStr)
+	return fmt.Sprintf("Point(Field=%s,Tag=%s)", fieldStr, p.Tag)
 }
 
 // PointPool 是 Point 对象的对象池
@@ -77,7 +86,10 @@ func (p *PointPool) Put(point *Point) {
 	for k := range point.Field {
 		delete(point.Field, k)
 	}
-	point.Device = ""
+	// 清空Tag
+	for k := range point.Tag {
+		delete(point.Tag, k)
+	}
 	// 将对象放回池中
 	p.pool.Put(point)
 }
