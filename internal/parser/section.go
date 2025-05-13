@@ -445,6 +445,8 @@ func (s *Section) ProcessWithBytes(ctx context.Context, state *ByteState) (BProc
 // 输出:
 //   - int: 获取到的整数值
 //   - error: 获取过程中遇到的错误，成功时为 nil
+//
+// Deprecated: 使用 program 解码替代
 func getIntVar(varStore VarStore, key interface{}) (int, error) {
 	switch typedKey := key.(type) {
 	case int:
@@ -488,6 +490,9 @@ func getIntVar(varStore VarStore, key interface{}) (int, error) {
 // 它从 VarStore (map) 中获取变量值（可以是任何类型），并将其转换为字符串插入模板中。
 var reTemplate = regexp.MustCompile(`\${([^}]+)}`) // Cache the regex for efficiency
 
+// parseToDevice 解析包含 ${varname} 占位符的设备名模板。
+// 它从 VarStore (map) 中获取变量值（可以是任何类型），并将其转换为字符串插入模板中。
+// Deprecated: 使用 program解码替代
 func parseToDevice(vs VarStore, template string) (string, error) { // Takes map value
 	if !strings.Contains(template, "${") {
 		return template, nil // No placeholders, return as is

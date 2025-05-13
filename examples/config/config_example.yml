@@ -25,7 +25,6 @@ connector:
 
 # 解析器配置
 parser:
-  type: byte            # 解析器类型: byte, json, ioReader等
   config:
     protoFile: device_protocol # 协议文件名称，指向Others中定义的协议
 
@@ -41,9 +40,8 @@ dispatcher:
 strategy:
   - type: influxdb      # 策略类型：influxdb, mqtt, iotdb等
     enable: true        # 是否启用
-    filter:             # 过滤条件
-      - dev_filter: ".*"
-        tele_filter: ".*"
+    tagFilter:
+      - "Tag.id == 'A1'" # 过滤条件, 多个条件都满足后分发至该sink
     config:             # 特定于策略类型的配置
       url: http://localhost:8086
       token: your_token_here
@@ -53,12 +51,11 @@ strategy:
       tags:
         - "device_type"
         - "location"
-  
+
   - type: mqtt
     enable: false
-    filter:
-      - dev_filter: "alarm_.*"
-        tele_filter: "trigger"
+    tagFilter:
+      - "Tag.id == 'A1'" # 过滤条件, 多个条件都满足后分发至该sink
     config:
       url: "tcp://broker.example.com:1883"
       clientID: "gateway_publisher"

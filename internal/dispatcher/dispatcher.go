@@ -9,15 +9,13 @@ import (
 )
 
 type Dispatcher struct {
-	ctx              context.Context
-	SinkMap          *pkg.Dispatch2SinkChan // 策略名称 -> 其附属的数据源通道
-	dispatcherConfig *pkg.DispatcherConfig
+	ctx     context.Context
+	SinkMap *pkg.Dispatch2SinkChan // 策略名称 -> 其附属的数据源通道
 }
 
-var New = func(ctx context.Context, dispatcherConfig *pkg.DispatcherConfig) *Dispatcher {
+var New = func(ctx context.Context) *Dispatcher {
 	return &Dispatcher{
-		ctx:              ctx,
-		dispatcherConfig: dispatcherConfig,
+		ctx: ctx,
 	}
 }
 
@@ -28,7 +26,11 @@ func (dis *Dispatcher) Start(source *pkg.Parser2DispatcherChan, sinkMap *pkg.Dis
 
 	logger.Info("===聚合器启动===")
 
-	tree := NewTree(dis.dispatcherConfig)
+	handler, err := NewHandler(pkg.ConfigFromContext(dis.ctx).Strategy)
+	if err != nil {
+		logger.Error("error creating handler", zap.Error(err))
+		return
+	}
 	dis.SinkMap = sinkMap
 	for {
 		select {
@@ -37,17 +39,16 @@ func (dis *Dispatcher) Start(source *pkg.Parser2DispatcherChan, sinkMap *pkg.Dis
 			// 记录接收到的点
 			metrics.IncMsgReceived("aggregator")
 
-			err := tree.BatchAddPoint(frame2point)
+			readyPointPackage, err := handler.Dispatch(frame2point)
 			if err != nil {
-				logger.Error("error adding point", zap.Error(err))
+				logger.Error("error dispatching point", zap.Error(err))
 				return
 			}
-			finalResult, err := tree.Freeze()
-			if err != nil {
-				logger.Error("error freezing tree", zap.Error(err))
-				return
+			dis.launch(readyPointPackage)
+			// 释放 frame2point 的 Points
+			for _, point := range frame2point.Points {
+				pkg.PointPoolInstance.Put(point)
 			}
-			dis.launch(finalResult)
 		case <-dis.ctx.Done():
 			return
 		}

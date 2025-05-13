@@ -12,22 +12,12 @@ import (
 
 // Config 根Config
 type Config struct {
-	Parser     ParserConfig           `mapstructure:"parser"`
-	Connector  ConnectorConfig        `mapstructure:"connector"`
-	Dispatcher DispatcherConfig       `mapstructure:"dispatcher"`
-	Strategy   []StrategyConfig       `mapstructure:"strategy"`
-	Version    string                 `mapstructure:"version"`
-	Log        LogConfig              `mapstructure:"log"`
-	Others     map[string]interface{} `mapstructure:",remain"`
-}
-
-type DispatcherConfig struct {
-	RepeatDataFilters []DataFilter `mapstructure:"repeat_data_filter"` // 重复数据过滤规则
-}
-
-type DataFilter struct {
-	DevFilter  string `mapstructure:"dev_filter"`
-	TeleFilter string `mapstructure:"tele_filter"`
+	Parser    ParserConfig           `mapstructure:"parser"`
+	Connector ConnectorConfig        `mapstructure:"connector"`
+	Strategy  []StrategyConfig       `mapstructure:"strategy"`
+	Version   string                 `mapstructure:"version"`
+	Log       LogConfig              `mapstructure:"log"`
+	Others    map[string]interface{} `mapstructure:",remain"`
 }
 
 type LogConfig struct {
@@ -58,10 +48,10 @@ func ConfigFromContext(ctx context.Context) *Config {
 }
 
 type StrategyConfig struct {
-	Type   string                 `mapstructure:"type"`   // 策略类型
-	Enable bool                   `mapstructure:"enable"` // 是否启用
-	Filter []DataFilter           `mapstructure:"filter"` // 策略过滤条件
-	Para   map[string]interface{} `mapstructure:"config"` // 自定义配置项
+	Type   string                 `mapstructure:"type"`      // 策略类型
+	Enable bool                   `mapstructure:"enable"`    // 是否启用
+	Filter []string               `mapstructure:"tagFilter"` // 策略过滤表达式，入参为TAG
+	Para   map[string]interface{} `mapstructure:"config"`    // 自定义配置项
 }
 
 type ParserConfig struct {
