@@ -160,6 +160,13 @@ func BuildSequence(configList []map[string]any) ([]BProcessor, map[string]int, e
 				return nil, nil, fmt.Errorf("解码 Section %d (Desc: %s) 失败: %w", index, desc, err)
 			}
 
+			// +++ 添加对 Size 的校验 +++
+			if tmpSec.Size <= 0 {
+				desc, _ := config["desc"].(string)
+				return nil, nil, fmt.Errorf("Section %d (Desc: %s) 配置错误: 'size' 必须大于 0, 实际为 %d", index, desc, tmpSec.Size)
+			}
+			// +++++++++++++++++++++++
+
 			// --- 修改：调用新的编译函数 ---
 			tmpSec.Program, err = CompileSectionProgram(tmpSec.PointsExpression, tmpSec.Var)
 			if err != nil {

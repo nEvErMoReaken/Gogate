@@ -30,8 +30,8 @@ func performTestSectionRequest(t *testing.T, r *gin.Engine, reqBody api.TestSect
 
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
-	if w.Code != http.StatusOK {
-		t.Logf("Received non-OK status code: %d. Response Body: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusOK && w.Code != http.StatusBadRequest && w.Code != http.StatusInternalServerError {
+		t.Logf("Received unexpected status code: %d. Response Body: %s", w.Code, w.Body.String())
 	}
 	return w, nil
 }
@@ -49,9 +49,11 @@ func TestTestSectionHandler(t *testing.T) {
 				SectionConfig: map[string]interface{}{
 					"desc": "Basic Section",
 					"size": 1,
-					"Dev": map[string]interface{}{
-						"dev1": map[string]interface{}{
-							"value": "Bytes[0]",
+					// Replace Dev with Points
+					"Points": []map[string]interface{}{
+						{
+							"Tag":   map[string]interface{}{"id": "\"dev1\""}, // Use `id` tag
+							"Field": map[string]interface{}{"value": "Bytes[0]"},
 						},
 					},
 				},
@@ -67,10 +69,10 @@ func TestTestSectionHandler(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			So(len(respBody.Points), ShouldBeGreaterThan, 0)
-			// 验证是否有与dev1相关的点数据
+			// Check point.Tag["id"] instead of point.Device
 			foundDevice := false
 			for _, point := range respBody.Points {
-				if point.Device == "dev1" {
+				if id, ok := point.Tag["id"].(string); ok && id == "dev1" {
 					foundDevice = true
 					break
 				}
@@ -79,8 +81,6 @@ func TestTestSectionHandler(t *testing.T) {
 
 			// 验证dispatcher处理结果
 			So(respBody.DispatcherResults, ShouldNotBeNil)
-			// 应该有两个策略的结果（strategy1和strategy2）
-			// 但由于我们的策略过滤是空的，可能没有点通过过滤或者全都通过，这里仅检查结构是否存在
 		})
 
 		Convey("Success Case - Using SectionConfigs Array with Dispatcher", func() {
@@ -89,18 +89,20 @@ func TestTestSectionHandler(t *testing.T) {
 					{
 						"desc": "第一个Section",
 						"size": 1,
-						"Dev": map[string]interface{}{
-							"dev1": map[string]interface{}{
-								"value": "Bytes[0]",
+						"Points": []map[string]interface{}{ // Use Points
+							{
+								"Tag":   map[string]interface{}{"id": "\"dev1\""}, // Use id tag
+								"Field": map[string]interface{}{"value": "Bytes[0]"},
 							},
 						},
 					},
 					{
 						"desc": "第二个Section",
 						"size": 1,
-						"Dev": map[string]interface{}{
-							"dev2": map[string]interface{}{
-								"value": "Bytes[0]",
+						"Points": []map[string]interface{}{ // Use Points
+							{
+								"Tag":   map[string]interface{}{"id": "\"dev2\""}, // Use id tag
+								"Field": map[string]interface{}{"value": "Bytes[0]"},
 							},
 						},
 					},
@@ -117,35 +119,42 @@ func TestTestSectionHandler(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			So(len(respBody.Points), ShouldBeGreaterThan, 0)
-			// 验证有两个设备的点数据
+			// Check point.Tag["id"]
 			dev1Found, dev2Found := false, false
 			for _, point := range respBody.Points {
-				if point.Device == "dev1" {
-					dev1Found = true
-				} else if point.Device == "dev2" {
-					dev2Found = true
+				if id, ok := point.Tag["id"].(string); ok {
+					if id == "dev1" {
+						dev1Found = true
+					} else if id == "dev2" {
+						dev2Found = true
+					}
 				}
 			}
 			So(dev1Found, ShouldBeTrue)
 			So(dev2Found, ShouldBeTrue)
 
-			// 验证dispatcher处理结果
+			// Check dispatcher results using Tag["id"]
 			So(respBody.DispatcherResults, ShouldNotBeNil)
-			// 检查所有策略的结果中是否包含两个设备的点
 			dispatcherDevs := make(map[string]bool)
 			for _, strategyResult := range respBody.DispatcherResults {
 				for _, point := range strategyResult.Points {
-					dispatcherDevs[point.Device] = true
+					if id, ok := point.Tag["id"].(string); ok {
+						dispatcherDevs[id] = true
+					}
 				}
 			}
-			// 由于策略过滤规则可能会影响结果，这里只是验证能接收到dispatcher结果
-			t.Logf("Dispatcher处理结果中包含的设备: %v", dispatcherDevs)
+			t.Logf("Dispatcher处理结果中包含的设备 (based on Tag['id']): %v", dispatcherDevs)
 		})
 
 		Convey("Failure Case - Invalid Hex Payload (Odd Length)", func() {
 			reqBody := api.TestSectionRequest{
-				SectionConfig: map[string]interface{}{"size": 1}, // Minimal valid config
-				HexPayload:    "123",                             // Odd length
+				SectionConfig: map[string]interface{}{
+					"size": 1,
+					"Points": []map[string]interface{}{ // Minimal valid Points
+						{"Tag": map[string]interface{}{"id": "\"min\""}, "Field": map[string]interface{}{"f": "Bytes[0]"}},
+					},
+				},
+				HexPayload: "123", // Odd length
 			}
 			w, err := performTestSectionRequest(t, r, reqBody)
 			So(err, ShouldBeNil)
@@ -157,13 +166,14 @@ func TestTestSectionHandler(t *testing.T) {
 			So(errResp["error"], ShouldContainSubstring, "length must be even")
 		})
 
-		Convey("Failure Case - Invalid Section Config", func() {
+		Convey("Failure Case - Invalid Section Config (Missing Size)", func() {
 			reqBody := api.TestSectionRequest{
 				SectionConfig: map[string]interface{}{
-					// 缺少必要的size字段
-					"Dev": map[string]interface{}{
-						"dev1": map[string]interface{}{
-							"val": "Bytes[0]",
+					// Missing "size" field
+					"Points": []map[string]interface{}{
+						{
+							"Tag":   map[string]interface{}{"id": "\"dev1\""},
+							"Field": map[string]interface{}{"val": "Bytes[0]"},
 						},
 					},
 				},
@@ -171,22 +181,24 @@ func TestTestSectionHandler(t *testing.T) {
 			}
 			w, err := performTestSectionRequest(t, r, reqBody)
 			So(err, ShouldBeNil)
-			// 修改期望的状态码，实际上这种错误会返回500
-			So(w.Code, ShouldEqual, http.StatusInternalServerError)
+			// Building the parser/sequence should fail early
+			So(w.Code, ShouldEqual, http.StatusBadRequest) // Expect Bad Request because parser creation fails
 
 			var errResp map[string]string
 			err = json.Unmarshal(w.Body.Bytes(), &errResp)
 			So(err, ShouldBeNil)
-			So(errResp["error"], ShouldContainSubstring, "Error processing section")
+			// Check for parser creation failure message
+			So(errResp["error"], ShouldContainSubstring, "Failed to create parser")
 		})
 
 		Convey("Failure Case - Processing Error (Data Too Short)", func() {
 			reqBody := api.TestSectionRequest{
 				SectionConfig: map[string]interface{}{
 					"size": 2, // Requires 2 bytes
-					"Dev": map[string]interface{}{
-						"dev1": map[string]interface{}{
-							"val": "Bytes[0]",
+					"Points": []map[string]interface{}{ // Use Points
+						{
+							"Tag":   map[string]interface{}{"id": "\"dev1\""},
+							"Field": map[string]interface{}{"val": "Bytes[0]"},
 						},
 					},
 				},
@@ -194,13 +206,23 @@ func TestTestSectionHandler(t *testing.T) {
 			}
 			w, err := performTestSectionRequest(t, r, reqBody)
 			So(err, ShouldBeNil)
-			So(w.Code, ShouldEqual, http.StatusInternalServerError)
+			// Processing error now returns 200 OK but with error details inside the response body
+			So(w.Code, ShouldEqual, http.StatusOK)
 
-			var errResp map[string]interface{} // Use interface{} for mixed types
-			err = json.Unmarshal(w.Body.Bytes(), &errResp)
+			var respBody api.TestSectionResponse
+			err = json.Unmarshal(w.Body.Bytes(), &respBody)
 			So(err, ShouldBeNil)
-			So(errResp["error"], ShouldContainSubstring, "Error processing section")
-			So(errResp["error"], ShouldContainSubstring, "数据不足") // Check for underlying error message
+
+			// Check for the processing error within the steps
+			foundError := false
+			for _, step := range respBody.ProcessingSteps {
+				if step.Error != "" {
+					So(step.Error, ShouldContainSubstring, "数据不足") // Check for underlying error message
+					foundError = true
+					break
+				}
+			}
+			So(foundError, ShouldBeTrue)
 		})
 
 		Convey("Success Case - With InitialVars", func() {
@@ -208,9 +230,10 @@ func TestTestSectionHandler(t *testing.T) {
 				SectionConfig: map[string]interface{}{
 					"desc": "UseInitialVar",
 					"size": 1,
-					"Dev": map[string]interface{}{
-						"dev1": map[string]interface{}{
-							"output": "Bytes[0]",
+					"Points": []map[string]interface{}{ // Use Points
+						{
+							"Tag":   map[string]interface{}{"id": "\"dev1\""},
+							"Field": map[string]interface{}{"output": "Bytes[0]"},
 						},
 					},
 				},
@@ -227,9 +250,8 @@ func TestTestSectionHandler(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			So(len(respBody.Points), ShouldBeGreaterThan, 0)
-			// 验证有初始变量
 			So(respBody.FinalVars, ShouldContainKey, "start_value")
-			startVal, ok := respBody.FinalVars["start_value"].(float64)
+			startVal, ok := respBody.FinalVars["start_value"].(float64) // JSON numbers are float64
 			So(ok, ShouldBeTrue)
 			So(startVal, ShouldEqual, 10)
 		})
@@ -239,9 +261,10 @@ func TestTestSectionHandler(t *testing.T) {
 				SectionConfig: map[string]interface{}{
 					"desc": "UseGlobalMap",
 					"size": 1,
-					"Dev": map[string]interface{}{
-						"dev1": map[string]interface{}{
-							"output": "Bytes[0]",
+					"Points": []map[string]interface{}{ // Use Points
+						{
+							"Tag":   map[string]interface{}{"id": "\"dev1\""},
+							"Field": map[string]interface{}{"output": "Bytes[0]"},
 						},
 					},
 				},
@@ -258,7 +281,7 @@ func TestTestSectionHandler(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			So(len(respBody.Points), ShouldBeGreaterThan, 0)
-			// GlobalMap values are not directly in FinalVars unless set via V()
+			// GlobalMap values are not directly in FinalVars unless explicitly set by an expression
 			So(respBody.FinalVars, ShouldNotContainKey, "multiplier")
 		})
 
@@ -267,9 +290,10 @@ func TestTestSectionHandler(t *testing.T) {
 				SectionConfig: map[string]interface{}{
 					"desc": "UseBothContexts",
 					"size": 1,
-					"Dev": map[string]interface{}{
-						"dev1": map[string]interface{}{
-							"output": "Bytes[0]",
+					"Points": []map[string]interface{}{ // Use Points
+						{
+							"Tag":   map[string]interface{}{"id": "\"dev1\""},
+							"Field": map[string]interface{}{"output": "Bytes[0]"},
 						},
 					},
 				},
@@ -287,9 +311,8 @@ func TestTestSectionHandler(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			So(len(respBody.Points), ShouldBeGreaterThan, 0)
-			// 验证初始变量依然存在
 			So(respBody.FinalVars, ShouldContainKey, "offset")
-			offsetVal, ok := respBody.FinalVars["offset"].(float64)
+			offsetVal, ok := respBody.FinalVars["offset"].(float64) // JSON numbers are float64
 			So(ok, ShouldBeTrue)
 			So(offsetVal, ShouldEqual, 5)
 		})

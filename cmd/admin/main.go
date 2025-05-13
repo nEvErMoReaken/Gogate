@@ -17,7 +17,7 @@ import (
 const (
 	MongoDBConnectionString = "mongodb://10.17.191.106:27017"
 	// MongoDBConnectionString = "mongodb+srv://crissangelers:bVHh6MDNlExC9hBS@cluster0.cbuxbsn.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
-	DatabaseName = "gateway_admin"
+	DatabaseName = "gateway_admin_v2"
 	ServerPort   = "8080"
 )
 
