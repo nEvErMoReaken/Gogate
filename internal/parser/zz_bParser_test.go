@@ -766,12 +766,11 @@ func TestByteParserProcessing(t *testing.T) {
 
 				// 首次处理
 				current := parser.Nodes[0]
-				var out []*pkg.Point
 				var next BProcessor
 				var processErr error
 
 				// 第一次处理
-				out, next, processErr = current.ProcessWithBytes(ctx, state, out)
+				next, processErr = current.ProcessWithBytes(ctx, state)
 				So(processErr, ShouldBeNil)
 
 				// 期望行为：Route方法应该返回自身以支持循环
@@ -794,21 +793,16 @@ func TestByteParserProcessing(t *testing.T) {
 			So(parser, ShouldNotBeNil)
 
 			inputData := []byte{0x01, 0x02, 0xAA}
-			out := make([]*pkg.Point, 0, 5)
 			env := &BEnv{
 				Bytes:     nil,
 				Vars:      make(map[string]interface{}),
 				GlobalMap: parser.Env.GlobalMap,
-				Points: []pkg.Point{
-					{Tag: make(map[string]interface{}), Field: make(map[string]interface{})},
-					{Tag: make(map[string]interface{}), Field: make(map[string]interface{})},
-					{Tag: make(map[string]interface{}), Field: make(map[string]interface{})},
-				},
+				Points:    make([]*pkg.Point, 0),
 			}
 			byteState := NewByteState(env, parser.LabelMap, parser.Nodes)
 			byteState.Data = inputData
 
-			_, _, processErr := parser.Nodes[0].ProcessWithBytes(ctx, byteState, out)
+			_, processErr := parser.Nodes[0].ProcessWithBytes(ctx, byteState)
 
 			So(processErr, ShouldNotBeNil)
 			So(processErr.Error(), ShouldContainSubstring, "数据不足")
