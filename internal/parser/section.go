@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"gateway/internal/pkg"
-	"maps"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -67,22 +66,22 @@ type Skip struct {
 	index int // 当前 Section 的索引
 }
 
-func (s *Skip) ProcessWithBytes(ctx context.Context, state *ByteState, out []*pkg.Point) ([]*pkg.Point, BProcessor, error) {
+func (s *Skip) ProcessWithBytes(ctx context.Context, state *ByteState) (BProcessor, error) {
 	// I. 检查数据是否足够
 	end := state.Cursor + s.Skip
 	if end > len(state.Data) {
 		// 返回原始 out，因为没有修改
-		return out, nil, fmt.Errorf("数据不足，需要 %d 字节 (cursor: %d, end: %d, total: %d)",
+		return nil, fmt.Errorf("数据不足，需要 %d 字节 (cursor: %d, end: %d, total: %d)",
 			s.Skip, state.Cursor, end, len(state.Data))
 	}
 	// II. 移动光标
 	state.Cursor = end
 	next, err := s.Route(ctx, state.Nodes)
 	// 返回原始 out 和 next 节点/错误
-	return out, next, err
+	return next, err
 }
 
-func (s *Skip) ProcessWithRing(ctx context.Context, state *StreamState, out []*pkg.Point) (BProcessor, error) {
+func (s *Skip) ProcessWithRing(ctx context.Context, state *StreamState) (BProcessor, error) {
 
 	rawPlace := pkg.ByteCache.Get(uint32(s.Skip))
 	err := state.ring.ReadFull(rawPlace)
@@ -195,11 +194,10 @@ func BuildSequence(configList []map[string]any) ([]BProcessor, map[string]int, e
 type BProcessor interface {
 	// ProcessWithBytes 使用离散字节数组处理数据
 	// 返回修改后的输出切片、下一个要处理的 BProcessor 和错误
-	ProcessWithBytes(ctx context.Context, state *ByteState, out []*pkg.Point) ([]*pkg.Point, BProcessor, error)
+	ProcessWithBytes(ctx context.Context, state *ByteState) (BProcessor, error)
 	// ProcessWithRing 使用 RingBuffer 流式处理数据
 	// 返回修改后的输出切片、下一个要处理的 BProcessor 和错误
-	// TODO: ProcessWithRing 也需要修改以返回 out
-	ProcessWithRing(ctx context.Context, state *StreamState, out []*pkg.Point) (BProcessor, error)
+	ProcessWithRing(ctx context.Context, state *StreamState) (BProcessor, error)
 	// String 返回处理器的字符串表示
 	String() string
 }
@@ -210,7 +208,7 @@ func (s *Section) String() string {
 	return fmt.Sprintf("Section: Desc: %s, Size: %d", s.Desc, s.Size)
 }
 
-func (s *Section) ProcessWithRing(ctx context.Context, state *StreamState, out []*pkg.Point) (BProcessor, error) {
+func (s *Section) ProcessWithRing(ctx context.Context, state *StreamState) (BProcessor, error) {
 
 	// ----校验，环境准备----
 	if s.Size <= 0 {
@@ -231,15 +229,6 @@ func (s *Section) ProcessWithRing(ctx context.Context, state *StreamState, out [
 	_, err = expr.Run(s.Program, state.Env)
 	if err != nil {
 		return nil, fmt.Errorf("执行表达式失败: %w", err)
-	}
-	// f. 组装数据点 (克隆 Fields)
-	for _, point := range state.Env.Points {
-		point := &pkg.Point{
-			Tag:   maps.Clone(point.Tag),
-			Field: maps.Clone(point.Field),
-		}
-		out = append(out, point)
-		state.Env.ResetPoints()
 	}
 
 	// ----- 路由 ----
@@ -394,7 +383,7 @@ func (s *Section) Route(ctx context.Context, env *BEnv, labelMap map[string]int,
 	}
 }
 
-func (s *Section) ProcessWithBytes(ctx context.Context, state *ByteState, out []*pkg.Point) ([]*pkg.Point, BProcessor, error) {
+func (s *Section) ProcessWithBytes(ctx context.Context, state *ByteState) (BProcessor, error) {
 	log := pkg.LoggerFromContext(ctx)
 	// I. 检查数据是否足够
 	end := state.Cursor + s.Size
@@ -403,7 +392,7 @@ func (s *Section) ProcessWithBytes(ctx context.Context, state *ByteState, out []
 	if end > len(state.Data) {
 		// 返回原始 out，因为没有修改
 		log.Error("数据不足", zap.Int("size", s.Size), zap.Int("cursor", state.Cursor), zap.Int("data_len", len(state.Data)))
-		return out, nil, fmt.Errorf("数据不足，需要 %d 字节 (cursor: %d, end: %d, total: %d)",
+		return nil, fmt.Errorf("数据不足，需要 %d 字节 (cursor: %d, end: %d, total: %d)",
 			s.Size, state.Cursor, end, len(state.Data))
 	}
 
@@ -417,22 +406,8 @@ func (s *Section) ProcessWithBytes(ctx context.Context, state *ByteState, out []
 
 	_, err := expr.Run(s.Program, state.Env)
 	if err != nil {
-		return nil, nil, fmt.Errorf("执行表达式失败: %w", err)
+		return nil, fmt.Errorf("执行表达式失败: %w", err)
 	}
-
-	// IV. 组装数据点 (克隆 Fields)
-	for _, point := range state.Env.Points {
-		// 只有当Point包含非空的Tag或Field时才添加到输出
-		if len(point.Tag) > 0 || len(point.Field) > 0 {
-			point := &pkg.Point{
-				Tag:   maps.Clone(point.Tag),
-				Field: maps.Clone(point.Field),
-			}
-			out = append(out, point)
-		}
-	}
-	// 重置所有点
-	state.Env.ResetPoints()
 
 	// 在所有 Dev 处理完成后移动光标
 	state.Cursor = end
@@ -456,8 +431,8 @@ func (s *Section) ProcessWithBytes(ctx context.Context, state *ByteState, out []
 		log.Debug("路由结果为 nil，处理将结束")
 	}
 
-	// 返回最终修改后的 out, next 节点和错误状态
-	return out, next, err
+	// 返回最终修改后的 next 节点和错误状态
+	return next, err
 }
 
 // getIntVar 从 VarStore 获取整数变量值。

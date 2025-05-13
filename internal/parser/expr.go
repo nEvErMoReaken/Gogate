@@ -4,6 +4,8 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"hash/fnv"
+	"sort"
 	"strings"
 	"sync"
 
@@ -22,8 +24,11 @@ type BEnv struct {
 	Bytes []byte
 	// Vars 存储由 V() 函数设置的运行时变量
 	Vars map[string]any
-	// Points 是当前 Section 映射后的点, 最多支持 3 个点， 不允许用户直接修改 Points
-	Points []pkg.Point
+	// Points 是本帧所有映射后的点的集合，Program在此基础上增添
+	Points []*pkg.Point
+
+	// PointsIndex 是 Points 的索引，用于快速查找
+	PointsIndex map[uint64]int
 	// GlobalMap 存储全局配置变量
 	GlobalMap map[string]any
 }
@@ -46,9 +51,54 @@ func (e *BEnv) Reset() {
 // 输入: 无
 // 输出: 无
 func (e *BEnv) ResetPoints() {
-	for i := 0; i < len(e.Points); i++ {
-		e.Points[i].Reset()
+
+	// 这里不再释放，交给dispatcher释放，减少拷贝
+	// for _, k := range e.Points {
+	// 	pkg.PointPoolInstance.Put(k)
+	// }
+	e.Points = e.Points[:0]
+}
+
+// S 在 Points 映射中设置一个键值对，并返回 nil。
+// 这是 expr 表达式中用于设置输出点的函数。
+//
+// 输入:
+//   - key: 点名
+//   - val: 点值
+
+func (e *BEnv) S(tag map[string]any, field map[string]any) any {
+	hash := makeFNVKey(tag)
+	if _, ok := e.PointsIndex[hash]; ok {
+		// 如果点已经存在，则追加其 Field
+		for k, v := range field {
+			e.Points[e.PointsIndex[hash]].Field[k] = v
+		}
+		return nil
 	}
+	// 如果点不存在，则创建新点
+	point := pkg.PointPoolInstance.Get()
+	point.Tag = tag
+	point.Field = field
+	e.Points = append(e.Points, point)
+	e.PointsIndex[hash] = len(e.Points) - 1
+	return nil
+}
+
+func makeFNVKey(tag map[string]any) uint64 {
+	keys := make([]string, 0, len(tag))
+	for k := range tag {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	h := fnv.New64a()
+	for _, k := range keys {
+		h.Write([]byte(k))
+		h.Write([]byte("="))
+		h.Write([]byte(fmt.Sprint(tag[k])))
+		h.Write([]byte(";"))
+	}
+	return h.Sum64()
 }
 
 // V 在 Vars 映射中设置一个键值对，并返回 nil。
@@ -62,64 +112,6 @@ func (e *BEnv) ResetPoints() {
 //   - any: 总是返回 nil
 func (e *BEnv) V(key string, val any) any {
 	e.Vars[key] = val
-	return nil // Return nil
-}
-
-// T1 用于设置第一个点的 Tag
-// 这是 expr 表达式中用于设置输出字段的函数。
-//
-// 输入:
-//   - key: 字段名
-//   - val: 字段值
-//
-// 输出:
-//   - any: 总是返回 nil
-func (e *BEnv) T1(key string, val any) any {
-	e.Points[0].Tag[key] = val
-	return nil // Return nil
-}
-
-// T2 用于设置第二个点的 Tag
-// 这是 expr 表达式中用于设置输出字段的函数。
-//
-// 输入:
-//   - key: 字段名
-//   - val: 字段值
-
-func (e *BEnv) T2(key string, val any) any {
-	e.Points[1].Tag[key] = val
-	return nil // Return nil
-}
-
-// T3 用于设置第三个点的 Tag
-func (e *BEnv) T3(key string, val any) any {
-	e.Points[2].Tag[key] = val
-	return nil // Return nil
-}
-
-// F1 用于设置第一个点的 Field
-// 这是 expr 表达式中用于设置输出字段的函数。
-//
-// 输入:
-//   - key: 字段名
-//   - val: 字段值
-//
-// 输出:
-//   - any: 总是返回 nil
-func (e *BEnv) F1(key string, val any) any {
-	e.Points[0].Field[key] = val
-	return nil // Return nil
-}
-
-// F2 用于设置第二个点的 Field
-func (e *BEnv) F2(key string, val any) any {
-	e.Points[1].Field[key] = val
-	return nil // Return nil
-}
-
-// F3 用于设置第三个点的 Field
-func (e *BEnv) F3(key string, val any) any {
-	e.Points[2].Field[key] = val
 	return nil // Return nil
 }
 
@@ -192,18 +184,31 @@ func BuildPointsProgramSource(points []PointExpression) string {
 		return "" // 如果没有字段定义，返回空字符串
 	}
 	var calls []string
-	for i, point := range points {
+	for _, point := range points {
 		if len(point.Field) > 3 {
 			break
 		}
-		// 为每个 Field 创建单独的函数调用
-		for fieldName, fieldExpr := range point.Field {
-			calls = append(calls, fmt.Sprintf("F%d(%q, %v)", i+1, fieldName, fieldExpr))
+
+		// 构建正确的expr map语法
+		tagMap := "{"
+		for k, v := range point.Tag {
+			tagMap += fmt.Sprintf("%q: %s, ", k, v)
 		}
-		// 为每个 Tag 创建单独的函数调用
-		for tagName, tagExpr := range point.Tag {
-			calls = append(calls, fmt.Sprintf("T%d(%q, %v)", i+1, tagName, tagExpr))
+		if len(point.Tag) > 0 {
+			tagMap = tagMap[:len(tagMap)-2] // 移除末尾的逗号和空格
 		}
+		tagMap += "}"
+
+		fieldMap := "{"
+		for k, v := range point.Field {
+			fieldMap += fmt.Sprintf("%q: %s, ", k, v)
+		}
+		if len(point.Field) > 0 {
+			fieldMap = fieldMap[:len(fieldMap)-2] // 移除末尾的逗号和空格
+		}
+		fieldMap += "}"
+
+		calls = append(calls, fmt.Sprintf("S(%s, %s)", tagMap, fieldMap))
 	}
 	// 添加最终的 nil 返回值
 	return strings.Join(calls, "; ") + ";"

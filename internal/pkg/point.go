@@ -66,7 +66,8 @@ func NewPointPool() *PointPool {
 		pool: sync.Pool{
 			New: func() interface{} {
 				return &Point{
-					Field: make(map[string]interface{}),
+					Tag:   make(map[string]any),
+					Field: make(map[string]any),
 				}
 			},
 		},
@@ -82,14 +83,7 @@ func (p *PointPool) Get() *Point {
 // Put 将 Point 对象放回对象池
 func (p *PointPool) Put(point *Point) {
 
-	// 清空字段
-	for k := range point.Field {
-		delete(point.Field, k)
-	}
-	// 清空Tag
-	for k := range point.Tag {
-		delete(point.Tag, k)
-	}
+	point.Reset()
 	// 将对象放回池中
 	p.pool.Put(point)
 }

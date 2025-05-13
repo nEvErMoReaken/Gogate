@@ -56,8 +56,15 @@ type StreamState struct {
 }
 
 func NewStreamState(ring *pkg.RingBuffer, labelMap map[string]int, nodes []BProcessor) *StreamState {
+	env := &BEnv{
+		Vars:        make(map[string]interface{}),
+		GlobalMap:   make(map[string]interface{}),
+		Points:      make([]*pkg.Point, 0),
+		PointsIndex: make(map[uint64]int),
+	}
 	return &StreamState{
 		ring:     ring,
+		Env:      env,
 		LabelMap: labelMap,
 		Nodes:    nodes,
 	}
@@ -145,13 +152,10 @@ func NewByteParser(ctx context.Context) (*ByteParser, error) {
 
 	// 3. 初始化 Env
 	env := BEnv{
-		GlobalMap: c.GlobalMap,
-		Vars:      make(map[string]interface{}), // 初始化 Vars map
-		Points: []pkg.Point{
-			{Tag: make(map[string]interface{}), Field: make(map[string]interface{})},
-			{Tag: make(map[string]interface{}), Field: make(map[string]interface{})},
-			{Tag: make(map[string]interface{}), Field: make(map[string]interface{})},
-		},
+		GlobalMap:   c.GlobalMap,
+		Vars:        make(map[string]interface{}), // 初始化 Vars map
+		Points:      make([]*pkg.Point, 0),
+		PointsIndex: make(map[uint64]int), // 初始化 PointsIndex map
 	}
 
 	// 4. 初始化 Section 链表
@@ -185,7 +189,6 @@ func (r *ByteParser) StartWithChan(dataChan chan []byte, sink pkg.Parser2Dispatc
 			logger.Info("StartWithChan received data", zap.Int("len", len(data)), zap.String("hex", hex.EncodeToString(data))) // 添加接收日志
 			// 1. 重置状态
 			byteState.Reset()
-			out := make([]*pkg.Point, 0, 10) // 修正：初始 len 为 0，cap 为 10
 			byteState.Data = data
 			processedNodeCount := 0 // 重置计数器
 
@@ -210,8 +213,8 @@ func (r *ByteParser) StartWithChan(dataChan chan []byte, sink pkg.Parser2Dispatc
 				logger.Info("StartWithChan processing node", zap.Int("index", nodeIndex), zap.Stringer("node", current)) // 添加节点处理日志
 				var tmp BProcessor                                                                                       // 声明 tmp 变量
 				var err error                                                                                            // 声明 err 变量
-				// 调用 ProcessWithBytes 并接收返回的 out, tmp, err
-				out, tmp, err = current.ProcessWithBytes(r.ctx, byteState, out)
+				// 调用 ProcessWithBytes 并接收返回的 tmp, err
+				tmp, err = current.ProcessWithBytes(r.ctx, byteState)
 				if err != nil {
 					// *** 记录详细错误信息 ***
 					logger.Error("ProcessWithBytes returned error, exiting StartWithChan",
@@ -233,12 +236,12 @@ func (r *ByteParser) StartWithChan(dataChan chan []byte, sink pkg.Parser2Dispatc
 				continue                        // 继续外层 for 循环等待下一数据
 			}
 			// --- 循环正常结束 ---
-			logger.Info("StartWithChan finished processing loop, preparing to send to sink", zap.Int("points_count", len(out))) // 添加发送前日志
+			logger.Info("StartWithChan finished processing loop, preparing to send to sink", zap.Int("points_count", len(byteState.Env.Points))) // 添加发送前日志
 			frameId := fmt.Sprintf("%06X", metrics.IncMsgProcessed("byteParser"))
 
 			sink <- &pkg.PointPackage{
 				FrameId: frameId,
-				Points:  out, // 发送最终的 out slice
+				Points:  byteState.Env.Points, // 发送最终的
 				Ts:      time.Now(),
 			}
 			logger.Info("StartWithChan sent result to sink", zap.String("frameId", frameId)) // 添加发送后日志
@@ -265,7 +268,6 @@ func (r *ByteParser) StartWithRingBuffer(ring *pkg.RingBuffer, sink pkg.Parser2D
 		case <-r.ctx.Done():
 			return nil
 		default:
-			out := make([]*pkg.Point, 10)
 			metrics.IncMsgReceived("byteParser")
 
 			// 1. 记录帧起始位置
@@ -284,7 +286,7 @@ func (r *ByteParser) StartWithRingBuffer(ring *pkg.RingBuffer, sink pkg.Parser2D
 					// 如果需要停止整个 parser，则 return ErrMaxNodesExceeded
 					return errors.New("死循环防护触发：处理节点数超过最大限制") // 跳出内部 for 循环，处理下一帧
 				}
-				tmp, err := current.ProcessWithRing(r.ctx, state, out)
+				tmp, err := current.ProcessWithRing(r.ctx, state)
 				if err != nil {
 					return err
 				}
@@ -300,7 +302,7 @@ func (r *ByteParser) StartWithRingBuffer(ring *pkg.RingBuffer, sink pkg.Parser2D
 			// 4. 发送聚合后的数据点
 			sink <- &pkg.PointPackage{
 				FrameId: frameId,
-				Points:  out,
+				Points:  state.Env.Points,
 				Ts:      time.Now(),
 			}
 
