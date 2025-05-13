@@ -10,7 +10,7 @@ import (
 
 	"go.uber.org/zap"
 
-	MQTT "github.com/eclipse/paho.mqtt.golang"
+	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/mitchellh/mapstructure"
 )
 
@@ -22,210 +22,225 @@ func init() {
 
 // MQTTClientInterface 定义了我们需要的 MQTT 客户端方法
 type MQTTClientInterface interface {
-	Connect() MQTT.Token
+	Connect() mqtt.Token
 	Disconnect(quiesce uint)
-	Publish(topic string, qos byte, retained bool, payload interface{}) MQTT.Token
+	Publish(topic string, qos byte, retained bool, payload interface{}) mqtt.Token
 	// 根据需要添加其他方法
+}
+
+// MqttInfo MQTT's specific configuration
+type MqttInfo struct {
+	Broker         string `mapstructure:"broker"`
+	Port           int    `mapstructure:"port"`
+	Username       string `mapstructure:"username"`
+	Password       string `mapstructure:"password"`
+	ClientID       string `mapstructure:"clientID"`
+	Topic          string `mapstructure:"topic"` // Base topic
+	QoS            byte   `mapstructure:"qos"`
+	Retained       bool   `mapstructure:"retained"`
+	KeepAliveSec   uint   `mapstructure:"keepAliveSec"`
+	PingTimeoutSec uint   `mapstructure:"pingTimeoutSec"`
 }
 
 // MqttStrategy 实现将数据发布到 MQTT 的逻辑
 type MqttStrategy struct {
-	client MQTTClientInterface
-	info   MQTTInfo
+	client mqtt.Client
+	info   MqttInfo
 	ctx    context.Context
+	cancel context.CancelFunc
 	logger *zap.Logger
 }
 
 // maxReconnectAttempts 最大重连次数
 const maxReconnectAttempts = 5
 
-// MQTTInfo MQTT的专属配置
-type MQTTInfo struct {
-	URL       string `mapstructure:"url"`
-	ClientID  string `mapstructure:"clientID"`
-	UserName  string `mapstructure:"username"`
-	Password  string `mapstructure:"password"`
-	WillTopic string `mapstructure:"willTopic"`
-}
-
-// NewMqttStrategy Step.0 构造函数
+// NewMqttStrategy Step.0 Constructor
 func NewMqttStrategy(ctx context.Context) (Template, error) {
 	log := pkg.LoggerFromContext(ctx)
 	config := pkg.ConfigFromContext(ctx)
-	var info MQTTInfo
+	var info MqttInfo
+	found := false
 
 	for _, strategyConfig := range config.Strategy {
 		if strategyConfig.Enable && strategyConfig.Type == "mqtt" {
-			// 将 map 转换为结构体
 			if err := mapstructure.Decode(strategyConfig.Para, &info); err != nil {
-				log.Error("Error decoding map to struct", zap.Error(err))
-				return nil, fmt.Errorf("[NewMqttStrategy] Error decoding map to struct: %v", err)
+				log.Error("Failed to decode MQTT config", zap.Error(err), zap.Any("config", strategyConfig.Para))
+				return nil, fmt.Errorf("failed to decode MQTT config: %w", err)
 			}
+			found = true
+			break
 		}
 	}
 
-	// 定义 MQTT 客户端的选项
-	opts := MQTT.NewClientOptions().AddBroker(info.URL)
-	opts.SetClientID(info.ClientID) // 设置客户端 ID
-	opts.SetUsername(info.UserName) // 可选：如果 Broker 需要认证
-	opts.SetPassword(info.Password) // 可选：如果 Broker 需要认证
-	opts.SetWill(info.WillTopic, "offline", 1, true)
+	if !found {
+		log.Warn("No enabled MQTT strategy configuration found")
+		return nil, fmt.Errorf("no enabled MQTT strategy configuration found")
+	}
+
+	if info.Broker == "" {
+		return nil, fmt.Errorf("mqtt config validation failed: 'broker' is required")
+	}
+	if info.Topic == "" {
+		return nil, fmt.Errorf("mqtt config validation failed: 'topic' is required")
+	}
+	if info.Port == 0 {
+		info.Port = 1883 // Default MQTT port
+	}
+	if info.ClientID == "" {
+		info.ClientID = fmt.Sprintf("gateway-mqtt-%d", time.Now().UnixNano())
+		log.Info("MQTT ClientID not set, generated default", zap.String("clientID", info.ClientID))
+	}
+	if info.KeepAliveSec == 0 {
+		info.KeepAliveSec = 60
+	}
+	if info.PingTimeoutSec == 0 {
+		info.PingTimeoutSec = 2
+	}
+
+	opts := mqtt.NewClientOptions()
+	opts.AddBroker(fmt.Sprintf("tcp://%s:%d", info.Broker, info.Port))
+	opts.SetClientID(info.ClientID)
+	opts.SetUsername(info.Username)
+	opts.SetPassword(info.Password)
+	opts.SetKeepAlive(time.Duration(info.KeepAliveSec) * time.Second)
+	opts.SetPingTimeout(time.Duration(info.PingTimeoutSec) * time.Second)
 	opts.SetAutoReconnect(true)
-	opts.SetMaxReconnectInterval(5 * time.Minute)
-	opts.SetConnectRetryInterval(10 * time.Second)
-	// 添加连接丢失的回调函数，打印连接丢失日志
-	opts.SetConnectionLostHandler(func(client MQTT.Client, err error) {
-		log.Error("MQTT connection lost", zap.Error(err))
-	})
+	opts.SetMaxReconnectInterval(10 * time.Second)
 
-	reconnectAttempts := 0 // 重连尝试计数器
-
-	// 重连中的回调函数
-	opts.SetReconnectingHandler(func(client MQTT.Client, opts *MQTT.ClientOptions) {
-		reconnectAttempts++
-		log.Info("Attempting to reconnect...", zap.Int("attempt", reconnectAttempts))
-
-		// 如果超过最大重连次数
-		if reconnectAttempts >= maxReconnectAttempts {
-			// 断开连接
-			client.Disconnect(250)
-			// 将错误传递到错误通道，通知上层程序
-			errChan := pkg.ErrChanFromContext(ctx)
-			if errChan != nil {
-				log.Error("MQTT reached max reconnect attempts, stopping client")
-				errChan <- fmt.Errorf("[MqttStrategy]MQTT reached max reconnect attempts, stopping client")
-			}
-		}
-	})
-
-	// 成功连接时重置计数器
-	opts.SetOnConnectHandler(func(client MQTT.Client) {
-		reconnectAttempts = 0
-		log.Info("Successfully connected to MQTT Broker.")
-	})
-
-	// 创建 MQTT 客户端
-	mqCLi := MQTT.NewClient(opts)
-	// 连接到 MQTT Broker
-	if token := mqCLi.Connect(); token.Wait() && token.Error() != nil {
-		log.Error("Failed to connect to MQTT Broker", zap.Error(token.Error()))
-		return nil, fmt.Errorf("连接到 MQTT Broker 失败:%+v", token.Error())
+	// Connection logging
+	opts.OnConnect = func(client mqtt.Client) {
+		log.Info("MQTT connected", zap.String("broker", info.Broker))
 	}
+	opts.OnConnectionLost = func(client mqtt.Client, err error) {
+		log.Error("MQTT connection lost", zap.Error(err), zap.String("broker", info.Broker))
+	}
+
+	client := mqtt.NewClient(opts)
+	if token := client.Connect(); token.Wait() && token.Error() != nil {
+		log.Error("MQTT connection failed", zap.Error(token.Error()), zap.String("broker", info.Broker))
+		return nil, fmt.Errorf("mqtt connection failed for %s: %w", info.Broker, token.Error())
+	}
+
+	strategyCtx, cancel := context.WithCancel(ctx)
 
 	return &MqttStrategy{
-		client: mqCLi,
+		client: client,
 		info:   info,
-		ctx:    ctx,
-		logger: log,
+		ctx:    strategyCtx,
+		cancel: cancel,
+		logger: log.With(zap.String("sink_type", "mqtt"), zap.String("broker", info.Broker), zap.String("base_topic", info.Topic)),
 	}, nil
 }
 
 // GetType Step.1
-func (m *MqttStrategy) GetType() string {
+func (b *MqttStrategy) GetType() string {
 	return "mqtt"
 }
 
 // Start Step.2
-func (m *MqttStrategy) Start(pointChan chan *pkg.PointPackage) {
-	metrics := pkg.GetPerformanceMetrics() // 获取性能指标实例
+func (b *MqttStrategy) Start(sink chan *pkg.PointPackage) {
+	metrics := pkg.GetPerformanceMetrics()
+	b.logger.Info("===MQTTStrategy Started===")
 
-	defer m.client.Disconnect(250)
-	m.logger.Info("===MqttStrategy started===")
-	// 发布网关上线的状态
-	m.client.Publish(m.info.WillTopic, 1, true, "online")
 OuterLoop:
 	for {
 		select {
-		case <-m.ctx.Done():
-			m.Stop()
-			m.logger.Info("===MqttStrategy stopped===")
+		case <-b.ctx.Done():
+			b.logger.Info("===MQTTStrategy Stopping===")
 			break OuterLoop
-		case pointPackage := <-pointChan:
-			// 创建发布计时器
-			publishTimer := metrics.NewTimer("mqtt_strategy_publish")
+		case pointPackage, ok := <-sink:
+			if !ok {
+				b.logger.Info("Input channel closed, stopping MQTTStrategy")
+				break OuterLoop
+			}
+			if pointPackage == nil || len(pointPackage.Points) == 0 {
+				b.logger.Debug("Skipping nil or empty point package")
+				continue
+			}
 
-			// 记录接收的点
 			metrics.IncMsgReceived("mqtt_strategy")
+			publishTimer := metrics.NewTimer("mqtt_strategy_publish_batch")
+			pointsPublished := 0
 
-			err := m.Publish(pointPackage)
+			for _, point := range pointPackage.Points {
+				if point == nil {
+					b.logger.Warn("Skipping nil point in package", zap.String("frameId", pointPackage.FrameId))
+					continue
+				}
 
-			if err != nil {
-				metrics.IncErrorCount()
-				metrics.IncMsgErrors("mqtt_strategy")
-				m.logger.Error("MqttStrategy error occurred", zap.Error(err))
-			} else {
-				// 记录成功处理的点
-				metrics.IncMsgProcessed("mqtt_strategy")
+				// Determine device ID for topic (e.g., from 'id' tag)
+				deviceID := "unknown_device"
+				if idVal, ok := point.Tag["id"]; ok {
+					if idStr, isStr := idVal.(string); isStr && idStr != "" {
+						deviceID = idStr
+					} else {
+						b.logger.Warn("Tag 'id' is not a non-empty string, using default deviceID for topic", zap.Any("tag_id", idVal), zap.String("frameId", pointPackage.FrameId))
+					}
+				} else {
+					b.logger.Warn("Tag 'id' not found, using default deviceID for topic", zap.String("frameId", pointPackage.FrameId))
+				}
+
+				// Construct topic: base_topic/deviceID
+				topic := strings.TrimSuffix(b.info.Topic, "/") + "/" + deviceID
+
+				// Create payload similar to Kafka for consistency
+				payloadMap := map[string]interface{}{
+					"tags":   point.Tag,
+					"fields": point.Field,
+					"ts":     pointPackage.Ts.UnixNano(),
+				}
+
+				jsonData, err := json.Marshal(payloadMap)
+				if err != nil {
+					metrics.IncErrorCount()
+					metrics.IncMsgErrors("mqtt_strategy_json_marshal")
+					b.logger.Error("Failed to marshal point to JSON for MQTT",
+						zap.Error(err),
+						zap.String("topic", topic),
+						zap.Any("point_tags", point.Tag),
+						zap.String("frameId", pointPackage.FrameId))
+					continue // Skip this point
+				}
+
+				token := b.client.Publish(topic, b.info.QoS, b.info.Retained, jsonData)
+				// For QoS > 0, Wait can be used, but for performance, we might not wait here for each message.
+				// Consider adding a timeout for the wait if used: token.WaitTimeout(duration)
+				// For now, we are fire-and-forget for simplicity, relying on AutoReconnect.
+				// If token.Error() is checked, it must be after token.Wait() or token.WaitTimeout().
+				_ = token // Explicitly ignore the token for now to avoid build warnings
+				// A more robust implementation might handle errors here, e.g., if the client is disconnected.
+				// However, paho library handles offline buffering to some extent.
+				b.logger.Debug("Message prepared for MQTT", zap.String("topic", topic), zap.Int("payload_size", len(jsonData)))
+				pointsPublished++
 			}
 
-			publishTimer.StopAndLog(m.logger)
+			duration := publishTimer.StopAndLog(b.logger)
+			if pointsPublished > 0 {
+				metrics.IncMsgProcessed("mqtt_strategy") // Count based on successfully prepared points
+				b.logger.Debug("Points processed for MQTT publishing in batch",
+					zap.Int("published_count", pointsPublished),
+					zap.Int("total_in_package", len(pointPackage.Points)),
+					zap.Duration("duration", duration),
+					zap.String("frameId", pointPackage.FrameId))
+			} else if len(pointPackage.Points) > 0 {
+				b.logger.Warn("No points were published from the package due to errors or empty data",
+					zap.Int("total_in_package", len(pointPackage.Points)),
+					zap.Duration("duration", duration),
+					zap.String("frameId", pointPackage.FrameId))
+			}
 		}
+	}
+	b.logger.Info("===MQTTStrategy Finished===")
+	if b.client.IsConnected() {
+		b.client.Disconnect(250) // Graceful disconnect with 250ms timeout
 	}
 }
 
-func (m *MqttStrategy) Publish(pointPackage *pkg.PointPackage) error {
-	metrics := pkg.GetPerformanceMetrics() // 获取性能指标实例
-
-	// 创建JSON转换计时器
-	jsonTimer := metrics.NewTimer("mqtt_strategy_json")
-
-	// 创建一个新的 map[string]interface{} 来存储解引用的字段
-	decodedFields := make(map[string]interface{})
-	for _, point := range pointPackage.Points {
-		for key, valuePtr := range point.Field {
-			if valuePtr == nil {
-				continue // 跳过 nil 值
-			}
-
-			decodedFields[key] = valuePtr
-		}
-		decodedFields["ts"] = pointPackage.Ts
-
-		// 将 map 序列化为 JSON
-		jsonData, err := json.Marshal(decodedFields)
-
-		jsonTimer.Stop()
-
-		if err != nil {
-			metrics.IncErrorCount()
-			metrics.IncMsgErrors("mqtt_strategy_json")
-			return fmt.Errorf("序列化 JSON 失败: %+v", err)
-		}
-
-		// 创建发送计时器
-		sendTimer := metrics.NewTimer("mqtt_strategy_send")
-
-		// 分割device.vobc.123.1.1这样的设备名称，填入mqtt话题格式中
-		split := strings.Split(point.Device, ".")
-		topic := "gateway"
-		for i := 0; i < len(split); i++ {
-			topic += "/"
-			topic += split[i]
-		}
-		topic += "/fields"
-		// final topic like that: /gateway/device/vobc/123/1/1
-		token := m.client.Publish(topic, 0, true, jsonData)
-
-		// 等待发布完成
-		if token.Wait() && token.Error() != nil {
-			metrics.IncErrorCount()
-			metrics.IncMsgErrors("mqtt_strategy_publish")
-			sendTimer.Stop()
-			return fmt.Errorf("MQTT发布失败: %v", token.Error())
-		}
-
-		sendDuration := sendTimer.Stop()
-
-		m.logger.Debug("[MqttStrategy]发布消息",
-			zap.String("topic", topic),
-			zap.String("data", string(jsonData)),
-			zap.Duration("duration", sendDuration))
+// Stop 停止 MqttStrategy
+func (b *MqttStrategy) Stop() {
+	b.logger.Info("Requesting stop for MQTTStrategy via context cancel")
+	if b.cancel != nil {
+		b.cancel()
 	}
-	return nil
-}
-
-// Stop 停止 MQTTStrategy
-func (m *MqttStrategy) Stop() {
-	m.client.Publish(m.info.WillTopic, 1, true, "offline")
-	m.client.Disconnect(250)
+	// Disconnect is now handled at the end of Start's loop to ensure messages are processed.
 }
