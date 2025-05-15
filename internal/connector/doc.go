@@ -1,43 +1,11 @@
 /*
-Package connector 主要提供了与上游数据源连接相关的代码逻辑。
+Package connector 提供了 GoGate 数据网关的数据接入和连接管理功能。
 
-connector.template.go中为主接口，负责建立连接、监听数据源中的变化，并使用合适的解析器
-将数据进行转换以便后续处理。
-
-可以选择的连接器包括：（可能有些连接器还未实现）
-
-- mqtt
-
-- tcp(server|client)
-
-- udp
-
-- sql
-
-- nosql
-
-本包包含：
-
-- Template 接口：定义连接、断开连接和接收数据的方法。
-- 工厂函数：为各种数据源创建特定连接器的实例。
-- 具体连接器的实现：如 mqtt、tcp、udp 等。
-
-使用示例：
-
-	// 实现 Template 接口
-	type MyConnector struct{}
-
-	func (c *MyConnector) Start(chan pkg.DataSource) error {
-		// 连接数据源
-		return nil
-	}
-
-	func (c *MyConnector) GetType() string {
-		return "stream"
-	}
-
-	init() {
-		Register("myconnector", NewMyConnector)
-	}
+本包定义了各种类型的连接器接口和实现，用于从不同的数据源（如 TCP/UDP 服务、
+HTTP 端点、消息队列等）接收原始数据流。它是数据进入网关的第一站。
+主要职责包括：
+  - 监听指定端口或连接到远程服务。
+  - 管理客户端连接的生命周期。
+  - 将接收到的原始字节流传递给上层（如 parser 包）进行解析。
 */
 package connector

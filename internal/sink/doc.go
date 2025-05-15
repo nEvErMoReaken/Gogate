@@ -39,4 +39,12 @@ strategy 接口定义了下游数据源的发送策略，包括：
 	func (b *MyStrategy) Start() {
 	}
 */
+// Package sink 定义了 GoGate 数据网关中数据处理的最终环节和数据输出目标。
+//
+// 本包接收来自 parser 包或 dispatcher 包的结构化数据点 (pkg.PointPackage)，
+// 并根据配置将其发送到一个或多个目的地。它也可能包含数据过滤、转换或
+// 批量处理等策略。主要职责包括：
+//   - 实现与各种外部存储或服务（如 InfluxDB、控制台输出、HTTP API）的集成。
+//   - 根据用户配置的过滤规则筛选数据。
+//   - 高效地将数据点写入目标系统。
 package sink

@@ -6,8 +6,8 @@ import (
 	"time"
 )
 
-// RingBuffer 是一个单线程懒汉式环形缓冲区
-// 优化场景：单协程消费，懒汉式读取数据源
+// RingBuffer 是一个为单协程消费和懒汉式数据源读取优化的单线程环形缓冲区。
+// 它从一个 io.Reader 中读取数据，并允许消费者按需读取。
 
 type RingBuffer struct {
 	buf      []byte
@@ -25,7 +25,17 @@ var (
 	ErrSrcNotSet       = errors.New("数据源未设置")
 )
 
-// NewRingBuffer 创建一个环形缓冲区
+// ErrSizeNotPowerOf2 表示在创建 RingBuffer 时，提供的大小不是2的幂。
+
+// NewRingBuffer 创建并返回一个具有指定大小的新 RingBuffer 实例。
+//
+// 输入:
+//   - src: io.Reader，数据源
+//   - size: uint32，缓冲区大小（必须为2的幂）
+//
+// 输出:
+//   - *RingBuffer: 新的环形缓冲区实例
+//   - error: 错误信息（如 size 非2的幂则返回 ErrSizeNotPowerOf2）
 func NewRingBuffer(src io.Reader, size uint32) (*RingBuffer, error) {
 	if size&(size-1) != 0 {
 		return nil, ErrSizeNotPowerOf2
@@ -37,6 +47,8 @@ func NewRingBuffer(src io.Reader, size uint32) (*RingBuffer, error) {
 	}, nil
 }
 
+// ErrSrcNotSet 表示 RingBuffer 的数据源 (io.Reader) 未被设置或为 nil。
+
 // isEmpty 判断缓冲区是否为空
 func (r *RingBuffer) isEmpty() bool {
 	return r.readPos == r.writePos
@@ -45,20 +57,6 @@ func (r *RingBuffer) isEmpty() bool {
 // isFull 判断缓冲区是否已满
 func (r *RingBuffer) isFull() bool {
 	return (r.writePos+1)&(r.ringSize-1) == r.readPos
-}
-
-// availableWrite 计算环形缓冲区可写入的空间大小
-func (r *RingBuffer) availableWrite() uint32 {
-	if r.isFull() {
-		return 0
-	}
-
-	if r.writePos >= r.readPos {
-		// 写在读后面，可用空间 = 缓冲区大小 - (写指针 - 读指针) - 1
-		return r.ringSize - (r.writePos - r.readPos) - 1
-	}
-	// 写在读前面，可用空间 = 读指针 - 写指针 - 1
-	return r.readPos - r.writePos - 1
 }
 
 // continuousWriteSpace 计算从当前写入位置开始的连续可写入空间
@@ -86,7 +84,17 @@ func (r *RingBuffer) continuousWriteSpace() (uint32, uint32) {
 	}
 }
 
-// Read 从环形缓冲区读取数据
+// Read 从 RingBuffer 中读取最多 len(p) 字节的数据到 p。
+//
+// 输入:
+//   - p: []byte，目标缓冲区
+//
+// 输出:
+//   - int: 实际读取的字节数
+//   - error: 错误信息（如 io.EOF、ErrSrcNotSet 等）
+//
+// 如果缓冲区为空，它会尝试从底层数据源填充数据。
+// 如果在填充后仍然没有数据可读，它可能会返回 io.EOF 或在填充期间发生的其他错误。
 func (r *RingBuffer) Read(p []byte) (int, error) {
 	if r.src == nil {
 		return 0, ErrSrcNotSet
@@ -182,7 +190,17 @@ func (r *RingBuffer) fill() error {
 	return io.ErrNoProgress
 }
 
-// ReadFull 读取确切的len(p)字节到p
+// ReadFull 从 RingBuffer 中读取确切 len(p) 字节的数据到 p。
+//
+// 输入:
+//   - p: []byte，目标缓冲区
+//
+// 输出:
+//   - error: 错误信息（如 io.ErrUnexpectedEOF、io.ErrNoProgress 等）
+//
+// 它会持续尝试读取，直到 p 被填满，或遇到错误（非 io.EOF），或发生超时。
+// 如果在填满 p 之前数据源结束 (io.EOF)，它将返回 io.ErrUnexpectedEOF。
+// 如果在超时内没有读取到任何数据，它会返回 io.ErrNoProgress。
 func (r *RingBuffer) ReadFull(p []byte) error {
 	startTime := time.Now()
 	timeout := 500 * time.Millisecond
@@ -219,17 +237,34 @@ func (r *RingBuffer) ReadFull(p []byte) error {
 	return nil
 }
 
-// ReadPos 返回读指针
+// ReadPos 返回当前 RingBuffer 的内部读取位置（逻辑指针）。
+//
+// 输入: 无
+// 输出:
+//   - uint32: 当前读取指针
 func (r *RingBuffer) ReadPos() uint32 {
 	return r.readPos
 }
 
-// WritePos 返回写指针
+// WritePos 返回当前 RingBuffer 的内部写入位置（逻辑指针）。
+//
+// 输入: 无
+// 输出:
+//   - uint32: 当前写入指针
 func (r *RingBuffer) WritePos() uint32 {
 	return r.writePos
 }
 
-// Snapshot 返回从 start 到 end 的拷贝（环形处理）
+// Snapshot 返回 RingBuffer 中从逻辑 start 位置到逻辑 end 位置的数据的拷贝。
+// 此方法会正确处理环形边界，即使 end < start (表示数据环绕)。
+// 注意：此方法创建数据的拷贝，可能会有性能开销。
+//
+// 输入:
+//   - start: uint32，起始逻辑位置
+//   - end: uint32，结束逻辑位置
+//
+// 输出:
+//   - []byte: 拷贝的数据切片
 func (r *RingBuffer) Snapshot(start, end uint32) []byte {
 	var result []byte
 	if end >= start {
@@ -249,7 +284,11 @@ func (r *RingBuffer) Snapshot(start, end uint32) []byte {
 
 // ======= 保留方法 ========
 
-// Len 获取环形缓冲区中可读取的数据量
+// Len 返回 RingBuffer 中当前可供读取的数据字节数。
+//
+// 输入: 无
+// 输出:
+//   - uint32: 可读取的数据字节数
 func (r *RingBuffer) Len() uint32 {
 	if r.writePos >= r.readPos {
 		return r.writePos - r.readPos
@@ -257,13 +296,36 @@ func (r *RingBuffer) Len() uint32 {
 	return r.ringSize - (r.readPos - r.writePos)
 }
 
-// Cap 获取环形缓冲区的容量
+// Cap 返回 RingBuffer 的总容量。
+// 注意，实际可用容量会比 ringSize 小1，以区分空和满状态。
+//
+// 输入: 无
+// 输出:
+//   - uint32: 缓冲区容量
 func (r *RingBuffer) Cap() uint32 {
 	return r.ringSize - 1 // 注意：预留1字节避免满=空
 }
 
-// Reset 重置环形缓冲区
+// Reset 重置 RingBuffer，将其读写指针归零，使其看起来为空。
+// 它不清空底层字节切片，只是重置状态。
+//
+// 输入: 无
+// 输出: 无
 func (r *RingBuffer) Reset() {
 	r.readPos = 0
 	r.writePos = 0
+}
+
+// availableWrite 计算环形缓冲区可写入的空间大小
+func (r *RingBuffer) availableWrite() uint32 {
+	if r.isFull() {
+		return 0
+	}
+
+	if r.writePos >= r.readPos {
+		// 写在读后面，可用空间 = 缓冲区大小 - (写指针 - 读指针) - 1
+		return r.ringSize - (r.writePos - r.readPos) - 1
+	}
+	// 写在读前面，可用空间 = 读指针 - 写指针 - 1
+	return r.readPos - r.writePos - 1
 }

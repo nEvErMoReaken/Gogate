@@ -22,7 +22,8 @@ Set-Location -Path $RootDir
 try {
     $dockerVersion = docker --version
     Write-Host "已检测到Docker: $dockerVersion" -ForegroundColor $Green
-} catch {
+}
+catch {
     Write-Host "错误: Docker未安装或未加入PATH环境变量！" -ForegroundColor $Red
     Write-Host "请安装Docker Desktop: https://www.docker.com/products/docker-desktop" -ForegroundColor $Red
     exit 1
@@ -54,7 +55,8 @@ $Rebuild = Read-Host "是否清理Docker缓存并重新构建所有镜像? (y/n)
 if ($Rebuild -eq 'y' -or $Rebuild -eq 'Y') {
     Write-Host "清理Docker缓存并重新构建..." -ForegroundColor $Yellow
     docker-compose -f "$ScriptDir\docker-compose.yml" build --no-cache
-} else {
+}
+else {
     Write-Host "使用缓存构建..." -ForegroundColor $Yellow
     docker-compose -f "$ScriptDir\docker-compose.yml" build
 }
@@ -71,7 +73,8 @@ if ($Deploy -eq 'y' -or $Deploy -eq 'Y') {
 
     Write-Host "容器状态:" -ForegroundColor $Yellow
     docker-compose -f "$ScriptDir\docker-compose.yml" ps
-} else {
+}
+else {
     Write-Host "构建完成。使用以下命令启动服务:" -ForegroundColor $Yellow
     Write-Host "cd $ScriptDir; docker-compose up -d" -ForegroundColor $Green
 }
