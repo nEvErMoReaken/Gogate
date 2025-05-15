@@ -1,6 +1,6 @@
 import React from 'react';
 import { useLoaderData, useNavigate, useParams } from "react-router";
-import type { Route, ProtocolVersion, Protocol, GatewayConfig } from "../../+types/protocols";
+import type { Route, ProtocolVersion, Protocol, GatewayConfig } from "~/+types/protocols";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -12,7 +12,7 @@ import {
     CardTitle,
 } from "@/components/ui/card";
 import { useState, useEffect, useCallback, useRef, memo, forwardRef, useImperativeHandle, useMemo } from "react";
-import { API } from "../../api";
+import { API } from "~/api";
 import {
     ReactFlow,
     Controls,
@@ -69,12 +69,13 @@ import {
 } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Trash2, PlusCircle, Plus, Settings2, Variable, ChevronDown, Play as PlayIcon, Binary } from 'lucide-react';
+import { Trash2, PlusCircle, Plus, Settings2, Variable, ChevronDown, Play as PlayIcon, Binary, X } from 'lucide-react';
 import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuTrigger,
+    DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import dagre from '@dagrejs/dagre';
 import clsx from 'clsx';
@@ -98,6 +99,28 @@ const isSameYamlContent = (yaml1: string, yaml2: string): boolean => {
     }
 };
 
+// 辅助函数：确保值被正确处理为字符串，以便在YAML中正确显示
+const ensureStringValue = (value: any): string => {
+    if (value === null || value === undefined) {
+        return '';
+    }
+    // 如果是数字或布尔值，转换为字符串
+    if (typeof value === 'number' || typeof value === 'boolean') {
+        return String(value);
+    }
+    // 如果已经是字符串，直接返回
+    if (typeof value === 'string') {
+        return value;
+    }
+    // 其他类型（如对象、数组），尝试JSON序列化
+    try {
+        return JSON.stringify(value);
+    } catch (e) {
+        console.error('无法序列化值:', value, e);
+        return String(value);
+    }
+};
+
 // 定义 Loader 返回类型
 interface LoaderData {
     version: ProtocolVersion | null;
@@ -106,12 +129,18 @@ interface LoaderData {
     yamlConfig?: string;
 }
 
+// 新增：定义YAML中Points的结构
+interface PointYamlDefinition {
+    Tag: Record<string, string>;
+    Field: Record<string, string>;
+}
+
 // 定义节点数据类型
 interface SectionNodeData {
     desc: string;
     size: number;
     Label?: string;
-    Dev?: Record<string, Record<string, string>>;
+    Points?: PointYamlDefinition[]; // <--- 修改类型以匹配YAML数组结构
     Vars?: Record<string, string>;
     Next?: Array<{ condition: string, target: string }>;
     type: 'section';
@@ -180,18 +209,26 @@ interface VarEntry {
     value: string;
 }
 
-// 定义 Dev 字段条目类型
-interface DevFieldEntry {
+// 定义 Points 字段条目类型
+interface PointFieldEntry {
     id: number;
     key: string; // 字段名
     value: string; // 表达式
 }
 
-// 定义 Dev 设备条目类型
-interface DevEntry {
+// 新增：定义 PointTagEntry 接口
+interface PointTagEntry {
     id: number;
-    deviceName: string;
-    fields: DevFieldEntry[];
+    key: string;
+    value: string;
+}
+
+// 定义 Points 点位条目类型
+interface PointEntry {
+    id: number;
+    // tags: { [key: string]: string }; // 从单一的tag字符串改为tags对象 -- 旧定义
+    tags: PointTagEntry[]; // 新定义：tags现在是PointTagEntry对象的数组
+    fields: PointFieldEntry[];
 }
 
 // 类型守卫函数
@@ -490,14 +527,22 @@ const getLayoutedElements = (nodes: Node<SectionNodeData | SkipNodeData | EndNod
 };
 // --- END MODIFICATION ---
 
-// 自定义节点组件 - Adjust layout and add Dev/Vars icons
-const SectionNodeComponent = ({ data, id }: { data: SectionNodeData & { yamlIndex?: number, isHovered?: boolean, onAddConnectedNode?: Function }, id: string }) => {
+// 自定义节点组件 - Adjust layout and add Points/Vars icons
+const SectionNodeComponent = ({ data, id }: { data: SectionNodeData & { yamlIndex?: number, isHovered?: boolean, onAddConnectedNode?: Function, onAddAndCloneConnectedNode?: Function }, id: string }) => {
     // console.log('SectionNode Data:', data); // <-- 移除日志
-    const devNames = data.Dev ? Object.keys(data.Dev) : [];
+    // 修改pointNames逻辑以提取所有Tag中的键名
+    let pointTagKeys: string[] = [];
+    if (data.Points && Array.isArray(data.Points)) {
+        // 从每个Point的Tag中收集所有键名
+        pointTagKeys = data.Points.flatMap(point =>
+            point.Tag ? Object.keys(point.Tag) : []
+        );
+    }
     const varNames = data.Vars ? Object.keys(data.Vars) : [];
     const isEditing = data.isEditing;
     const isHovered = data.isHovered;
     const onAddConnectedNode = data.onAddConnectedNode;
+    const onAddAndCloneConnectedNode = data.onAddAndCloneConnectedNode;
 
     // --- Component JSX ---
     return (
@@ -519,19 +564,19 @@ const SectionNodeComponent = ({ data, id }: { data: SectionNodeData & { yamlInde
                 </div>
             </div>
 
-            {/* 第二行: Dev 图标 -> Dev 徽章 */}
-            {devNames.length > 0 && (
-                <div className="flex items-center text-xs text-teal-700 mb-1.5 space-x-1" title={`Dev Devices: ${devNames.join(', ')}`}>
-                    <span className="font-medium shrink-0 mr-1">Dev:</span>
+            {/* 第二行: Points 图标 -> Points 徽章 */}
+            {/* {pointTagKeys.length > 0 && (
+                <div className="flex items-center text-xs text-teal-700 mb-1.5 space-x-1" title={`Points: ${pointTagKeys.join(', ')}`}>
+                    <span className="font-medium shrink-0 mr-1">Points:</span>
                     <div className="flex items-center flex-wrap gap-1">
-                        {devNames.map(name => (
-                            <Badge key={`dev-${name}`} variant="outline" className="text-teal-700 border-teal-200 bg-teal-50 px-1.5 py-0 text-xs font-normal">
-                                {name}
+                        {pointTagKeys.map(key => (
+                            <Badge key={`point-tag-${key}`} variant="outline" className="text-teal-700 border-teal-200 bg-teal-50 px-1.5 py-0 text-xs font-normal">
+                                {key}
                             </Badge>
                         ))}
                     </div>
                 </div>
-            )}
+            )} */}
 
             {/* 第三行: Vars 图标 -> Vars 徽章 */}
             {varNames.length > 0 && (
@@ -586,6 +631,10 @@ const SectionNodeComponent = ({ data, id }: { data: SectionNodeData & { yamlInde
                         <DropdownMenuItem onSelect={() => onAddConnectedNode(id, 'loop')}>
                             🔄 添加 Loop 节点
                         </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onSelect={() => onAddAndCloneConnectedNode?.(id)}>
+                            📋📋 添加并复制 Section 节点
+                        </DropdownMenuItem>
                     </DropdownMenuContent>
                 </DropdownMenu>
             )}
@@ -610,11 +659,11 @@ const sectionNodePropsAreEqual = (prevProps: any, nextProps: any): boolean => {
         return false; // Prop 不同，需要渲染
     }
 
-    // 比较 Dev 和 Vars 的内容 (使用 JSON.stringify)
+    // 比较 Points 和 Vars 的内容 (使用 JSON.stringify)
     try {
-        const prevDevString = JSON.stringify(prevProps.data.Dev || {});
-        const nextDevString = JSON.stringify(nextProps.data.Dev || {});
-        if (prevDevString !== nextDevString) return false;
+        const prevPointsString = JSON.stringify(prevProps.data.Points || {});
+        const nextPointsString = JSON.stringify(nextProps.data.Points || {});
+        if (prevPointsString !== nextPointsString) return false;
 
         const prevVarsString = JSON.stringify(prevProps.data.Vars || {});
         const nextVarsString = JSON.stringify(nextProps.data.Vars || {});
@@ -635,11 +684,12 @@ const SectionNode = memo(SectionNodeComponent, sectionNodePropsAreEqual);
 // SkipNode - Add YAML index display
 // --- MODIFY: Refactor for memo with custom comparison ---
 // const SkipNode = memo(({ data, id }: { data: SkipNodeData & { yamlIndex?: number, isEditing?: boolean, isHovered?: boolean, onAddConnectedNode?: Function }, id: string }) => {
-const SkipNodeComponent = ({ data, id }: { data: SkipNodeData & { yamlIndex?: number, isEditing?: boolean, isHovered?: boolean, onAddConnectedNode?: Function }, id: string }) => {
+const SkipNodeComponent = ({ data, id }: { data: SkipNodeData & { yamlIndex?: number, isEditing?: boolean, isHovered?: boolean, onAddConnectedNode?: Function, onAddAndCloneConnectedNode?: Function }, id: string }) => {
     // console.log('SkipNode Data:', data); // <-- 移除日志
     const isEditing = data.isEditing;
     const isHovered = data.isHovered;
     const onAddConnectedNode = data.onAddConnectedNode;
+    const onAddAndCloneConnectedNode = data.onAddAndCloneConnectedNode;
 
     return (
         // 添加 group 类用于悬停控制
@@ -692,6 +742,10 @@ const SkipNodeComponent = ({ data, id }: { data: SkipNodeData & { yamlIndex?: nu
                         </DropdownMenuItem>
                         <DropdownMenuItem onSelect={() => onAddConnectedNode(id, 'loop')}>
                             🔄 添加 Loop 节点
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onSelect={() => onAddAndCloneConnectedNode?.(id)}>
+                            📋📋 添加并复制 Section 节点
                         </DropdownMenuItem>
                     </DropdownMenuContent>
                 </DropdownMenu>
@@ -752,10 +806,11 @@ const EndNode = memo(({ data }: { data: EndNodeData & { isEditing?: boolean } })
 // 创建 StartNode 组件，使用类型断言解决类型兼容性问题
 // --- MODIFY: Refactor for memo with custom comparison ---
 // const StartNode = memo(({ data, selected, id }: { data: StartNodeData & { isHovered?: boolean, onAddConnectedNode?: Function }, selected?: boolean, id: string }) => {
-const StartNodeComponent = ({ data, selected, id }: { data: StartNodeData & { isHovered?: boolean, onAddConnectedNode?: Function }, selected?: boolean, id: string }) => {
+const StartNodeComponent = ({ data, selected, id }: { data: StartNodeData & { isHovered?: boolean, onAddConnectedNode?: Function, onAddAndCloneConnectedNode?: Function }, selected?: boolean, id: string }) => {
     // --- 使用 cn 并与其他节点样式对齐 ---
     const isHovered = data.isHovered;
     const onAddConnectedNode = data.onAddConnectedNode;
+    const onAddAndCloneConnectedNode = data.onAddAndCloneConnectedNode;
     const nodeClasses = cn(
         // 基础样式
         "group bg-white border-2 rounded-md p-3 shadow-md min-w-[180px] flex flex-col transition-all duration-150 ease-in-out relative", // 添加 relative 和 group
@@ -817,6 +872,10 @@ const StartNodeComponent = ({ data, selected, id }: { data: StartNodeData & { is
                             </DropdownMenuItem>
                             <DropdownMenuItem onSelect={() => onAddConnectedNode(id, 'loop')}>
                                 🔄 添加 Loop 节点
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onSelect={() => onAddAndCloneConnectedNode?.(id)}>
+                                📋📋 添加并复制 Section 节点
                             </DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>
@@ -1000,14 +1059,21 @@ const parseYamlToFlowElements = (yamlContent: string): { nodes: Node<SectionNode
         // 第一遍：创建所有节点并建立标签映射 (Use 'protocolNodes')
         protocolNodes.forEach((item: any, index: number) => {
             // --- END MODIFICATION ---
-            if ('skip' in item) {
+            const nodeId = `node-${index}`; // Generic ID prefix, specific type will determine full ID later
+
+            // 新逻辑：判断是 Skip 还是 Section
+            const isSkipLike = item.size !== undefined &&
+                (!item.Points || (Array.isArray(item.Points) && item.Points.length === 0)) &&
+                (!item.Vars || (typeof item.Vars === 'object' && Object.keys(item.Vars).length === 0));
+
+            if (isSkipLike) {
                 const skipNode: Node<SkipNodeData> = {
-                    id: `skip-${index}`,
+                    id: `skip-${index}`, // Use skip- specific prefix for skip type node
                     type: 'skip',
                     position: { x: 0, y: 0 },
                     data: {
                         type: 'skip',
-                        size: item.skip,
+                        size: typeof item.size === 'number' ? item.size : parseInt(String(item.size), 10) || 1, // Ensure size is a number
                         yamlIndex: index
                     }
                 };
@@ -1018,15 +1084,15 @@ const parseYamlToFlowElements = (yamlContent: string): { nodes: Node<SectionNode
                 }
             } else {
                 const sectionNode: Node<SectionNodeData> = {
-                    id: `section-${index}`,
+                    id: `section-${index}`, // Use section- specific prefix
                     type: 'section',
                     position: { x: 0, y: 0 },
                     data: {
                         type: 'section',
                         desc: item.desc || `Section ${index + 1}`,
-                        size: item.size || 1,
+                        size: typeof item.size === 'number' ? item.size : parseInt(String(item.size), 10) || 1, // Ensure size is a number
                         Label: item.Label,
-                        Dev: item.Dev || {},
+                        Points: Array.isArray(item.Points) ? item.Points : [],
                         Vars: item.Vars || {},
                         yamlIndex: index
                     }
@@ -1043,7 +1109,10 @@ const parseYamlToFlowElements = (yamlContent: string): { nodes: Node<SectionNode
         // --- MODIFICATION: Use 'protocolNodes' ---
         protocolNodes.forEach((item: any, index: number) => {
             // --- END MODIFICATION ---
-            const sourceId = `${item.skip ? 'skip' : 'section'}-${index}`;
+            // const sourceId = `${item.skip ? 'skip' : 'section'}-${index}`; // 旧的 sourceId 生成逻辑
+            // 新的 sourceId 生成逻辑，基于第一遍创建的节点类型
+            const potentialSkipNode = nodes.find(n => n.id === `skip-${index}`);
+            const sourceId = potentialSkipNode ? `skip-${index}` : `section-${index}`;
 
             if (item.Next && Array.isArray(item.Next)) {
                 console.log(`[parseYamlToFlowElements] Processing Next conditions for node at index ${index}`);
@@ -1076,7 +1145,13 @@ const parseYamlToFlowElements = (yamlContent: string): { nodes: Node<SectionNode
                             // --- MODIFICATION: Get item from 'protocolNodes' ---
                             const nextItem = protocolNodes[nextIndex];
                             // --- END MODIFICATION ---
-                            targetId = `${nextItem.skip ? 'skip' : 'section'}-${nextIndex}`;
+                            // targetId = `${nextItem.skip ? 'skip' : 'section'}-${nextIndex}`; // 旧的 targetId 生成
+                            // 新的 targetId 生成逻辑，需要判断 nextItem 应该是什么类型的节点
+                            const nextItemIsSkipLike = nextItem.size !== undefined &&
+                                (!nextItem.Points || (Array.isArray(nextItem.Points) && nextItem.Points.length === 0)) &&
+                                (!nextItem.Vars || (typeof nextItem.Vars === 'object' && Object.keys(nextItem.Vars).length === 0));
+                            targetId = nextItemIsSkipLike ? `skip-${nextIndex}` : `section-${nextIndex}`;
+
                         } else {
                             // 没有下一个节点，跳过创建连接（不再创建END节点）
                             console.log(`[parseYamlToFlowElements] No next sequential node for DEFAULT at index ${index}, skipping connection`);
@@ -1720,14 +1795,20 @@ const convertFlowToYaml = (
             const nodeLabel = nodeIdToLabelMap?.get(nodeId);
 
             // --- Build the YAML object for the current node ---
-            if (data.type === 'skip' && typeof data.size === 'number') {
-                sectionObj = { skip: data.size };
-                // Label is less common for skip, but add if exists
+            if (data.type === 'skip' && typeof (data as SkipNodeData).size === 'number') { // Ensure data.size is a number for skip
+                sectionObj = { size: (data as SkipNodeData).size };
                 if (nodeLabel) sectionObj.Label = nodeLabel;
+                // CRITICAL: Do NOT add Points or Vars for skip type
             } else if (data.type === 'section') {
-                sectionObj = { desc: data.desc, size: data.size };
-                if (data.Dev && Object.keys(data.Dev).length > 0) sectionObj.Dev = data.Dev;
-                if (data.Vars && Object.keys(data.Vars).length > 0) sectionObj.Vars = data.Vars;
+                const sectionData = data as SectionNodeData; // Type assertion
+                sectionObj = { desc: sectionData.desc, size: sectionData.size };
+                // 只有在Points非空时才添加到YAML中
+                if (sectionData.Points && Array.isArray(sectionData.Points) && sectionData.Points.length > 0) {
+                    sectionObj.Points = sectionData.Points;
+                }
+                if (sectionData.Vars && Object.keys(sectionData.Vars).length > 0) {
+                    sectionObj.Vars = sectionData.Vars;
+                }
                 if (nodeLabel) sectionObj.Label = nodeLabel;
 
                 // Check if this is the last node in a loop
@@ -1934,11 +2015,23 @@ const convertFlowToYaml = (
         const yamlObject = { [rootKey]: yamlNodesOutput }; // Use the dynamic key
         // --- END MODIFICATION ---
 
-        return yaml.dump(yamlObject, { lineWidth: -1, sortKeys: false });
+        return yaml.dump(yamlObject, {
+            lineWidth: -1,
+            sortKeys: false,
+            quotingType: "'", // 使用双引号
+            forceQuotes: true, // 强制所有字符串使用引号
+            noCompatMode: true, // 禁用兼容模式，确保更严格的引号处理
+        });
     } catch (error) {
         console.error("生成YAML失败:", error);
         const fallbackYaml = { protocol: [{ desc: "错误恢复节点(异常)", size: 1 }] }; // Keep fallback simple
-        return yaml.dump(fallbackYaml, { lineWidth: -1, sortKeys: false });
+        return yaml.dump(fallbackYaml, {
+            lineWidth: -1,
+            sortKeys: false,
+            quotingType: "'", // 使用双引号
+            forceQuotes: true, // 强制所有字符串使用引号
+            noCompatMode: true, // 禁用兼容模式，确保更严格的引号处理
+        });
     }
 };
 
@@ -2019,7 +2112,13 @@ export const clientLoader = async ({ params }: { params: { versionId: string } }
                 // Ensure the default structure matches a simple protocol array
                 const defaultStructure = { [protocolKeyName]: [{ desc: "初始节点", size: 1 }] };
                 try {
-                    yamlConfig = yaml.dump(defaultStructure, { lineWidth: -1, sortKeys: false });
+                    yamlConfig = yaml.dump(defaultStructure, {
+                        lineWidth: -1,
+                        sortKeys: false,
+                        quotingType: "'", // 使用双引号
+                        forceQuotes: true, // 强制所有字符串使用引号
+                        noCompatMode: true, // 禁用兼容模式，确保更严格的引号处理
+                    });
                     console.warn(`无法从API获取YAML定义，使用默认结构: ${protocolKeyName}`);
                 } catch (dumpError: any) {
                     console.error("Failed to dump default structure to YAML:", dumpError);
@@ -2059,7 +2158,13 @@ export const clientLoader = async ({ params }: { params: { versionId: string } }
                 if (typeof definitionData === 'object' && definitionData !== null) {
                     console.log("Loader received definition as object, converting to YAML string...");
                     try {
-                        yamlConfig = yaml.dump(definitionData, { lineWidth: -1, sortKeys: false });
+                        yamlConfig = yaml.dump(definitionData, {
+                            lineWidth: -1,
+                            sortKeys: false,
+                            quotingType: "'", // 使用双引号
+                            forceQuotes: true, // 强制所有字符串使用引号
+                            noCompatMode: true, // 禁用兼容模式，确保更严格的引号处理
+                        });
                         console.log("YAML转换结果 (前100个字符):", yamlConfig.substring(0, 100));
                     } catch (dumpError: any) {
                         console.error("Failed to dump definition object to YAML:", dumpError);
@@ -2211,7 +2316,139 @@ const FlowCanvas = memo(forwardRef<FlowCanvasHandle, FlowCanvasProps>(({ initial
     // --- END MODIFICATION ---
     const [popoverPosition, setPopoverPosition] = useState<{ top: number; left: number } | null>(null);
     const [varEntries, setVarEntries] = useState<VarEntry[]>([]);
-    const [devEntries, setDevEntries] = useState<DevEntry[]>([]);
+    const [pointEntries, setPointEntries] = useState<PointEntry[]>([]);
+
+    // --- NEW: Points Dynamic Form Handlers (defined inside FlowCanvas) ---
+    // tag key-value处理函数
+    const handleTagChange = useCallback((pointId: number, tagEntryId: number, field: 'key' | 'value', newValue: string) => {
+        setPointEntries(currentEntries =>
+            currentEntries.map(pointEntry => {
+                if (pointEntry.id === pointId) {
+                    const newTags = pointEntry.tags.map(tag => {
+                        if (tag.id === tagEntryId) {
+                            return { ...tag, [field]: newValue };
+                        }
+                        return tag;
+                    });
+                    return { ...pointEntry, tags: newTags };
+                }
+                return pointEntry;
+            })
+        );
+    }, [setPointEntries]); // Dependency: setPointEntries
+
+    // 添加新标签
+    const handleAddTag = useCallback((pointId: number) => {
+        setPointEntries(currentEntries =>
+            currentEntries.map(pointEntry => {
+                if (pointEntry.id === pointId) {
+                    return {
+                        ...pointEntry,
+                        tags: [...pointEntry.tags, { id: Date.now(), key: '', value: '' }] // 新增 PointTagEntry
+                    };
+                }
+                return pointEntry;
+            })
+        );
+    }, [setPointEntries]); // Dependency: setPointEntries
+
+    // 移除标签
+    const handleRemoveTag = useCallback((pointId: number, tagEntryId: number) => { // 修改函数签名
+        setPointEntries(currentEntries =>
+            currentEntries.map(pointEntry => {
+                if (pointEntry.id === pointId) {
+                    const newTags = pointEntry.tags.filter(tag => tag.id !== tagEntryId); // 新逻辑
+                    return {
+                        ...pointEntry,
+                        tags: newTags
+                    };
+                }
+                return pointEntry;
+            })
+        );
+    }, [setPointEntries]); // Dependency: setPointEntries
+
+    const handlePointFieldChange = useCallback((pointId: number, fieldId: number, field: 'key' | 'value', value: string) => {
+        setPointEntries(currentEntries => {
+            let pointIndex = -1;
+            let fieldIndex = -1;
+
+            let updatedEntries = currentEntries.map((pointEntry, dIdx) => {
+                if (pointEntry.id === pointId) {
+                    pointIndex = dIdx;
+                    const updatedFields = pointEntry.fields.map((fieldEntry, fIdx) => {
+                        if (fieldEntry.id === fieldId) {
+                            fieldIndex = fIdx;
+                            return { ...fieldEntry, [field]: value };
+                        }
+                        return fieldEntry;
+                    });
+                    return { ...pointEntry, fields: updatedFields };
+                }
+                return pointEntry;
+            });
+
+            const targetPoint = updatedEntries[pointIndex];
+            const editedField = targetPoint?.fields[fieldIndex];
+            const editedFieldIsEmpty = editedField && editedField.key.trim() === '' && editedField.value.trim() === '';
+
+            if (editedFieldIsEmpty && targetPoint.fields.length > 1) {
+                updatedEntries = updatedEntries.map((pointEntry, dIdx) => {
+                    if (dIdx === pointIndex) {
+                        return {
+                            ...pointEntry,
+                            fields: pointEntry.fields.filter(f => f.id !== fieldId)
+                        };
+                    }
+                    return pointEntry;
+                });
+            }
+            return updatedEntries;
+        });
+    }, [setPointEntries]); // Dependency: setPointEntries
+
+    const handleAddField = useCallback((pointId: number) => {
+        setPointEntries(currentEntries =>
+            currentEntries.map(pointEntry => {
+                if (pointEntry.id === pointId) {
+                    return {
+                        ...pointEntry,
+                        fields: [...pointEntry.fields, { id: Date.now(), key: '', value: '' }]
+                    };
+                }
+                return pointEntry;
+            })
+        );
+    }, [setPointEntries]); // Dependency: setPointEntries
+
+    // 移除字段
+    const handleRemoveField = useCallback((pointId: number, fieldId: number) => {
+        setPointEntries(currentEntries =>
+            currentEntries.map(pointEntry => {
+                if (pointEntry.id === pointId) {
+                    return {
+                        ...pointEntry,
+                        fields: pointEntry.fields.filter(f => f.id !== fieldId)
+                    };
+                }
+                return pointEntry;
+            })
+        );
+    }, [setPointEntries]); // Dependency: setPointEntries
+
+    const handleAddPoint = useCallback(() => {
+        const pointId = Date.now();
+        setPointEntries(currentEntries => [
+            ...currentEntries,
+            {
+                id: pointId,
+                // tags: { "tag": "default_tag" }, // Original problematic line
+                tags: [{ id: Date.now() + 100000, key: 'tag', value: 'default_tag' }], // Corrected: Initialize as PointTagEntry[]
+                fields: [{ id: pointId + 1, key: 'field', value: 'default_value' }]
+            }
+        ]);
+    }, [setPointEntries]); // Dependency: setPointEntries
+    // --- END NEW: Points Handlers ---
 
     // 添加选中的边和边条件编辑状态
     const [selectedEdge, setSelectedEdge] = useState<Edge<EdgeData> | null>(null);
@@ -2482,93 +2719,10 @@ const FlowCanvas = memo(forwardRef<FlowCanvasHandle, FlowCanvasProps>(({ initial
     };
 
     // --- Dev Dynamic Form Handlers ---
-    const handleDeviceNameChange = (deviceId: number, value: string) => {
-        setDevEntries(currentEntries => {
-            let updatedEntries = currentEntries.map(entry =>
-                entry.id === deviceId ? { ...entry, deviceName: value } : entry
-            );
-
-            // Auto-delete device if name is cleared and it only contains one empty field
-            const editedDevice = updatedEntries.find(entry => entry.id === deviceId);
-            // Check if the device name is empty *and* all its fields are effectively empty placeholders
-            const allFieldsEmpty = editedDevice?.fields.every(f => f.key.trim() === '' && f.value.trim() === '');
-            if (editedDevice && editedDevice.deviceName.trim() === '' && allFieldsEmpty) {
-                // Only delete if it's not the only device entry
-                if (updatedEntries.length > 1) {
-                    updatedEntries = updatedEntries.filter(entry => entry.id !== deviceId);
-                }
-            }
-
-            return updatedEntries;
-        });
-    };
-
-    const handleDevFieldChange = (deviceId: number, fieldId: number, field: 'key' | 'value', value: string) => {
-        setDevEntries(currentEntries => {
-            let deviceIndex = -1;
-            let fieldIndex = -1;
-
-            // Find indices and update the specific field
-            let updatedEntries = currentEntries.map((deviceEntry, dIdx) => {
-                if (deviceEntry.id === deviceId) {
-                    deviceIndex = dIdx;
-                    const updatedFields = deviceEntry.fields.map((fieldEntry, fIdx) => {
-                        if (fieldEntry.id === fieldId) {
-                            fieldIndex = fIdx;
-                            return { ...fieldEntry, [field]: value };
-                        }
-                        return fieldEntry;
-                    });
-                    return { ...deviceEntry, fields: updatedFields };
-                }
-                return deviceEntry;
-            });
-
-            // --- Auto-delete field --- Find the possibly updated field
-            const targetDevice = updatedEntries[deviceIndex];
-            const editedField = targetDevice?.fields[fieldIndex];
-            const editedFieldIsEmpty = editedField && editedField.key.trim() === '' && editedField.value.trim() === '';
-
-            if (editedFieldIsEmpty && targetDevice.fields.length > 1) {
-                updatedEntries = updatedEntries.map((devEntry, dIdx) => {
-                    if (dIdx === deviceIndex) {
-                        return {
-                            ...devEntry,
-                            fields: devEntry.fields.filter(f => f.id !== fieldId)
-                        };
-                    }
-                    return devEntry;
-                });
-            }
-
-            return updatedEntries;
-        });
-    };
-
-    // Restore handleAddField function
-    const handleAddField = (deviceId: number) => {
-        setDevEntries(currentEntries =>
-            currentEntries.map(deviceEntry => {
-                if (deviceEntry.id === deviceId) {
-                    // Add a new empty field to this specific device
-                    return {
-                        ...deviceEntry,
-                        fields: [...deviceEntry.fields, { id: Date.now(), key: '', value: '' }]
-                    };
-                }
-                return deviceEntry;
-            })
-        );
-    };
-
-    // Restore handleAddDevice function
-    const handleAddDevice = () => {
-        setDevEntries(currentEntries => [
-            ...currentEntries,
-            // Add a new empty device with one empty field
-            { id: Date.now(), deviceName: '', fields: [{ id: Date.now() + 1, key: '', value: '' }] }
-        ]);
-    };
+    // const handleDeviceNameChange = (deviceId: number, value: string) => { ... }; // REMOVE
+    // const handleDevFieldChange = (deviceId: number, fieldId: number, field: 'key' | 'value', value: string) => { ... }; // REMOVE
+    // const handleAddField = (deviceId: number) => { ... }; // REMOVE
+    // const handleAddDevice = () => { ... }; // REMOVE
 
     // --- Restore handleEditFormChange definition BEFORE handleApplyEdit ---
     const handleEditFormChange = (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -2582,27 +2736,54 @@ const FlowCanvas = memo(forwardRef<FlowCanvasHandle, FlowCanvasProps>(({ initial
     // --- handleApplyEdit ---
     const handleApplyEdit = useCallback(() => {
         if (!selectedNode) return;
+
+        // 添加日志，跟踪pointEntries的当前状态
+        console.log("[handleApplyEdit] Current pointEntries:", JSON.stringify(pointEntries, null, 2));
+
         const varsObject: Record<string, string> = varEntries.reduce((acc, entry) => {
             if (entry.key.trim()) {
-                acc[entry.key.trim()] = entry.value;
+                acc[entry.key.trim()] = ensureStringValue(entry.value);
             }
             return acc;
         }, {} as Record<string, string>);
-        const devObject: Record<string, Record<string, string>> = devEntries.reduce((acc, deviceEntry) => {
-            const deviceName = deviceEntry.deviceName.trim();
-            if (!deviceName) return acc;
-            const fieldsObject = deviceEntry.fields.reduce((fieldsAcc, fieldEntry) => {
-                const fieldKey = fieldEntry.key.trim();
-                if (fieldKey || fieldEntry.value.trim()) {
-                    fieldsAcc[fieldKey] = fieldEntry.value;
-                }
-                return fieldsAcc;
-            }, {} as Record<string, string>);
-            if (Object.keys(fieldsObject).length > 0) {
-                acc[deviceName] = fieldsObject;
+
+        // 修改pointsObject构建逻辑以允许保存更多场景
+        const pointsObject: Record<string, Record<string, string>> = pointEntries.reduce((acc, pointEntry) => {
+            // 检查是否至少有一个有效标签
+            const hasValidTag = pointEntry.tags.some(tag => tag.key.trim() !== '' && tag.value.trim() !== '');
+
+            // 如果没有任何有效标签，则跳过此点位
+            if (!hasValidTag && pointEntry.tags.length === 0) {
+                console.log("[handleApplyEdit] 跳过没有标签的点位:", pointEntry.id);
+                return acc;
             }
+
+            // 遍历所有标签
+            pointEntry.tags.forEach(tag => {
+                // 标签值不能为空
+                if (!tag.value.trim()) {
+                    console.log("[handleApplyEdit] 跳过空标签值:", tag.key);
+                    return;
+                }
+
+                // 为每个标签生成字段对象，不再要求字段键非空
+                const fieldsObject = pointEntry.fields.reduce((fieldsAcc, fieldEntry) => {
+                    // 即使字段键为空，也保存字段
+                    const key = fieldEntry.key.trim() || `field_${fieldEntry.id}`;
+                    fieldsAcc[key] = ensureStringValue(fieldEntry.value || '');
+                    return fieldsAcc;
+                }, {} as Record<string, string>);
+
+                // 即使没有字段，也添加标签
+                acc[ensureStringValue(tag.value)] = fieldsObject;
+                console.log("[handleApplyEdit] 添加标签:", tag.value, "字段数:", Object.keys(fieldsObject).length);
+            });
+
             return acc;
         }, {} as Record<string, Record<string, string>>);
+
+        // 添加日志，跟踪生成的pointsObject
+        console.log("[handleApplyEdit] Generated pointsObject:", JSON.stringify(pointsObject, null, 2));
 
         setNodes((nds) =>
             nds.map((n): Node<SectionNodeData | SkipNodeData | EndNodeData | StartNodeData | LoopNodeData> => {
@@ -2610,15 +2791,43 @@ const FlowCanvas = memo(forwardRef<FlowCanvasHandle, FlowCanvasProps>(({ initial
                     let updatedData: SectionNodeData | SkipNodeData | EndNodeData | StartNodeData | LoopNodeData;
                     if (n.data.type === 'section' && isSectionNodeData(n.data)) {
                         const currentData: SectionNodeData = n.data;
-                        const formData = editFormData as Partial<Omit<SectionNodeData, 'Vars' | 'Dev' | 'Next'>>;
+                        const formData = editFormData as Partial<Omit<SectionNodeData, 'Vars' | 'Points' | 'Next'>>;
+
+                        // 将 pointEntries (PointEntry[]) 转换为 PointYamlDefinition[]
+                        const yamlPoints: PointYamlDefinition[] = pointEntries.map(entry => {
+                            const fieldRecord: Record<string, string> = entry.fields.reduce((obj, field) => {
+                                obj[field.key.trim() || `field_${field.id}`] = ensureStringValue(field.value || '');
+                                return obj;
+                            }, {} as Record<string, string>);
+
+                            // 新增：将 entry.tags (PointTagEntry[]) 转换为 Record<string, string>
+                            const tagRecord: Record<string, string> = entry.tags.reduce((obj, tagEntry) => {
+                                const key = tagEntry.key.trim();
+                                // const value = tagEntry.value.trim(); // Value trimming can be handled by ensureStringValue or kept if specific
+                                if (key) { // A tag must have a key. Value can be an empty string.
+                                    obj[key] = ensureStringValue(tagEntry.value); // Use original value for ensureStringValue
+                                }
+                                return obj;
+                            }, {} as Record<string, string>);
+
+                            return {
+                                Tag: tagRecord,
+                                Field: fieldRecord
+                            };
+                        }).filter(p => Object.keys(p.Tag).length > 0); // 只保留有有效Tag的点位
+
                         updatedData = {
                             ...currentData,
                             desc: formData.desc ?? currentData.desc,
                             size: formData.size ?? currentData.size,
                             Label: formData.Label ?? currentData.Label,
                             Vars: varsObject,
-                            Dev: devObject,
+                            Points: yamlPoints, // <--- 使用转换后的yamlPoints
                         };
+
+                        // 添加日志，确认Points是否已赋值
+                        console.log("[handleApplyEdit] 更新节点数据，Points字段 (转换后):",
+                            yamlPoints.length > 0 ? "已设置" : "为空", JSON.stringify(yamlPoints, null, 2));
                     } else if (n.data.type === 'skip') {
                         const currentData: SkipNodeData = n.data;
                         const formData = editFormData as Partial<SkipNodeData>;
@@ -2672,18 +2881,18 @@ const FlowCanvas = memo(forwardRef<FlowCanvasHandle, FlowCanvasProps>(({ initial
         setSelectedNode(null);
         setPopoverPosition(null);
         setVarEntries([]);
-        setDevEntries([]);
+        setPointEntries([]);
     }, [
         selectedNode,
         editFormData,
         varEntries,
-        devEntries,
+        pointEntries,
         setNodes,
         setIsPopoverOpen,
         setSelectedNode,
         setPopoverPosition,
         setVarEntries,
-        setDevEntries,
+        setPointEntries,
     ]);
 
     // 保存边条件 - ALWAYS set isDefault to false on save
@@ -2774,16 +2983,40 @@ const FlowCanvas = memo(forwardRef<FlowCanvasHandle, FlowCanvasProps>(({ initial
             if (node.type === 'section' && isSectionNodeData(node.data)) {
                 const initialVarsData = node.data.Vars || {};
                 setVarEntries(Object.entries(initialVarsData).map(([key, value], index) => ({ id: Date.now() + index, key, value })));
-                const initialDevData = node.data.Dev || {};
-                setDevEntries(Object.entries(initialDevData).map(([deviceName, fields], deviceIndex) => ({
-                    id: Date.now() + deviceIndex * 1000,
-                    deviceName,
-                    fields: Object.entries(fields).map(([key, value], fieldIndex) => ({ id: Date.now() + deviceIndex * 1000 + fieldIndex + 1, key, value }))
-                })));
+
+                const initialPointsData: PointYamlDefinition[] = node.data.Points || [];
+                // 添加检查，确保 initialPointsData 是数组
+                const actualPointsArray = Array.isArray(initialPointsData) ? initialPointsData : [];
+
+                setPointEntries(actualPointsArray.map((pointYamlDef, pointIndex) => {
+                    const pointId = Date.now() + pointIndex * 1000; // Unique ID for the PointEntry
+
+                    // pointYamlDef.Tag is Record<string, string>
+                    // pointYamlDef.Field is Record<string, string>
+
+                    const fieldsArray: PointFieldEntry[] = Object.entries(pointYamlDef.Field || {}).map(([key, value], fieldIndex) => ({
+                        id: pointId + fieldIndex + 1, // Unique ID for the PointFieldEntry
+                        key,
+                        value
+                    }));
+
+                    // 新增：将 pointYamlDef.Tag (Record<string,string>) 转换为 PointTagEntry[]
+                    const tagsArray: PointTagEntry[] = Object.entries(pointYamlDef.Tag || {}).map(([key, value], tagIndex) => ({
+                        id: pointId + tagIndex + 10000, // 确保ID相对于fields是唯一的 (增加偏移量)
+                        key,
+                        value
+                    }));
+
+                    return {
+                        id: pointId,
+                        tags: tagsArray, // 使用前面已定义的tagsArray
+                        fields: fieldsArray
+                    };
+                }));
             } else {
                 // Ensure Vars/Dev are empty for Skip nodes
                 setVarEntries([]);
-                setDevEntries([]);
+                setPointEntries([]);
             }
 
             // Calculate popover position (same for both)
@@ -2837,7 +3070,7 @@ const FlowCanvas = memo(forwardRef<FlowCanvasHandle, FlowCanvasProps>(({ initial
 
             // 循环节点不需要Vars/Dev
             setVarEntries([]);
-            setDevEntries([]);
+            setPointEntries([]);
 
             // 计算弹出位置
             const nodeRect = flowNode.measured;
@@ -2859,7 +3092,7 @@ const FlowCanvas = memo(forwardRef<FlowCanvasHandle, FlowCanvasProps>(({ initial
         isEdgePopoverOpen, handleSaveEdgeCondition,
         selectedNode, isPopoverOpen, handleApplyEdit,
         reactFlowInstance,
-        setSelectedNode, setEditFormData, setVarEntries, setDevEntries, setIsPopoverOpen, setPopoverPosition,
+        setSelectedNode, setEditFormData, setVarEntries, setPointEntries, setIsPopoverOpen, setPopoverPosition,
         setIsEdgePopoverOpen, setSelectedEdge // Keep these from previous logic
     ]);
 
@@ -2880,7 +3113,7 @@ const FlowCanvas = memo(forwardRef<FlowCanvasHandle, FlowCanvasProps>(({ initial
         // --- Else reset everything if nothing was open ---
         else {
             setIsPopoverOpen(false); setSelectedNode(null); setPopoverPosition(null);
-            setVarEntries([]); setDevEntries([]);
+            setVarEntries([]); setPointEntries([]);
             setIsEdgePopoverOpen(false); setSelectedEdge(null);
             setIsContextMenuOpen(false); setContextMenuEdge(null); // Ensure context menu is reset here too
         }
@@ -3139,9 +3372,70 @@ const FlowCanvas = memo(forwardRef<FlowCanvasHandle, FlowCanvasProps>(({ initial
 
     }, [reactFlowInstance, setNodes, setEdges]);
 
+    // --- 添加回调：用于添加连接节点并复制源节点的 tags 和 fields ---
+    const handleAddAndCloneConnectedNode = useCallback((sourceNodeId: string) => {
+        if (!reactFlowInstance) return;
+
+        const sourceNode = reactFlowInstance.getNode(sourceNodeId);
+        if (!sourceNode || sourceNode.type !== 'section') return; // 仅支持section节点
+
+        // 获取源节点数据
+        const sourceData = sourceNode.data as SectionNodeData;
+
+        // 计算新节点位置 (大致在下方)
+        const sourcePos = sourceNode.position || { x: 0, y: 0 };
+        const sourceHeight = sourceNode.measured?.height || 75;
+        const position = {
+            x: sourcePos.x,
+            y: sourcePos.y + sourceHeight + 80
+        };
+
+        // 计算新节点的 yamlIndex
+        const currentNodes = reactFlowInstance.getNodes();
+        const sectionOrSkipNodeCount = currentNodes.filter(n => n.type === 'section' || n.type === 'skip').length;
+        const newYamlIndex = sectionOrSkipNodeCount;
+
+        // 创建新节点ID
+        const newNodeId = `section-${Date.now()}`;
+
+        // 检查源节点是否在循环内
+        const parentId = sourceNode.parentId;
+        const isInsideLoop = !!parentId;
+
+        // 创建新节点，复制源节点的 Points 和 Vars 数据
+        const newNode: Node<SectionNodeData> = {
+            id: newNodeId,
+            type: 'section',
+            position,
+            ...(isInsideLoop ? { parentId, extent: 'parent' } : {}),
+            data: {
+                desc: `${sourceData.desc} (复制)`,
+                size: sourceData.size,
+                type: 'section',
+                yamlIndex: newYamlIndex,
+                Points: sourceData.Points ? [...sourceData.Points] : [], // 深拷贝 Points
+                Vars: sourceData.Vars ? { ...sourceData.Vars } : {} // 复制 Vars
+            }
+        };
+
+        // 创建新边连接源节点和新节点
+        const newEdge: Edge<EdgeData> = {
+            id: `edge-${sourceNodeId}-${newNodeId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            source: sourceNodeId,
+            target: newNodeId,
+            type: 'condition',
+            data: { condition: "true" }
+        };
+
+        // 更新状态
+        setNodes((nds) => nds.concat(newNode));
+        setEdges((currentEdges) => updateEdgesForSource(sourceNodeId, [...currentEdges, newEdge]));
+
+    }, [reactFlowInstance, setNodes, setEdges]);
+
     // --- MOVED UP: Definition before usage in useMemo deps ---
     // --- Handler for adding child nodes inside a LoopNode ---
-    const handleAddChildNode = useCallback((parentId: string, newNodeType: 'section' | 'skip') => {
+    const handleAddChildNode = useCallback((parentId: string, newNodeType: 'section' | 'skip' | 'end') => {
         // --- REMOVED: Log call ---
         // console.log('[handleAddChildNode] Called with parentId:', parentId, 'type:', newNodeType);
         // --- END REMOVED ---
@@ -3227,6 +3521,11 @@ const FlowCanvas = memo(forwardRef<FlowCanvasHandle, FlowCanvasProps>(({ initial
                 onAddConnectedNode: handleAddConnectedNode, // <-- 注入回调函数
             };
 
+            // 为section类型节点添加clone连接节点的回调
+            if (node.type === 'section') {
+                (baseData as any).onAddAndCloneConnectedNode = handleAddAndCloneConnectedNode;
+            }
+
             // Conditionally add the child node callback
             if (node.type === 'loop') {
                 // Use 'as any' temporarily to avoid complex type issues during refactor
@@ -3266,7 +3565,7 @@ const FlowCanvas = memo(forwardRef<FlowCanvasHandle, FlowCanvasProps>(({ initial
         // 确保 handleAddConnectedNode 在依赖项中
         // --- MODIFIED: Add handleAddChildNode to dependency array ---
         // --- RE-APPLY FIX: Remove childNodeParentIds from deps --- Fixes runtime error
-    }, [nodes, selectedNode, isPopoverOpen, hoveredNodeId, handleAddConnectedNode, handleAddChildNode, setNodes]);
+    }, [nodes, selectedNode, isPopoverOpen, hoveredNodeId, handleAddConnectedNode, handleAddChildNode, handleAddAndCloneConnectedNode, setNodes]);
     // --- END MODIFICATION ---
 
     // --- NEW: Memoized Edges with Highlighting ---
@@ -3501,7 +3800,7 @@ const FlowCanvas = memo(forwardRef<FlowCanvasHandle, FlowCanvasProps>(({ initial
                     >
                         {/* --- Restore Full Popover Content --- */}
                         {selectedNode && (
-                            <ScrollArea className="max-h-[60vh] px-4 py-5">
+                            <ScrollArea className="max-h-[80vh] px-4 py-5 overflow-y-auto">
                                 <div className="grid gap-5">
                                     <div className="grid gap-4">
                                         {selectedNode.data.type === 'section' && (
@@ -3515,50 +3814,119 @@ const FlowCanvas = memo(forwardRef<FlowCanvasHandle, FlowCanvasProps>(({ initial
                                                 {/* Dev Section */}
                                                 <>
                                                     <div className="col-span-4 flex justify-between items-center border-t pt-4 mt-1">
-                                                        <Label className="text-base font-medium flex items-center"><Settings2 className="h-4 w-4 mr-2 text-gray-500" />设备 (Dev)</Label>
-                                                        <Button type="button" variant="ghost" size="icon" onClick={handleAddDevice} className="text-blue-600 hover:text-blue-800 h-6 w-6" title="添加设备">
+                                                        <Label className="text-base font-medium flex items-center"><Settings2 className="h-4 w-4 mr-2 text-gray-500" />点位 (Points)</Label> {/* Changed Label */}
+                                                        <Button type="button" variant="ghost" size="icon" onClick={handleAddPoint} className="text-blue-600 hover:text-blue-800 h-6 w-6" title="添加点位">
                                                             <PlusCircle className="h-4 w-4" />
                                                         </Button>
                                                     </div>
                                                     <div className="col-span-4 space-y-3">
-                                                        {devEntries.map((deviceEntry, deviceIndex) => (
-                                                            <div key={deviceEntry.id} className={`${deviceIndex > 0 ? 'border-t border-slate-100 pt-3' : ''}`}>
+                                                        {pointEntries.map((pointEntry, pointIndex) => (
+                                                            <div key={pointEntry.id} className={`border border-gray-200 rounded-md p-3 ${pointIndex > 0 ? 'mt-3' : ''}`}>
+                                                                {/* 标签区标题和添加按钮 */}
                                                                 <div className="flex items-center space-x-2 mb-1.5">
-                                                                    <Input
-                                                                        placeholder="⚙️ 设备名"
-                                                                        value={deviceEntry.deviceName}
-                                                                        onChange={(e) => handleDeviceNameChange(deviceEntry.id, e.target.value)}
-                                                                        className="h-9 text-sm font-medium flex-1 focus-visible:border-blue-500 focus-visible:ring-0 focus-visible:ring-offset-0"
-                                                                    />
+                                                                    <Label className="text-sm font-medium">🏷️ 标签</Label>
+                                                                    <div className="flex-1"></div>
                                                                     <Button
                                                                         type="button"
                                                                         variant="ghost"
                                                                         size="icon"
-                                                                        onClick={() => handleAddField(deviceEntry.id)}
+                                                                        onClick={() => handleAddTag(pointEntry.id)}
+                                                                        className="text-blue-600 hover:text-blue-800 h-6 w-6 flex-shrink-0"
+                                                                        title="添加标签"
+                                                                    >
+                                                                        <PlusCircle className="h-4 w-4" />
+                                                                    </Button>
+                                                                </div>
+
+                                                                {/* 标签区 */}
+                                                                <div className="space-y-2 mb-3 border-b pb-3 border-gray-100">
+                                                                    {pointEntry.tags.map((tagEntry) => ( // Iterate over tags array
+                                                                        <div key={tagEntry.id} className="flex items-center space-x-2"> {/* Use tagEntry.id as key */}
+                                                                            <Input
+                                                                                placeholder="🔑 标签名"
+                                                                                value={tagEntry.key} // Use tagEntry.key
+                                                                                onChange={(e) => handleTagChange(pointEntry.id, tagEntry.id, 'key', e.target.value)} // Pass tagEntry.id
+                                                                                className="h-8 text-xs w-[30%] flex-shrink-0 focus-visible:border-blue-500 focus-visible:ring-0 focus-visible:ring-offset-0"
+                                                                            />
+                                                                            <span className="text-gray-400">:</span>
+                                                                            <Input
+                                                                                placeholder="🏷️ 标签值"
+                                                                                value={tagEntry.value} // Use tagEntry.value
+                                                                                onChange={(e) => handleTagChange(pointEntry.id, tagEntry.id, 'value', e.target.value)} // Pass tagEntry.id
+                                                                                className="h-8 text-xs flex-1 focus-visible:border-blue-500 focus-visible:ring-0 focus-visible:ring-offset-0"
+                                                                            />
+                                                                            {/* Always show remove button for each tag entry */}
+                                                                            <Button
+                                                                                type="button"
+                                                                                variant="ghost"
+                                                                                size="icon"
+                                                                                onClick={() => handleRemoveTag(pointEntry.id, tagEntry.id)} // Pass tagEntry.id
+                                                                                className="text-red-600 hover:text-red-800 h-6 w-6 flex-shrink-0"
+                                                                                title="删除标签"
+                                                                            >
+                                                                                <X className="h-3 w-3" />
+                                                                            </Button>
+                                                                        </div>
+                                                                    ))}
+                                                                    {pointEntry.tags.length === 0 && ( // Check array length
+                                                                        <div className="text-xs text-gray-400 italic">
+                                                                            点击上方"添加标签"按钮添加标签
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+
+                                                                {/* 字段区标题和添加按钮 */}
+                                                                <div className="flex items-center space-x-2 mb-1.5">
+                                                                    <Label className="text-sm font-medium">∑ 字段</Label>
+                                                                    <div className="flex-1"></div>
+                                                                    <Button
+                                                                        type="button"
+                                                                        variant="ghost"
+                                                                        size="icon"
+                                                                        onClick={() => handleAddField(pointEntry.id)}
                                                                         className="text-green-600 hover:text-green-800 h-6 w-6 flex-shrink-0"
                                                                         title="添加字段"
                                                                     >
                                                                         <PlusCircle className="h-4 w-4" />
                                                                     </Button>
                                                                 </div>
+
+                                                                {/* 字段区 */}
                                                                 <div className="space-y-2">
-                                                                    {deviceEntry.fields.map((fieldEntry, fieldIndex) => (
+                                                                    {pointEntry.fields.map((fieldEntry, fieldIndex) => (
                                                                         <div key={fieldEntry.id} className="flex items-center space-x-2">
                                                                             <Input
                                                                                 placeholder="🔑 字段名"
                                                                                 value={fieldEntry.key}
-                                                                                onChange={(e) => handleDevFieldChange(deviceEntry.id, fieldEntry.id, 'key', e.target.value)}
+                                                                                onChange={(e) => handlePointFieldChange(pointEntry.id, fieldEntry.id, 'key', e.target.value)}
                                                                                 className="h-8 text-xs w-[30%] flex-shrink-0 focus-visible:border-blue-500 focus-visible:ring-0 focus-visible:ring-offset-0"
                                                                             />
                                                                             <span className="text-gray-400">:</span>
                                                                             <Input
                                                                                 placeholder="∑ 表达式"
                                                                                 value={fieldEntry.value}
-                                                                                onChange={(e) => handleDevFieldChange(deviceEntry.id, fieldEntry.id, 'value', e.target.value)}
+                                                                                onChange={(e) => handlePointFieldChange(pointEntry.id, fieldEntry.id, 'value', e.target.value)}
                                                                                 className="h-8 text-xs flex-1 focus-visible:border-blue-500 focus-visible:ring-0 focus-visible:ring-offset-0"
                                                                             />
+                                                                            {pointEntry.fields.length > 1 && (
+                                                                                <Button
+                                                                                    type="button"
+                                                                                    variant="ghost"
+                                                                                    size="icon"
+                                                                                    onClick={() => handleRemoveField(pointEntry.id, fieldEntry.id)}
+                                                                                    className="text-red-600 hover:text-red-800 h-6 w-6 flex-shrink-0"
+                                                                                    title="删除字段"
+                                                                                >
+                                                                                    <X className="h-3 w-3" />
+                                                                                </Button>
+                                                                            )}
                                                                         </div>
                                                                     ))}
+                                                                    {pointEntry.fields.length === 0 && (
+                                                                        <div className="text-xs text-gray-400 italic">
+                                                                            点击上方"添加字段"按钮添加字段
+                                                                        </div>
+                                                                    )}
                                                                 </div>
                                                             </div>
                                                         ))}
@@ -3887,7 +4255,13 @@ export default function OrchestrationEditor() {
 
                     // 转换验证数据为YAML以便对比
                     try {
-                        const verifyYaml = yaml.dump(verifyResponse.data, { lineWidth: -1, sortKeys: false });
+                        const verifyYaml = yaml.dump(verifyResponse.data, {
+                            lineWidth: -1,
+                            sortKeys: false,
+                            quotingType: "'", // 使用双引号
+                            forceQuotes: true, // 强制所有字符串使用引号
+                            noCompatMode: true, // 禁用兼容模式，确保更严格的引号处理
+                        });
                         console.log("验证数据转YAML (前200字符):", verifyYaml.substring(0, 200));
                         // --- 使用 currentYaml 进行比较 ---
                         const isYamlSimilar = isSameYamlContent(currentYaml, verifyYaml);
@@ -4199,6 +4573,10 @@ const FlowActionButtons = ({ onSave, onAddNode, onLayout, isSubmitting, yamlModa
                     <DropdownMenuItem onClick={() => onAddNode('loop')}>
                         🔄 添加 Loop 节点
                     </DropdownMenuItem>
+                    {/* <DropdownMenuSeparator /> */}
+                    {/* <DropdownMenuItem onSelect={() => onAddAndCloneConnectedNode?.(id)}> */}
+                    {/*    📋📋 添加并复制 Section 节点 */}
+                    {/* </DropdownMenuItem> */}
                 </DropdownMenuContent>
             </DropdownMenu>
         </div>
@@ -4235,4 +4613,10 @@ const updateEdgesForSource = (sourceId: string, currentEdges: Edge<EdgeData>[]):
     return [...otherEdges, ...updatedSourceEdges];
 };
 // --- End Helper Function ---
+
+// --- Points Dynamic Form Handlers ---
+// const handlePointNameChange = (pointId: number, value: string) => { ... }; // REMOVE
+// const handlePointFieldChange = (pointId: number, fieldId: number, field: 'key' | 'value', value: string) => { ... }; // REMOVE
+// const handleAddField = (pointId: number) => { ... }; // REMOVE
+// const handleAddPoint = () => { ... }; // REMOVE
 
