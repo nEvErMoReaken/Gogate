@@ -1437,83 +1437,50 @@ export default function ProtocolDetail() {
 
                             <TabsContent value="config" className="space-y-4">
                                 <div>
-                                    <div className="flex justify-between items-center mb-2">
-                                        <Label className="font-medium">调度器配置</Label>
-                                        <Button variant="ghost" size="sm" asChild className="h-6 px-2">
-                                            <Link to={`/protocols/${protocolId}/edit-config`}>
-                                                <Pencil1Icon className="h-3 w-3 mr-1" /> 编辑
-                                            </Link>
-                                        </Button>
-                                    </div>
-                                    <div className="rounded-md border p-3 bg-muted/30 text-sm">
-                                        {(() => {
-                                            // 安全地提取配置，添加类型检查以避免TypeScript错误
-                                            // @ts-ignore - 处理Protocol联合类型中的可选config属性
-                                            const dispatcherConfig = protocol?.config?.dispatcher;
-                                            const repeatDataFilters = dispatcherConfig?.repeat_data_filter || [];
-                                            const hasFilters = Array.isArray(repeatDataFilters) && repeatDataFilters.length > 0;
-
-                                            return (
-                                                <div className="mb-2">
-                                                    <h4 className="text-xs font-medium text-muted-foreground mb-1">重复数据过滤</h4>
-                                                    {!hasFilters ? (
-                                                        <p className="text-xs italic">无过滤规则</p>
-                                                    ) : (
-                                                        <div className="space-y-1">
-                                                            {repeatDataFilters.map((filter: any, index: number) => (
-                                                                <div key={index} className="grid grid-cols-2 gap-2 text-xs">
-                                                                    <div>设备: <span className="font-mono">{filter.dev_filter || '.*'}</span></div>
-                                                                    <div>遥测: <span className="font-mono">{filter.tele_filter || '.*'}</span></div>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            );
-                                        })()}
-                                    </div>
-                                </div>
-
-                                <div>
                                     <Label className="font-medium mb-2 block">策略配置</Label>
-                                    <div className="rounded-md border p-3 bg-muted/30 text-sm">
+                                    <div className="rounded-md border p-3 bg-muted/30 text-sm space-y-4">
                                         {(() => {
-                                            // 安全地提取配置，添加类型检查以避免TypeScript错误
-                                            // @ts-ignore - 处理Protocol联合类型中的可选config属性
+                                            // @ts-ignore - Assuming protocol.config.strategy matches GoStrategyConfig[] from edit-config.tsx
                                             const strategies = protocol?.config?.strategy || [];
                                             const hasStrategies = Array.isArray(strategies) && strategies.length > 0;
 
-                                            return !hasStrategies ? (
-                                                <p className="text-xs italic">无策略配置</p>
-                                            ) : (
-                                                <div className="space-y-3">
-                                                    {strategies.map((strategy: any, index: number) => (
-                                                        <div key={index} className="border-b border-border last:border-0 pb-2 last:pb-0">
-                                                            <div className="flex justify-between items-center mb-1">
-                                                                <h4 className="text-xs font-medium">{strategy.type || '未命名策略'}</h4>
-                                                                <span className={`text-xs ${strategy.enable ? 'text-green-600' : 'text-red-600'}`}>
-                                                                    {strategy.enable ? '已启用' : '已禁用'}
-                                                                </span>
-                                                            </div>
-                                                            <div className="text-xs text-muted-foreground">过滤规则:</div>
-                                                            {!strategy.filter ||
-                                                                (Array.isArray(strategy.filter) && strategy.filter.length === 0) ? (
-                                                                <p className="text-xs italic">无过滤规则</p>
-                                                            ) : (
-                                                                <div className="mt-1 space-y-1">
-                                                                    {Array.isArray(strategy.filter) &&
-                                                                        strategy.filter.map((filter: any, filterIdx: number) => (
-                                                                            <div key={filterIdx} className="grid grid-cols-2 gap-2 text-xs">
-                                                                                <div>设备: <span className="font-mono">{filter.dev_filter || '.*'}</span></div>
-                                                                                <div>遥测: <span className="font-mono">{filter.tele_filter || '.*'}</span></div>
-                                                                            </div>
-                                                                        ))}
-                                                                </div>
-                                                            )}
+                                            if (!hasStrategies) {
+                                                return <p className="text-xs italic">无策略配置</p>;
+                                            }
+
+                                            return strategies.map((strategyItem: any, index: number) => (
+                                                <div key={index} className="p-3 border rounded-md bg-background shadow-sm">
+                                                    <div className="flex justify-between items-center mb-2">
+                                                        <h4 className="text-sm font-semibold">
+                                                            策略 {index + 1}: {strategyItem.type || <span className="italic text-muted-foreground">未命名策略</span>}
+                                                        </h4>
+                                                        <span className={`text-xs px-2 py-0.5 rounded-full ${strategyItem.enable ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                                            {strategyItem.enable ? '已启用' : '已禁用'}
+                                                        </span>
+                                                    </div>
+
+                                                    <div className="mt-1">
+                                                        <p className="text-xs font-medium text-muted-foreground mb-1">标签过滤器:</p>
+                                                        {Array.isArray(strategyItem.filter) && strategyItem.filter.length > 0 ? (
+                                                            <ul className="list-disc pl-5 space-y-0.5">
+                                                                {strategyItem.filter.map((filterString: string, filterIndex: number) => (
+                                                                    <li key={filterIndex} className="text-xs font-mono text-slate-700">
+                                                                        {filterString}
+                                                                    </li>
+                                                                ))}
+                                                            </ul>
+                                                        ) : (
+                                                            <p className="text-xs italic text-muted-foreground">此策略无标签过滤器</p>
+                                                        )}
+                                                    </div>
+                                                    {/* Optionally, indicate if strategyItem.config exists */}
+                                                    {strategyItem.config && Object.keys(strategyItem.config).length > 0 && (
+                                                        <div className="mt-2 pt-2 border-t border-dashed">
+                                                            <p className="text-xs text-muted-foreground">此策略包含详细参数配置。</p>
                                                         </div>
-                                                    ))}
+                                                    )}
                                                 </div>
-                                            );
+                                            ));
                                         })()}
                                     </div>
                                 </div>

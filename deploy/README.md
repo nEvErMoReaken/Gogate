@@ -55,6 +55,11 @@ deploy/
 ```
 # 日志级别
 LOG_LEVEL=info            # 日志级别
+
+# Admin 服务配置
+ADMIN_MONGO_CONNECTION_STRING=mongodb://10.17.191.106:27017 # Admin服务MongoDB连接字符串
+ADMIN_DATABASE_NAME=gateway_admin_v2                         # Admin服务MongoDB数据库名称
+ADMIN_SERVER_PORT=8080                                       # Admin服务监听端口
 ```
 
 ## 常用命令

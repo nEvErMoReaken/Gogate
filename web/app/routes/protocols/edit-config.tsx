@@ -586,11 +586,11 @@ nested:
                                 <PlusCircledIcon className="h-4 w-4 mr-1.5" /> 添加
                             </Button>
                         </div>
-                        <div className="space-y-3">
+                        <div className="space-y-2">
                             {form.watch(`${strategyPath}.filter`)?.map((filterString, filterIndex) => {
                                 const filterPath = `${strategyPath}.filter.${filterIndex}` as const;
                                 return (
-                                    <div key={filterPath} className="border rounded-lg p-3.5 relative bg-slate-50 dark:bg-slate-800/30">
+                                    <div key={filterPath} className="border rounded-lg p-2 relative bg-slate-50 dark:bg-slate-800/30">
                                         <div className="flex items-center">
                                             <Input
                                                 id={filterPath}
@@ -617,7 +617,7 @@ nested:
                                 );
                             })}
                             {!(form.watch(`${strategyPath}.filter`)?.length) &&
-                                <div className="text-sm text-muted-foreground rounded-lg p-6 py-8 text-center border-2 border-dashed border-border bg-slate-50/50 dark:bg-slate-800/20">
+                                <div className="text-sm text-muted-foreground rounded-lg p-3 py-4 text-center border-2 border-dashed border-border bg-slate-50/50 dark:bg-slate-800/20">
                                     尚未添加标签过滤器。
                                     <Button type="button" variant="link" size="sm" onClick={() => addFilterToStrategy(index)} className="mt-1 h-auto p-0 text-primary">
                                         点击此处添加一个。
