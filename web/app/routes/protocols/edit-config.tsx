@@ -21,11 +21,6 @@ import YAML from 'js-yaml';
 
 // --- TypeScript Interfaces (Mirroring Go structs) ---
 
-interface GoDataFilter {
-    dev_filter: string;
-    tele_filter: string;
-}
-
 interface GoLogConfig {
     log_path: string;
     max_size: number;
@@ -40,12 +35,11 @@ interface GoLogConfig {
 interface GoStrategyConfig {
     type: string;
     enable: boolean;
-    filter: GoDataFilter[];
+    filter: string[];
     config: Record<string, any>; // map[string]interface{}
 }
 
 interface GoParserConfig {
-    type: string;
     config: Record<string, any>; // map[string]interface{}
 }
 
@@ -54,26 +48,21 @@ interface GoConnectorConfig {
     config: Record<string, any>; // map[string]interface{}
 }
 
-interface GoDispatcherConfig {
-    repeat_data_filter: GoDataFilter[];
-}
-
 // Interface GatewayConfig is now imported
 
 // Default empty state matching the structure
 const initialConfigState: GatewayConfig = {
-    parser: { type: '', config: {} },
+    parser: { config: {} },
     connector: { type: '', config: {} },
-    dispatcher: { repeat_data_filter: [] },
     strategy: [],
     version: '',
     log: {
-        log_path: '',
-        max_size: 0,
-        max_backups: 0,
-        max_age: 0,
-        compress: false,
-        level: '',
+        log_path: './gateway.log',
+        max_size: 512,
+        max_backups: 1000,
+        max_age: 365,
+        compress: true,
+        level: 'info',
         buffer_size: 0,
         flush_interval_secs: 0,
     },
@@ -154,8 +143,6 @@ export default function ProtocolEditConfig() {
     const [viewMode, setViewMode] = useState<'form' | 'yaml'>('form');
     const [yamlString, setYamlString] = useState<string>('');
     const [rawSubYaml, setRawSubYaml] = useState<Record<string, string>>({});
-    // 添加调试模式状态
-    const [showDebugInfo, setShowDebugInfo] = useState<boolean>(false);
 
     const form = useForm<GatewayConfig>({
         defaultValues: initialConfigState,
@@ -168,22 +155,25 @@ export default function ProtocolEditConfig() {
             return JSON.parse(JSON.stringify(initialConfigState));
         }
         const merged: GatewayConfig = {
-            parser: { ...(initialConfigState.parser), ...(parsed.parser || {}) },
+            parser: {
+                config: (parsed.parser && typeof parsed.parser.config === 'object' && parsed.parser.config !== null)
+                    ? parsed.parser.config
+                    : (initialConfigState.parser.config || {})
+            },
             connector: { ...(initialConfigState.connector), ...(parsed.connector || {}) },
-            dispatcher: { ...(initialConfigState.dispatcher), ...(parsed.dispatcher || {}) },
-            strategy: Array.isArray(parsed.strategy) ? parsed.strategy.map((s: any) => ({ ...(initialConfigState.strategy[0] || {}), ...s })) : [],
+            strategy: Array.isArray(parsed.strategy) ? parsed.strategy.map((s: any) => ({
+                type: s.type || '',
+                enable: typeof s.enable === 'boolean' ? s.enable : true,
+                filter: Array.isArray(s.filter) && s.filter.every((f: any) => typeof f === 'string')
+                    ? s.filter
+                    : (Array.isArray(s.filter) ? s.filter.map(String) : []),
+                config: typeof s.config === 'object' && s.config !== null ? s.config : {},
+            })) : [],
             version: typeof parsed.version === 'string' ? parsed.version : initialConfigState.version,
             log: { ...(initialConfigState.log), ...(parsed.log || {}) },
         };
-        merged.strategy.forEach(s => {
-            if (typeof s.config !== 'object' || s.config === null) s.config = {};
-            if (!Array.isArray(s.filter)) s.filter = [];
-            s.filter.forEach(f => { if (typeof f.dev_filter !== 'string') f.dev_filter = ''; if (typeof f.tele_filter !== 'string') f.tele_filter = ''; });
-        });
         if (typeof merged.parser.config !== 'object' || merged.parser.config === null) merged.parser.config = {};
         if (typeof merged.connector.config !== 'object' || merged.connector.config === null) merged.connector.config = {};
-        if (!Array.isArray(merged.dispatcher.repeat_data_filter)) merged.dispatcher.repeat_data_filter = [];
-        merged.dispatcher.repeat_data_filter.forEach(f => { if (typeof f.dev_filter !== 'string') f.dev_filter = ''; if (typeof f.tele_filter !== 'string') f.tele_filter = ''; });
         return merged;
     }, []);
 
@@ -411,9 +401,6 @@ export default function ProtocolEditConfig() {
                     // 记录详细的验证错误信息到控制台，帮助开发者调试
                     console.error("表单验证错误:", JSON.stringify(form.formState.errors, null, 2));
 
-                    // 显示调试信息
-                    setShowDebugInfo(true);
-
                     // 构建更具体的错误信息
                     let errorMessage = "请在保存前修正表单中的验证错误";
                     const errors = form.formState.errors;
@@ -518,24 +505,24 @@ export default function ProtocolEditConfig() {
         const strategyPath = `strategy.${index}` as const;
         const configPath = `${strategyPath}.config` as const;
         return (
-            <Card key={index} className="mb-4">
-                <CardHeader className="pb-3">
-                    <div className="flex justify-between items-center">
-                        <CardTitle className="text-lg">策略 {index + 1}</CardTitle>
+            <Card key={index} className="mb-6 shadow-sm hover:shadow-md transition-shadow duration-200 ease-in-out">
+                <CardHeader className="pb-4 pt-5">
+                    <div className="flex justify-between items-start">
+                        <CardTitle className="text-xl font-semibold">策略 {index + 1}</CardTitle>
                         <Button
                             variant="ghost"
                             size="icon"
                             onClick={() => removeStrategy(index)}
-                            className="h-8 w-8 text-destructive"
+                            className="h-8 w-8 text-destructive opacity-70 hover:opacity-100 transition-opacity"
                         >
                             <TrashIcon className="h-4 w-4" />
                         </Button>
                     </div>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <Label htmlFor={`${strategyPath}.type`} className="mb-1 block">
+                <CardContent className="space-y-6 pt-0 pb-5">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-4 items-center pt-2">
+                        <div className="md:col-span-2">
+                            <Label htmlFor={`${strategyPath}.type`} className="mb-1.5 block font-medium">
                                 类型<span className="text-red-500 ml-1">*</span>
                             </Label>
                             <Input
@@ -545,66 +532,99 @@ export default function ProtocolEditConfig() {
                                     validate: value => value.trim() !== '' || "策略类型不能为空"
                                 })}
                                 onChange={e => handleInputChange(`${strategyPath}.type`, e.target.value)}
-                                className={form.formState.errors?.strategy?.[index]?.type ? 'border-red-500' : ''}
+                                className={`${form.formState.errors?.strategy?.[index]?.type ? 'border-red-500' : 'border-border'} h-9`}
+                                placeholder="例如: default_all, custom_js"
                             />
                             {form.formState.errors?.strategy?.[index]?.type && (
-                                <p className="text-xs text-red-600 mt-1">
+                                <p className="text-xs text-red-600 mt-1.5">
                                     {(form.formState.errors.strategy[index]!.type as any).message}
                                 </p>
                             )}
                         </div>
-                        <div className="flex items-center space-x-2 pt-6">
-                            <Controller name={`${strategyPath}.enable`} control={form.control} render={({ field }: { field: any }) => (<Switch id={field.name} checked={field.value} onCheckedChange={(checked) => { field.onChange(checked); handleInputChange(field.name, checked); }} />)} />
-                            <Label htmlFor={`${strategyPath}.enable`} className="mb-1">启用</Label>
+                        <div className="flex items-center space-x-2 md:pt-5 justify-self-start md:justify-self-end">
+                            <Controller
+                                name={`${strategyPath}.enable`}
+                                control={form.control}
+                                render={({ field }: { field: any }) => (
+                                    <Switch
+                                        id={field.name}
+                                        checked={field.value}
+                                        onCheckedChange={(checked) => { field.onChange(checked); handleInputChange(field.name, checked); }}
+                                        className="data-[state=checked]:bg-primary"
+                                    />
+                                )}
+                            />
+                            <Label htmlFor={`${strategyPath}.enable`} className="font-medium whitespace-nowrap">启用</Label>
                         </div>
                     </div>
 
                     <div>
-                        <Label htmlFor={configPath} className="mb-1 block">配置 (YAML)</Label>
+                        <Label htmlFor={configPath} className="mb-1.5 block font-medium text-base">详细参数 (YAML)</Label>
                         <Textarea
                             id={configPath}
                             value={getYamlSubfieldValue(configPath)}
                             onChange={e => handleYamlSubfieldChange(configPath, e.target.value)}
                             rows={8}
-                            placeholder="输入配置 (YAML格式)...\nkey: value\nnested:\n  attr: true"
-                            className={`font-mono text-sm border rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-ring ${form.formState.errors?.strategy?.[index]?.config ? 'border-red-500' : ''}`}
+                            placeholder="输入配置 (YAML格式)...
+key: value
+nested:
+  attr: true"
+                            className={`font-mono text-sm border rounded-md p-3 focus:outline-none focus:ring-2 focus:ring-ring ${form.formState.errors?.strategy?.[index]?.config ? 'border-red-500' : 'border-border'}`}
                         />
                         {form.formState.errors?.strategy?.[index]?.config && (
-                            <p className="text-xs text-red-600 mt-1">
+                            <p className="text-xs text-red-600 mt-1.5">
                                 {(form.formState.errors.strategy[index]!.config as any).message}
                             </p>
                         )}
-                        <p className="text-xs text-muted-foreground mt-1">{getHelpText(configPath)}</p>
+                        <p className="text-xs text-muted-foreground mt-1.5 px-1">{getHelpText(configPath)}</p>
                     </div>
 
                     <div>
-                        <div className="flex justify-between items-center mb-2">
-                            <Label className="mb-1 block">数据过滤器</Label>
+                        <div className="flex justify-between items-center mb-2.5">
+                            <Label className="font-medium text-base">标签过滤器</Label>
                             <Button type="button" variant="outline" size="sm" onClick={() => addFilterToStrategy(index)} className="h-8">
-                                <PlusCircledIcon className="h-4 w-4 mr-1" /> 添加过滤器
+                                <PlusCircledIcon className="h-4 w-4 mr-1.5" /> 添加
                             </Button>
                         </div>
-                        {form.watch(`${strategyPath}.filter`)?.map((filter, filterIndex) => {
-                            const filterPath = `${strategyPath}.filter.${filterIndex}` as const;
-                            return (
-                                <div key={filterIndex} className="border rounded-md p-3 relative mt-2">
-                                    <Button variant="ghost" size="icon" onClick={() => removeFilterFromStrategy(index, filterIndex)} className="absolute right-2 top-2 h-6 w-6 text-destructive">
-                                        <Cross2Icon className="h-3 w-3" />
-                                    </Button>
-                                    <div className="space-y-3 mt-2">
-                                        <div>
-                                            <Label htmlFor={`${filterPath}.dev_filter`} className="mb-1 block">设备过滤器</Label>
-                                            <Input id={`${filterPath}.dev_filter`} {...form.register(`${filterPath}.dev_filter`)} onChange={e => handleInputChange(`${filterPath}.dev_filter`, e.target.value)} />
-                                        </div>
-                                        <div>
-                                            <Label htmlFor={`${filterPath}.tele_filter`} className="mb-1 block">遥测过滤器</Label>
-                                            <Input id={`${filterPath}.tele_filter`} {...form.register(`${filterPath}.tele_filter`)} onChange={e => handleInputChange(`${filterPath}.tele_filter`, e.target.value)} />
+                        <div className="space-y-3">
+                            {form.watch(`${strategyPath}.filter`)?.map((filterString, filterIndex) => {
+                                const filterPath = `${strategyPath}.filter.${filterIndex}` as const;
+                                return (
+                                    <div key={filterPath} className="border rounded-lg p-3.5 relative bg-slate-50 dark:bg-slate-800/30">
+                                        <div className="flex items-center">
+                                            <Input
+                                                id={filterPath}
+                                                value={filterString}
+                                                onChange={e => {
+                                                    const currentFilters = form.getValues(`${strategyPath}.filter`) || [];
+                                                    const updatedFilters = [...currentFilters];
+                                                    updatedFilters[filterIndex] = e.target.value;
+                                                    form.setValue(`${strategyPath}.filter`, updatedFilters, { shouldValidate: true, shouldDirty: true });
+                                                    const newFormValues = form.getValues();
+                                                    setConfig(JSON.parse(JSON.stringify(newFormValues)));
+                                                    try {
+                                                        setYamlString(YAML.dump(newFormValues));
+                                                    } catch (dumpErr) { console.error("YAML dump failed on filter change:", dumpErr); }
+                                                }}
+                                                placeholder="输入标签过滤表达式 (例如: device_type == \'sensor\')"
+                                                className="h-9 flex-grow mr-2"
+                                            />
+                                            <Button variant="ghost" size="icon" onClick={() => removeFilterFromStrategy(index, filterIndex)} className="h-7 w-7 text-destructive opacity-60 hover:opacity-100 focus-visible:opacity-100 shrink-0">
+                                                <Cross2Icon className="h-3.5 w-3.5" />
+                                            </Button>
                                         </div>
                                     </div>
+                                );
+                            })}
+                            {!(form.watch(`${strategyPath}.filter`)?.length) &&
+                                <div className="text-sm text-muted-foreground rounded-lg p-6 py-8 text-center border-2 border-dashed border-border bg-slate-50/50 dark:bg-slate-800/20">
+                                    尚未添加标签过滤器。
+                                    <Button type="button" variant="link" size="sm" onClick={() => addFilterToStrategy(index)} className="mt-1 h-auto p-0 text-primary">
+                                        点击此处添加一个。
+                                    </Button>
                                 </div>
-                            );
-                        })}
-                        {!form.watch(`${strategyPath}.filter`)?.length && <div className="text-sm text-muted-foreground border border-dashed rounded-md p-4 text-center">尚未添加过滤器。</div>}
+                            }
+                        </div>
                     </div>
                 </CardContent>
             </Card>
@@ -613,46 +633,22 @@ export default function ProtocolEditConfig() {
 
     const addStrategy = () => { const current = form.getValues('strategy') || []; handleInputChange('strategy', [...current, { type: '', enable: true, filter: [], config: {} }]); };
     const removeStrategy = (index: number) => { const current = form.getValues('strategy') || []; handleInputChange('strategy', current.filter((_, i) => i !== index)); };
-    const addFilterToStrategy = (strategyIndex: number) => { const path = `strategy.${strategyIndex}.filter` as const; const current = form.getValues(path) || []; handleInputChange(path, [...current, { dev_filter: '', tele_filter: '' }]); };
-    const removeFilterFromStrategy = (strategyIndex: number, filterIndex: number) => { const path = `strategy.${strategyIndex}.filter` as const; const current = form.getValues(path) || []; handleInputChange(path, current.filter((_, i) => i !== filterIndex)); };
-
-    const renderDispatcherFilters = () => {
-        const dispatcherFilterPath = 'dispatcher.repeat_data_filter';
-        return (
-            <div>
-                <div className="flex justify-between items-center mb-2">
-                    <Label className="mb-1 block">重复数据过滤器</Label>
-                    <Button type="button" variant="outline" size="sm" onClick={addDispatcherFilter} className="h-8">
-                        <PlusCircledIcon className="h-4 w-4 mr-1" /> 添加过滤器
-                    </Button>
-                </div>
-                {form.watch(dispatcherFilterPath)?.map((filter, filterIndex) => {
-                    const filterPath = `${dispatcherFilterPath}.${filterIndex}` as const;
-                    return (
-                        <div key={filterIndex} className="border rounded-md p-3 relative mt-2">
-                            <Button variant="ghost" size="icon" onClick={() => removeDispatcherFilter(filterIndex)} className="absolute right-2 top-2 h-6 w-6 text-destructive">
-                                <Cross2Icon className="h-3 w-3" />
-                            </Button>
-                            <div className="space-y-3 mt-2">
-                                <div>
-                                    <Label htmlFor={`${filterPath}.dev_filter`} className="mb-1 block">设备过滤器</Label>
-                                    <Input id={`${filterPath}.dev_filter`} {...form.register(`${filterPath}.dev_filter`)} onChange={e => handleInputChange(`${filterPath}.dev_filter`, e.target.value)} />
-                                </div>
-                                <div>
-                                    <Label htmlFor={`${filterPath}.tele_filter`} className="mb-1 block">遥测过滤器</Label>
-                                    <Input id={`${filterPath}.tele_filter`} {...form.register(`${filterPath}.tele_filter`)} onChange={e => handleInputChange(`${filterPath}.tele_filter`, e.target.value)} />
-                                </div>
-                            </div>
-                        </div>
-                    );
-                })}
-                {!form.watch(dispatcherFilterPath)?.length && <div className="text-sm text-muted-foreground border border-dashed rounded-md p-4 text-center">尚未添加过滤器。</div>}
-            </div>
-        );
+    const addFilterToStrategy = (strategyIndex: number) => {
+        const filterPath = `strategy.${strategyIndex}.filter` as const;
+        const currentFilters = form.getValues(filterPath) || [];
+        form.setValue(filterPath, [...currentFilters, ''], { shouldValidate: true, shouldDirty: true });
+        const newFormValues = form.getValues();
+        setConfig(JSON.parse(JSON.stringify(newFormValues)));
+        try { setYamlString(YAML.dump(newFormValues)); } catch (e) { console.error("YAML dump on addFilter:", e); }
     };
-
-    const addDispatcherFilter = () => { const current = form.getValues('dispatcher.repeat_data_filter') || []; handleInputChange('dispatcher.repeat_data_filter', [...current, { dev_filter: '', tele_filter: '' }]); };
-    const removeDispatcherFilter = (filterIndex: number) => { const current = form.getValues('dispatcher.repeat_data_filter') || []; handleInputChange('dispatcher.repeat_data_filter', current.filter((_, i) => i !== filterIndex)); };
+    const removeFilterFromStrategy = (strategyIndex: number, filterIndex: number) => {
+        const filterPath = `strategy.${strategyIndex}.filter` as const;
+        const currentFilters = form.getValues(filterPath) || [];
+        form.setValue(filterPath, currentFilters.filter((_, i) => i !== filterIndex), { shouldValidate: true, shouldDirty: true });
+        const newFormValues = form.getValues();
+        setConfig(JSON.parse(JSON.stringify(newFormValues)));
+        try { setYamlString(YAML.dump(newFormValues)); } catch (e) { console.error("YAML dump on removeFilter:", e); }
+    };
 
     return (
         <div className="p-6 mx-auto w-full max-w-7xl">
@@ -674,16 +670,6 @@ export default function ProtocolEditConfig() {
                         <div className="flex justify-between items-center">
                             <CardTitle>编辑协议配置</CardTitle>
                             <div className="flex gap-2">
-                                {viewMode === 'form' && (
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => setShowDebugInfo(!showDebugInfo)}
-                                        className="text-xs"
-                                    >
-                                        {showDebugInfo ? '隐藏调试信息' : '表单调试'}
-                                    </Button>
-                                )}
                                 <Button variant="outline" size="sm" onClick={handleToggleView}>
                                     <ShuffleIcon className="mr-2 h-4 w-4" />
                                     {viewMode === 'form' ? '切换到 YAML' : '切换到表单'}
@@ -694,102 +680,17 @@ export default function ProtocolEditConfig() {
                     </CardHeader>
                     <form onSubmit={form.handleSubmit(onSubmit)}>
                         <CardContent>
-                            {/* 表单错误状态调试区域 */}
-                            {viewMode === 'form' && (showDebugInfo || Object.keys(form.formState.errors).length > 0) && (
-                                <div className="mb-4">
-                                    <div className="p-3 border border-red-300 bg-red-50 rounded-md">
-                                        <div className="flex justify-between items-center mb-1">
-                                            <h3 className="text-sm font-medium text-red-800">表单验证错误:</h3>
-                                            <Button
-                                                type="button"
-                                                variant="ghost"
-                                                size="sm"
-                                                className="h-6 text-xs text-red-700 hover:text-red-900"
-                                                onClick={() => setShowDebugInfo(!showDebugInfo)}
-                                            >
-                                                {showDebugInfo ? '隐藏详情' : '显示详情'}
-                                            </Button>
-                                        </div>
-
-                                        {Object.keys(form.formState.errors).length > 0 ? (
-                                            <ul className="text-xs text-red-700 list-disc pl-5">
-                                                {Object.entries(form.formState.errors).map(([key, error]: [string, any]) => {
-                                                    // 处理嵌套错误
-                                                    if (key === 'strategy' && Array.isArray(error)) {
-                                                        return error.map((strategyError, index) => {
-                                                            if (!strategyError) return null;
-                                                            return Object.entries(strategyError).map(([field, fieldError]: [string, any]) => (
-                                                                <li key={`strategy-${index}-${field}`}>
-                                                                    策略 {index + 1} - {field}: {fieldError.message}
-                                                                </li>
-                                                            ));
-                                                        });
-                                                    }
-
-                                                    // 处理对象错误
-                                                    if (error && typeof error === 'object' && error.message) {
-                                                        return (
-                                                            <li key={key}>{key}: {error.message}</li>
-                                                        );
-                                                    }
-
-                                                    // 其他类型错误
-                                                    return (
-                                                        <li key={key}>{key}: {JSON.stringify(error)}</li>
-                                                    );
-                                                })}
-                                            </ul>
-                                        ) : (
-                                            <p className="text-xs text-red-700">
-                                                表单存在验证错误，但未能定位具体字段。请检查每个字段，尤其是策略配置。
-                                            </p>
-                                        )}
-
-                                        {showDebugInfo && (
-                                            <div className="mt-3 pt-3 border-t border-red-200">
-                                                <p className="text-xs font-semibold text-red-700">表单调试信息:</p>
-                                                <pre className="text-xs overflow-auto mt-1 max-h-32 bg-white/50 p-2 rounded">
-                                                    {JSON.stringify({
-                                                        isDirty: form.formState.isDirty,
-                                                        isValid: form.formState.isValid,
-                                                        submitCount: form.formState.submitCount,
-                                                        isSubmitting: form.formState.isSubmitting,
-                                                        isSubmitted: form.formState.isSubmitted,
-                                                    }, null, 2)}
-                                                </pre>
-                                                <Button
-                                                    type="button"
-                                                    variant="outline"
-                                                    size="sm"
-                                                    className="mt-2 h-7 text-xs"
-                                                    onClick={() => {
-                                                        form.trigger();
-                                                        toast.info("已重新触发表单验证");
-                                                    }}
-                                                >
-                                                    重新触发验证
-                                                </Button>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
                             {viewMode === 'form' ? (
                                 <Tabs defaultValue="parser" className="w-full" value={activeTab} onValueChange={setActiveTab}>
-                                    <TabsList className="mb-4 grid w-full grid-cols-3 sm:grid-cols-5">
+                                    <TabsList className="mb-4 grid w-full grid-cols-4">
                                         <TabsTrigger value="parser">解析器</TabsTrigger>
                                         <TabsTrigger value="connector">连接器</TabsTrigger>
-                                        <TabsTrigger value="dispatcher">调度器</TabsTrigger>
                                         <TabsTrigger value="strategy">策略</TabsTrigger>
                                         <TabsTrigger value="log">日志</TabsTrigger>
                                     </TabsList>
 
                                     <TabsContent value="parser">
                                         <div className="space-y-4 mt-4">
-                                            <div>
-                                                <Label htmlFor="parser.type" className="mb-1 block">类型</Label>
-                                                <Input id="parser.type" {...form.register("parser.type")} onChange={e => handleInputChange("parser.type", e.target.value)} />
-                                            </div>
                                             <div>
                                                 <Label htmlFor="parser.config" className="mb-1 block">配置 (YAML)</Label>
                                                 <Textarea
@@ -825,12 +726,6 @@ export default function ProtocolEditConfig() {
                                                 {form.formState.errors?.connector?.config && <p className="text-xs text-red-600 mt-1">{(form.formState.errors.connector.config as any).message}</p>}
                                                 <p className="text-xs text-muted-foreground mt-1">{getHelpText("connector.config")}</p>
                                             </div>
-                                        </div>
-                                    </TabsContent>
-
-                                    <TabsContent value="dispatcher">
-                                        <div className="space-y-4 mt-4">
-                                            {renderDispatcherFilters()}
                                         </div>
                                     </TabsContent>
 

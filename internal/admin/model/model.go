@@ -8,10 +8,10 @@ import (
 
 // --- GatewayConfig 及其子结构 (带 BSON 标签) ---
 
-type GoDataFilter struct {
-	DevFilter  string `bson:"dev_filter" json:"dev_filter"`
-	TeleFilter string `bson:"tele_filter" json:"tele_filter"`
-}
+// type GoDataFilter struct { // Removed GoDataFilter
+// 	DevFilter  string `bson:"dev_filter" json:"dev_filter"`
+// 	TeleFilter string `bson:"tele_filter" json:"tele_filter"`
+// }
 
 type GoLogConfig struct {
 	LogPath           string `bson:"log_path" json:"log_path"`
@@ -27,12 +27,12 @@ type GoLogConfig struct {
 type GoStrategyConfig struct {
 	Type   string                 `bson:"type" json:"type"`
 	Enable bool                   `bson:"enable" json:"enable"`
-	Filter []GoDataFilter         `bson:"filter" json:"filter"`
-	Config map[string]interface{} `bson:"config" json:"config"` // 使用 map[string]interface{} 对应 Go 中的同类型
+	Filter []string               `bson:"filter" json:"filter"` // MODIFIED to []string
+	Config map[string]interface{} `bson:"config" json:"config"`
 }
 
 type GoParserConfig struct {
-	Type   string                 `bson:"type" json:"type"`
+	// Type   string                 `bson:"type" json:"type"` // MODIFIED: Removed Type
 	Config map[string]interface{} `bson:"config" json:"config"`
 }
 
@@ -41,19 +41,19 @@ type GoConnectorConfig struct {
 	Config map[string]interface{} `bson:"config" json:"config"`
 }
 
-type GoDispatcherConfig struct {
-	RepeatDataFilter []GoDataFilter `bson:"repeat_data_filter" json:"repeat_data_filter"`
-}
+// type GoDispatcherConfig struct { // Removed GoDispatcherConfig
+// 	RepeatDataFilter []GoDataFilter `bson:"repeat_data_filter" json:"repeat_data_filter"`
+// }
 
 // 主配置结构 (GatewayConfig)
 // 注意：json 标签是为了与前端/API 规范一致，bson 标签是为了 MongoDB
 type GatewayConfig struct {
-	Parser     GoParserConfig     `bson:"parser" json:"parser"`
-	Connector  GoConnectorConfig  `bson:"connector" json:"connector"`
-	Dispatcher GoDispatcherConfig `bson:"dispatcher" json:"dispatcher"`
-	Strategy   []GoStrategyConfig `bson:"strategy" json:"strategy"`
-	Version    string             `bson:"version" json:"version"`
-	Log        GoLogConfig        `bson:"log" json:"log"`
+	Parser    GoParserConfig    `bson:"parser" json:"parser"`
+	Connector GoConnectorConfig `bson:"connector" json:"connector"`
+	// Dispatcher GoDispatcherConfig `bson:"dispatcher" json:"dispatcher"` // MODIFIED: Removed Dispatcher
+	Strategy []GoStrategyConfig `bson:"strategy" json:"strategy"`
+	Version  string             `bson:"version" json:"version"`
+	Log      GoLogConfig        `bson:"log" json:"log"`
 }
 
 // --- Protocol 模型 ---
@@ -73,15 +73,22 @@ type NextRule struct {
 	Target    string `bson:"target" json:"target" yaml:"target"`
 }
 
+// PointDefinition represents a point definition in a section
+type PointDefinition struct {
+	Tag   map[string]interface{} `bson:"Tag,omitempty" json:"Tag,omitempty" yaml:"Tag,omitempty"`
+	Field map[string]interface{} `bson:"Field,omitempty" json:"Field,omitempty" yaml:"Field,omitempty"`
+}
+
 // SectionDefinition 代表 YAML 中的一个 Section 处理段的结构 (用于解析/验证)
 // 注意：这个结构体不直接用作 ProtocolVersion.Definition 的类型
 type SectionDefinition struct {
-	Desc  string                            `bson:"desc" json:"desc" yaml:"desc"`
-	Size  int                               `bson:"size" json:"size" yaml:"size"`
-	Label string                            `bson:"Label,omitempty" json:"Label,omitempty" yaml:"Label,omitempty"`
-	Dev   map[string]map[string]interface{} `bson:"Dev,omitempty" json:"Dev,omitempty" yaml:"Dev,omitempty"`
-	Vars  map[string]interface{}            `bson:"Vars,omitempty" json:"Vars,omitempty" yaml:"Vars,omitempty"`
-	Next  []NextRule                        `bson:"Next,omitempty" json:"Next,omitempty" yaml:"Next,omitempty"`
+	Desc   string                            `bson:"desc" json:"desc" yaml:"desc"`
+	Size   int                               `bson:"size" json:"size" yaml:"size"`
+	Label  string                            `bson:"Label,omitempty" json:"Label,omitempty" yaml:"Label,omitempty"`
+	Dev    map[string]map[string]interface{} `bson:"Dev,omitempty" json:"Dev,omitempty" yaml:"Dev,omitempty"`
+	Points []PointDefinition                 `bson:"Points,omitempty" json:"Points,omitempty" yaml:"Points,omitempty"`
+	Vars   map[string]interface{}            `bson:"Vars,omitempty" json:"Vars,omitempty" yaml:"Vars,omitempty"`
+	Next   []NextRule                        `bson:"Next,omitempty" json:"Next,omitempty" yaml:"Next,omitempty"`
 }
 
 // SkipDefinition 代表 YAML 中的一个 skip 指令 (用于解析/验证)
@@ -96,12 +103,13 @@ type SkipDefinition struct {
 // 在反序列化时，根据字段的存在情况判断是 Section 还是 Skip
 type ProtocolDefinitionStep struct {
 	// Common fields or Section fields
-	Desc  string                            `bson:"desc,omitempty" json:"desc,omitempty" yaml:"desc,omitempty"` // omitempty for skip
-	Size  int                               `bson:"size,omitempty" json:"size,omitempty" yaml:"size,omitempty"` // omitempty for skip
-	Label string                            `bson:"Label,omitempty" json:"Label,omitempty" yaml:"Label,omitempty"`
-	Dev   map[string]map[string]interface{} `bson:"Dev,omitempty" json:"Dev,omitempty" yaml:"Dev,omitempty"`
-	Vars  map[string]interface{}            `bson:"Vars,omitempty" json:"Vars,omitempty" yaml:"Vars,omitempty"`
-	Next  []NextRule                        `bson:"Next,omitempty" json:"Next,omitempty" yaml:"Next,omitempty"`
+	Desc   string                            `bson:"desc,omitempty" json:"desc,omitempty" yaml:"desc,omitempty"` // omitempty for skip
+	Size   int                               `bson:"size,omitempty" json:"size,omitempty" yaml:"size,omitempty"` // omitempty for skip
+	Label  string                            `bson:"Label,omitempty" json:"Label,omitempty" yaml:"Label,omitempty"`
+	Dev    map[string]map[string]interface{} `bson:"Dev,omitempty" json:"Dev,omitempty" yaml:"Dev,omitempty"`
+	Points []PointDefinition                 `bson:"Points,omitempty" json:"Points,omitempty" yaml:"Points,omitempty"`
+	Vars   map[string]interface{}            `bson:"Vars,omitempty" json:"Vars,omitempty" yaml:"Vars,omitempty"`
+	Next   []NextRule                        `bson:"Next,omitempty" json:"Next,omitempty" yaml:"Next,omitempty"`
 
 	// Skip field
 	Skip *int `bson:"skip,omitempty" json:"skip,omitempty" yaml:"skip,omitempty"` // Use pointer to distinguish between 0 and not present

@@ -113,7 +113,7 @@ func TestSectionHandler(c *gin.Context) {
 	// 3. 创建解析器配置
 	config := &pkg.Config{
 		Parser: pkg.ParserConfig{
-			Type: "byteParser",
+
 			Para: map[string]interface{}{
 				"protoFile":  "test_proto",
 				"globalMap":  request.GlobalMap,
@@ -308,7 +308,6 @@ func TestSectionHandler(c *gin.Context) {
 		log.Debug("无有效策略从ProtocolConfig解析，使用默认策略配置")
 		strategyConfigs = []pkg.StrategyConfig{
 			{Type: "default_all", Filter: []string{"true"}, Enable: true},
-			{Type: "default_dev2", Filter: []string{`Tag.id == "dev2"`}, Enable: true}, // Example filter
 		}
 	}
 	log.Info("最终使用的Strategy配置", zap.Any("strategyConfigs", strategyConfigs))

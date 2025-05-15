@@ -126,10 +126,39 @@ func BuildSequence(configList []map[string]any) ([]BProcessor, map[string]int, e
 		var newNode BProcessor
 
 		// 检查是否为 Skip 节点
-		if skipVal, ok := config["skip"]; ok {
+		if skipValAny, ok := config["skip"]; ok {
+			var skipIntVal int
+			// var err error // err is declared but not used if only type switch is used for assignment
+
+			switch v := skipValAny.(type) {
+			case float64:
+				// 检查 float64 是否为整数
+				if v != float64(int(v)) {
+					return nil, nil, fmt.Errorf("skip 值 %.2f 不是一个有效的整数", v)
+				}
+				skipIntVal = int(v)
+			case int:
+				skipIntVal = v
+			case string: // 保留对字符串形式数字的支持，以防万一，但优先处理数字类型
+				parsedVal, parseErr := strconv.Atoi(v)
+				if parseErr != nil {
+					return nil, nil, fmt.Errorf("skip 值 '%s' 无法转换为整数: %w", v, parseErr)
+				}
+				skipIntVal = parsedVal
+			default:
+				return nil, nil, fmt.Errorf("skip 值类型无效: %T, 期望 int, float64 或 string 类型的数字", skipValAny)
+			}
+
+			// +++ 添加对 skip 值的校验 +++
+			if skipIntVal <= 0 {
+				// 考虑 skip 是否允许为0或负数，如果 skip 代表要跳过的字节数，通常应为正数。
+				// 根据实际需求调整此校验。假设 skip 必须大于 0。
+				return nil, nil, fmt.Errorf("skip 值必须大于 0, 当前值: %d", skipIntVal)
+			}
+			// +++++++++++++++++++++++
 
 			skipNode := &Skip{
-				Skip:  skipVal.(int),
+				Skip:  skipIntVal,
 				index: index,
 				// next 在第二阶段设置
 			}

@@ -75,9 +75,7 @@ connector:
 
 # 解析器相关配置
 parser:
-  type: ioReader # ioReader|json
   config:
-    dir: ./script
     protoFile: proto-train2sam-v0.0.1 # 启用哪一份协议
 #    method: "ConvertOldGatewayTelemetry"
 
@@ -86,9 +84,9 @@ parser:
 strategy:
   - type: influxdb
     enable: true
-    filter: # 格式<设备类型>:<设备名称>:<遥测名称>
-       - ".*"
-#       - "vobc\\.info:vobc.*:RIOM_sta_3"
+    tagFilter: # 格式：Expr表达式，有Tag作为变量
+       - "Tag.data_source == 'ER2_1_1_1'"
+       - "true"
     config:
   #    以下是自定义配置项
       url: http://10.17.191.107:8086
@@ -98,27 +96,4 @@ strategy:
       batch_size: 2000
       tags:
       - "data_source"
-#  - type: iotdb
-#    enable: false
-#    config:
-#      url: "127.0.0.1:6667,127.0.0.1:6668,127.0.0.1:6669"
-#      username:
-#      password:
-#      batch_size:
-#  - type: mqtt
-#    enable: false
-#    filter: # 格式<设备类型>:<设备名称>:<遥测名称>
-#      - ".*:.*:.*"
-#    config:
-#      url: tcp://
-#      clientID:
-#      username:
-#      password:
-#      willTopic: "status/gateway"
-#  - type: prometheus
-#    enable: false
-#    filter:
-#      - ".*:.*:.*"
-#    config:
-#      port: 8080
-#      endpoint: /metrics
+

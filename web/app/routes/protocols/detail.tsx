@@ -77,6 +77,46 @@ import {
     AccordionTrigger,
 } from "@/components/ui/accordion";
 import yaml from 'js-yaml';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+
+// --- Hex Data History Constants ---
+const HEX_DATA_HISTORY_KEY_PREFIX = 'hexDataHistory';
+const MAX_HISTORY_COUNT = 5;
+
+// --- Hex Data History Helper Functions ---
+const loadHexDataHistory = (storageKey: string): string[] => {
+    if (!storageKey) return [];
+    try {
+        const storedHistory = localStorage.getItem(storageKey);
+        return storedHistory ? JSON.parse(storedHistory) : [];
+    } catch (error) {
+        console.error(`Failed to load hex data history from localStorage (key: ${storageKey}):`, error);
+        return [];
+    }
+};
+
+const saveHexDataHistory = (storageKey: string, history: string[]): void => {
+    if (!storageKey) return;
+    try {
+        localStorage.setItem(storageKey, JSON.stringify(history));
+    } catch (error) {
+        console.error(`Failed to save hex data history to localStorage (key: ${storageKey}):`, error);
+    }
+};
+
+const addToHexDataHistory = (newData: string, currentHistory: string[]): string[] => {
+    if (!newData || !newData.trim()) return currentHistory;
+    const filteredHistory = currentHistory.filter(item => item !== newData);
+    const updatedHistory = [newData, ...filteredHistory];
+    return updatedHistory.slice(0, MAX_HISTORY_COUNT);
+};
+
+const getVersionSpecificHexHistoryKey = (protocolId?: string, versionId?: string): string | null => {
+    if (protocolId && versionId) {
+        return `${HEX_DATA_HISTORY_KEY_PREFIX}_proto_${protocolId}_ver_${versionId}`;
+    }
+    return null;
+};
 
 // --- 辅助函数：格式化纳秒时间 ---
 function formatDurationNs(nanoseconds: number | null | undefined): string {
@@ -170,6 +210,8 @@ export default function ProtocolDetail() {
     const [isConfigDialogOpen, setIsConfigDialogOpen] = useState(false);
     const [configError, setConfigError] = useState<string | null>(null);
     const [configDebugInfo, setConfigDebugInfo] = useState<any>(null);
+    const [activeTestResultTab, setActiveTestResultTab] = useState("summary");
+    const [hexHistory, setHexHistory] = useState<string[]>([]); // State for hex history
 
     // 添加点击外部关闭下拉菜单的事件处理
     useEffect(() => {
@@ -179,13 +221,23 @@ export default function ProtocolDetail() {
             }
         }
 
+        // Load hex history on mount
+        const storageKey = getVersionSpecificHexHistoryKey(protocolId, selectedVersion?.id);
+        if (storageKey) {
+            console.log(`Loading history for key: ${storageKey}`);
+            setHexHistory(loadHexDataHistory(storageKey));
+        } else {
+            console.warn("Could not load hex history: Invalid protocolId or versionId for dialog.");
+            setHexHistory([]); // Clear history if key is invalid
+        }
+
         // 添加全局点击事件
         document.addEventListener("mousedown", handleClickOutside);
         return () => {
             // 清理事件
             document.removeEventListener("mousedown", handleClickOutside);
         };
-    }, []);
+    }, [protocolId, selectedVersion?.id]);
 
     const {
         data: versions,
@@ -263,6 +315,20 @@ export default function ProtocolDetail() {
             toast.error('十六进制数据长度必须是偶数');
             return;
         }
+
+        // --- Add to history after validation passes (version specific) ---
+        const currentVersionId = selectedVersion.id;
+        const storageKey = getVersionSpecificHexHistoryKey(protocolId, currentVersionId);
+
+        if (storageKey) {
+            const updatedHistory = addToHexDataHistory(hexData, hexHistory);
+            saveHexDataHistory(storageKey, updatedHistory);
+            setHexHistory(updatedHistory);
+            console.log(`History saved for key: ${storageKey}`);
+        } else {
+            console.warn("Could not save hex history: Invalid protocolId or versionId.");
+        }
+        // --- History update end ---
 
         setIsRunningTest(true);
         setTestResults(null);
@@ -469,6 +535,18 @@ export default function ProtocolDetail() {
         setSelectedVersion(version);
         setSelectedGlobalMapId("none");
         setHexData("0102030405"); // 重置为默认值
+
+        // Load version-specific history
+        const currentProtocolId = protocolId; // protocolId from useParams
+        const storageKey = getVersionSpecificHexHistoryKey(currentProtocolId, version.id);
+        if (storageKey) {
+            console.log(`Loading history for key: ${storageKey}`);
+            setHexHistory(loadHexDataHistory(storageKey));
+        } else {
+            console.warn("Could not load hex history: Invalid protocolId or versionId for dialog.");
+            setHexHistory([]); // Clear history if key is invalid
+        }
+
         setIsDialogOpen(true);
     };
 
@@ -518,6 +596,22 @@ export default function ProtocolDetail() {
         } catch (error) {
             console.error("导出协议配置失败:", error);
             toast.error(`导出协议配置失败: ${error instanceof Error ? error.message : '未知错误'}`);
+        }
+    };
+
+    const clearHexDataHistory = () => {
+        const currentProtocolId = protocolId;
+        const currentVersionId = selectedVersion?.id;
+        const storageKey = getVersionSpecificHexHistoryKey(currentProtocolId, currentVersionId);
+
+        if (storageKey) {
+            setHexHistory([]);
+            saveHexDataHistory(storageKey, []);
+            toast.info("当前版本的测试数据历史已清空");
+            console.log(`History cleared for key: ${storageKey}`);
+        } else {
+            toast.info("无法清空历史记录: 未选择有效版本。");
+            console.warn("Could not clear hex history: Invalid protocolId or versionId for clearing.");
         }
     };
 
@@ -698,13 +792,27 @@ export default function ProtocolDetail() {
     const renderTestResults = () => {
         if (!testResults) return null;
 
+        // --- 检查处理步骤中是否有错误 ---
+        let hasProcessingError = false;
+        let firstErrorMessage = "";
+        if (testResults.processingSteps && Array.isArray(testResults.processingSteps)) {
+            for (const step of testResults.processingSteps) {
+                if (step && step.error) {
+                    hasProcessingError = true;
+                    if (!firstErrorMessage) firstErrorMessage = step.error; // 获取第一个错误信息作为摘要
+                    // break; // 如果只需要知道有无错误，可以提前退出
+                }
+            }
+        }
+        // --- 检查结束 ---
+
         // 字节块可视化所需数据
         const totalBytesString = testResults.totalBytes || '';
         const finalCursor = testResults.finalCursor ?? 0; // finalCursor 可能为 0 或 null/undefined
         const bytesArray = totalBytesString.match(/.{1,2}/g) || []; // 分割为字节数组
 
         return (
-            <Tabs defaultValue="summary" className="w-full">
+            <Tabs value={activeTestResultTab} onValueChange={setActiveTestResultTab} className="w-full">
                 <TabsList className="grid grid-cols-4 mb-4">
                     <TabsTrigger value="summary">概览</TabsTrigger>
                     <TabsTrigger value="sections">段处理</TabsTrigger>
@@ -713,18 +821,36 @@ export default function ProtocolDetail() {
                 </TabsList>
 
                 <TabsContent value="summary">
-                    <Card className="mb-4">
-                        <CardHeader className="pb-2">
-                            <CardTitle className="text-sm font-medium">处理字节 (总共: {bytesArray.length} 字节)</CardTitle>
+                    {/* --- 在概览顶部添加错误提示 --- */}
+                    {hasProcessingError && (
+                        <Alert variant="destructive" className="mb-4">
+                            <ExclamationTriangleIcon className="h-4 w-4" />
+                            <AlertTitle>处理错误</AlertTitle>
+                            <AlertDescription>
+                                协议处理过程中发生错误。摘要: "{firstErrorMessage}".
+                                <Button
+                                    variant="link"
+                                    className="p-0 h-auto ml-1 text-destructive font-semibold hover:underline"
+                                    onClick={() => setActiveTestResultTab("sections")}
+                                >
+                                    点击查看段处理详情。
+                                </Button>
+                            </AlertDescription>
+                        </Alert>
+                    )}
+                    {/* --- 错误提示结束 --- */}
+                    <Card className="mb-4 shadow-sm">
+                        <CardHeader className="pb-2 pt-3 px-4">
+                            <CardTitle className="text-sm font-semibold">处理字节 (总共: {bytesArray.length} 字节)</CardTitle>
                             {/* 添加图例说明 */}
                             <CardDescription className="text-xs pt-1">
-                                <span className="inline-block w-3 h-3 bg-green-100 border border-green-300 mr-1 align-middle"></span> 已解析
-                                <span className="inline-block w-3 h-3 bg-gray-100 border border-gray-300 ml-3 mr-1 align-middle"></span> 未解析
+                                <span className="inline-block w-3 h-3 bg-green-200 border border-green-400 mr-1 align-middle rounded-sm"></span> 已解析
+                                <span className="inline-block w-3 h-3 bg-gray-200 border border-gray-400 ml-3 mr-1 align-middle rounded-sm"></span> 未解析
                             </CardDescription>
                         </CardHeader>
-                        <CardContent>
+                        <CardContent className="px-4 pb-3">
                             {/* 替换原来的 ScrollArea 和 pre */}
-                            <div className="flex flex-wrap gap-1 p-2 border rounded-md bg-muted/20">
+                            <div className="flex flex-wrap gap-1 p-2 border rounded-md bg-muted/30">
                                 {bytesArray.length > 0 ? (
                                     bytesArray.map((byteHex: string, index: number) => {
                                         const isParsed = index < finalCursor;
@@ -736,7 +862,7 @@ export default function ProtocolDetail() {
                                             <span
                                                 key={index}
                                                 title={`字节 ${index} (值: 0x${byteHex}) - ${isParsed ? '已解析' : '未解析'}`}
-                                                className={`inline-block px-1.5 py-0.5 border rounded text-xs font-mono transition-colors ${bgColor} ${borderColor} ${textColor}`}
+                                                className={`inline-block px-1.5 py-0.5 border rounded-sm text-xs font-mono transition-colors ${bgColor} ${borderColor} ${textColor}`}
                                             >
                                                 {byteHex}
                                             </span>
@@ -749,56 +875,82 @@ export default function ProtocolDetail() {
                         </CardContent>
                     </Card>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <Card>
-                            <CardHeader className="pb-2">
-                                <CardTitle className="text-sm font-medium">性能指标</CardTitle>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                        <Card className="shadow-sm">
+                            <CardHeader className="pb-2 pt-3 px-4">
+                                <CardTitle className="text-sm font-semibold">性能指标</CardTitle>
                             </CardHeader>
-                            <CardContent>
-                                <div className="flex items-center justify-between">
-                                    <span className="text-sm">处理时间</span>
-                                    <Badge variant="outline" className="ml-auto font-mono">
+                            <CardContent className="px-4 pb-3 space-y-2">
+                                <div className="flex items-center justify-between text-sm">
+                                    <span>处理时间</span>
+                                    <Badge variant="outline" className="ml-auto font-mono text-xs">
                                         {formatDurationNs(testResults.processingTime)}
                                     </Badge>
                                 </div>
-                                <div className="flex items-center justify-between mt-2">
-                                    <span className="text-sm">生成点数</span>
-                                    <Badge variant="outline" className="ml-auto font-mono">
+                                <div className="flex items-center justify-between text-sm">
+                                    <span>生成点数</span>
+                                    <Badge variant="outline" className="ml-auto font-mono text-xs">
                                         {testResults.points?.length || 0}
                                     </Badge>
                                 </div>
                             </CardContent>
                         </Card>
 
-                        <Card className="md:col-span-2">
-                            <CardHeader className="pb-2">
-                                <CardTitle className="text-sm font-medium">数据点</CardTitle>
+                        <Card className="md:col-span-2 shadow-sm">
+                            <CardHeader className="pb-2 pt-3 px-4">
+                                <CardTitle className="text-sm font-semibold">数据点</CardTitle>
                             </CardHeader>
                             <CardContent className="p-0">
-                                <Table>
+                                <Table className="text-xs">
                                     <TableHeader>
                                         <TableRow>
-                                            <TableHead>设备</TableHead>
-                                            <TableHead>字段</TableHead>
-                                            <TableHead className="text-right">值</TableHead>
+                                            <TableHead className="h-8 px-3">标签 (Tags)</TableHead>
+                                            <TableHead className="h-8 px-3">字段 (Fields)</TableHead>
+                                            <TableHead className="h-8 px-3 text-right">值</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
                                         {testResults.points && testResults.points.length > 0 ? (
                                             testResults.points.map((point: any, index: number) => (
-                                                <TableRow key={index}>
-                                                    <TableCell className="font-medium">{point.Device}</TableCell>
-                                                    <TableCell>
-                                                        {Object.keys(point.Field || {}).join(', ')}
+                                                <TableRow key={index} className="hover:bg-muted/30">
+                                                    <TableCell className="font-medium py-1.5 px-3 align-top">
+                                                        {point.Tag && Object.keys(point.Tag).length > 0 ? (
+                                                            <div className="flex flex-wrap gap-1">
+                                                                {Object.entries(point.Tag).map(([key, value]) => (
+                                                                    <Badge
+                                                                        key={key}
+                                                                        variant="outline"
+                                                                        className="text-xs font-normal border-slate-300"
+                                                                        title={`${key}: ${String(value)}`}
+                                                                    >
+                                                                        <span className="font-medium text-slate-700">{key}:</span>
+                                                                        <span className="font-mono ml-1 text-slate-600 opacity-90">{String(value)}</span>
+                                                                    </Badge>
+                                                                ))}
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-xs text-muted-foreground italic">无标签</span>
+                                                        )}
                                                     </TableCell>
-                                                    <TableCell className="text-right font-mono">
-                                                        {Object.values(point.Field || {}).join(', ')}
+                                                    <TableCell className="py-1.5 px-3 align-top">
+                                                        {point.Field && Object.keys(point.Field).length > 0 ? (
+                                                            Object.keys(point.Field).join(', ')
+                                                        ) : (
+                                                            <span className="text-xs text-muted-foreground italic">无字段</span>
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell className="text-right font-mono py-1.5 px-3 align-top">
+                                                        {point.Field && Object.keys(point.Field).length > 0 ? (
+                                                            Object.values(point.Field).map(String).join(', ')
+                                                        ) : (
+                                                            <span className="text-xs text-muted-foreground italic">无值</span>
+                                                        )}
                                                     </TableCell>
                                                 </TableRow>
                                             ))
                                         ) : (
                                             <TableRow>
-                                                <TableCell colSpan={3} className="text-center text-muted-foreground">
+                                                <TableCell colSpan={3} className="text-center text-muted-foreground py-3">
                                                     没有数据点
                                                 </TableCell>
                                             </TableRow>
@@ -808,24 +960,24 @@ export default function ProtocolDetail() {
                             </CardContent>
                         </Card>
 
-                        <Card className="md:col-span-3">
-                            <CardHeader className="pb-2">
-                                <CardTitle className="text-sm font-medium">变量状态</CardTitle>
+                        <Card className="md:col-span-3 shadow-sm">
+                            <CardHeader className="pb-2 pt-3 px-4">
+                                <CardTitle className="text-sm font-semibold">变量状态 (Final Vars)</CardTitle>
                             </CardHeader>
-                            <CardContent>
+                            <CardContent className="px-4 pb-3">
                                 {Object.keys(testResults.finalVars || {}).length > 0 ? (
-                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                                         {Object.entries(testResults.finalVars || {}).map(([key, value]: [string, any], index: number) => (
-                                            <div key={index} className="flex items-center justify-between border p-2 rounded-md">
-                                                <span className="text-sm font-medium">{key}</span>
-                                                <Badge variant="secondary" className="font-mono text-xs">
+                                            <div key={index} className="flex items-center justify-between border p-1.5 rounded-md bg-muted/40 hover:bg-muted/60 transition-colors">
+                                                <span className="text-xs font-medium truncate mr-2" title={key}>{key}</span>
+                                                <Badge variant="secondary" className="font-mono text-xs px-1.5 whitespace-nowrap shadow-sm">
                                                     {typeof value === 'object' ? JSON.stringify(value) : String(value)}
                                                 </Badge>
                                             </div>
                                         ))}
                                     </div>
                                 ) : (
-                                    <div className="text-center text-muted-foreground">
+                                    <div className="text-center text-muted-foreground text-xs py-3">
                                         没有变量数据
                                     </div>
                                 )}
@@ -838,51 +990,58 @@ export default function ProtocolDetail() {
                     {/* --- 添加新的基于 processingSteps 的渲染逻辑 --- */}
                     {testResults.processingSteps && testResults.processingSteps.length > 0 ? (
                         <>
-                            <div className="flex items-center gap-4 mb-4 text-xs">
-                                <span className="font-medium">图例:</span>
+                            <div className="flex items-center gap-4 mb-3 text-xs border p-2 rounded-md bg-muted/30">
+                                <span className="font-semibold">图例:</span>
                                 <div className="flex items-center">
-                                    <span className="h-3 w-3 inline-block bg-green-50 border border-green-200 mr-1 rounded-sm"></span>
-                                    <span>新增变量</span>
+                                    <span className="h-3 w-3 inline-block bg-green-100 border border-green-400 mr-1.5 rounded-sm"></span>
+                                    <span className="text-slate-700">新增变量</span>
                                 </div>
                                 <div className="flex items-center">
-                                    <span className="h-3 w-3 inline-block bg-blue-50 border border-blue-200 mr-1 rounded-sm"></span>
-                                    <span>修改变量</span>
+                                    <span className="h-3 w-3 inline-block bg-blue-100 border border-blue-400 mr-1.5 rounded-sm"></span>
+                                    <span className="text-slate-700">修改变量</span>
                                 </div>
                                 <div className="flex items-center">
-                                    <span className="h-3 w-3 inline-block bg-red-50 border border-red-200 mr-1 rounded-sm"></span>
-                                    <span>错误</span>
+                                    <span className="h-3 w-3 inline-block bg-red-100 border border-red-400 mr-1.5 rounded-sm"></span>
+                                    <span className="text-slate-700">错误</span>
                                 </div>
                             </div>
-                            <Accordion type="single" collapsible className="w-full space-y-2">
+                            <Accordion type="single" collapsible className="w-full space-y-1.5">
                                 {testResults.processingSteps.map((step: any, index: number) => (
-                                    <AccordionItem key={index} value={`step-${index}`}>
-                                        <AccordionTrigger className={`flex justify-between items-center text-sm px-3 py-2 rounded-md hover:no-underline ${step.error ? 'bg-red-50 hover:bg-red-100' : 'bg-muted/50 hover:bg-muted/80'}`}>
+                                    <AccordionItem key={index} value={`step-${index}`} className="border rounded-md shadow-sm hover:shadow-md transition-shadow">
+                                        <AccordionTrigger className={`flex justify-between items-center text-sm px-3 py-2 rounded-t-md hover:no-underline
+                                            ${step.error ? 'bg-red-50 hover:bg-red-100 border-b border-red-200' : 'bg-slate-50 hover:bg-slate-100 border-b border-slate-200'}
+                                            ${index === testResults.processingSteps.length - 1 ? 'rounded-b-md border-b-0' : ''}
+                                            transition-colors`}>
                                             <div className="flex items-center gap-2">
-                                                <Badge variant={step.error ? "destructive" : "secondary"} className="w-6 h-6 flex items-center justify-center p-0">{index + 1}</Badge>
-                                                <span className="font-medium">{step.nodeLabel || '未知节点'}</span>
+                                                <Badge variant={step.error ? "destructive" : "secondary"} className="w-6 h-6 flex items-center justify-center p-0 text-xs shadow">
+                                                    {index + 1}
+                                                </Badge>
+                                                <span className="font-semibold text-slate-800">{step.nodeLabel || '未知节点'}</span>
                                                 <span className="text-xs text-muted-foreground">
-                                                    ({step.startIndex} <ArrowRightIcon className="inline h-3 w-3 mx-0.5" /> {step.endIndex})
+                                                    (字节: {step.startIndex} <ArrowRightIcon className="inline h-3 w-3 mx-0.5" /> {step.endIndex})
                                                 </span>
                                             </div>
                                             {step.error ? (
-                                                <span className="text-xs text-red-600 mr-2 flex items-center">
+                                                <span className="text-xs text-red-700 font-semibold mr-2 flex items-center">
                                                     <ExclamationTriangleIcon className="h-4 w-4 mr-1" /> 错误
                                                 </span>
                                             ) : (
-                                                <Badge variant="outline" className="font-mono text-xs h-5 px-1.5 mr-2">
-                                                    {step.consumedBytes || '无消耗'}
+                                                <Badge variant="outline" className="font-mono text-xs h-5 px-1.5 mr-2 border-slate-300 text-slate-600">
+                                                    {step.consumedBytes || '0 bytes'}
                                                 </Badge>
                                             )}
                                         </AccordionTrigger>
-                                        <AccordionContent className="px-3 pt-3 border rounded-b-md mt-[-2px]">
+                                        <AccordionContent className="px-3 pt-3 pb-2.5 border-t-0 rounded-b-md bg-white">
                                             {step.error && (
-                                                <div className="mb-3 p-2 border border-red-200 bg-red-50 text-red-800 rounded text-xs">
-                                                    <strong className="font-medium">错误信息:</strong> {step.error}
-                                                </div>
+                                                <Alert variant="destructive" className="mb-3 text-xs">
+                                                    <ExclamationTriangleIcon className="h-4 w-4" />
+                                                    <AlertTitle className="font-semibold text-xs">错误信息</AlertTitle>
+                                                    <AlertDescription>{step.error}</AlertDescription>
+                                                </Alert>
                                             )}
-                                            <div className="text-xs mb-3">
-                                                <strong className="font-medium">消耗字节:</strong>
-                                                <span className="ml-2 font-mono p-1 bg-background border rounded text-muted-foreground">
+                                            <div className="text-xs mb-3 flex items-center">
+                                                <strong className="font-semibold text-slate-700 mr-2">消耗字节:</strong>
+                                                <span className="font-mono p-1 bg-slate-100 border border-slate-300 rounded text-slate-600">
                                                     {step.consumedBytes || '-'}
                                                 </span>
                                                 <span className="ml-2 text-muted-foreground">
@@ -891,21 +1050,21 @@ export default function ProtocolDetail() {
                                             </div>
 
                                             {/* 处理前变量 */}
-                                            <div className="mb-3">
-                                                <strong className="font-medium text-xs mb-1 block">处理前变量:</strong>
+                                            <div className="mb-2.5">
+                                                <strong className="font-semibold text-xs mb-1 block text-slate-700">处理前变量:</strong>
                                                 {Object.keys(step.varsBefore || {}).length > 0 ? (
-                                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2 p-2 border rounded bg-muted/20">
+                                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-1.5 p-2 border rounded bg-slate-50/70">
                                                         {Object.entries(step.varsBefore || {}).map(([key, value]: [string, any], vIndex: number) => (
-                                                            <div key={vIndex} className="flex items-center justify-between border p-1 rounded-md bg-background text-xs">
-                                                                <span className="font-medium mr-1 truncate" title={key}>{key}</span>
-                                                                <Badge variant="outline" className="font-mono text-xs px-1 whitespace-nowrap">
+                                                            <div key={vIndex} className="flex items-center justify-between border p-1 rounded-sm bg-white text-xs shadow-sm">
+                                                                <span className="font-medium mr-1 truncate text-slate-600" title={key}>{key}</span>
+                                                                <Badge variant="outline" className="font-mono text-xs px-1 whitespace-nowrap border-slate-300">
                                                                     {typeof value === 'object' ? JSON.stringify(value) : String(value)}
                                                                 </Badge>
                                                             </div>
                                                         ))}
                                                     </div>
                                                 ) : (
-                                                    <div className="text-xs text-center text-muted-foreground p-2 border rounded bg-muted/20 italic">
+                                                    <div className="text-xs text-center text-muted-foreground p-2 border rounded bg-slate-50/70 italic">
                                                         无变量
                                                     </div>
                                                 )}
@@ -913,7 +1072,7 @@ export default function ProtocolDetail() {
 
                                             {/* 变量变化 */}
                                             <div>
-                                                <strong className="font-medium text-xs mb-1 block">变量变化 (新增/修改):</strong>
+                                                <strong className="font-semibold text-xs mb-1 block text-slate-700">变量变化 (新增/修改):</strong>
                                                 {(() => {
                                                     // 计算变量变化
                                                     const varChanges: {
@@ -951,27 +1110,27 @@ export default function ProtocolDetail() {
 
                                                     if (varChanges.length > 0) {
                                                         return (
-                                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 p-2 border rounded bg-muted/20">
+                                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5 p-2 border rounded bg-slate-50/70">
                                                                 {varChanges.map((change, cIndex) => (
-                                                                    <div key={cIndex} className={`flex flex-col border p-1 rounded-md
-                                                                        ${change.type === 'added' ? 'bg-green-50 border-green-200' : 'bg-blue-50 border-blue-200'}`}>
-                                                                        <div className="flex items-center justify-between mb-1">
-                                                                            <span className={`font-medium truncate ${change.type === 'added' ? 'text-green-700' : 'text-blue-700'}`} title={change.key}>
+                                                                    <div key={cIndex} className={`flex flex-col border p-1.5 rounded-sm shadow-sm
+                                                                            ${change.type === 'added' ? 'bg-green-50 border-green-300' : 'bg-blue-50 border-blue-300'}`}>
+                                                                        <div className="flex items-center justify-between mb-0.5">
+                                                                            <span className={`font-semibold text-xs truncate ${change.type === 'added' ? 'text-green-800' : 'text-blue-800'}`} title={change.key}>
                                                                                 {change.key}
-                                                                                <Badge className={`ml-1 ${change.type === 'added' ? 'bg-green-200 text-green-800' : 'bg-blue-200 text-blue-800'}`}>
-                                                                                    {change.type === 'added' ? '新增' : '修改'}
-                                                                                </Badge>
                                                                             </span>
+                                                                            <Badge className={`text-xs px-1.5 py-0 h-5 ${change.type === 'added' ? 'bg-green-200 text-green-900' : 'bg-blue-200 text-blue-900'}`}>
+                                                                                {change.type === 'added' ? '新增' : '修改'}
+                                                                            </Badge>
                                                                         </div>
                                                                         {change.type === 'modified' && (
-                                                                            <div className="flex items-center text-xs text-red-500 line-through mb-1">
-                                                                                <span className="font-mono bg-red-50 px-1 rounded">
+                                                                            <div className="flex items-center text-xs text-red-600 line-through mb-0.5">
+                                                                                <span className="font-mono bg-red-100 px-1 rounded text-xs">
                                                                                     {typeof change.oldValue === 'object' ? JSON.stringify(change.oldValue) : String(change.oldValue)}
                                                                                 </span>
                                                                             </div>
                                                                         )}
-                                                                        <div className="flex items-center text-xs text-green-600">
-                                                                            <span className="font-mono bg-green-50 px-1 rounded">
+                                                                        <div className="flex items-center text-xs ${change.type === 'added' ? 'text-green-700' : 'text-blue-700'}">
+                                                                            <span className={`font-mono px-1 rounded text-xs ${change.type === 'added' ? 'bg-green-100' : 'bg-blue-100'}`}>
                                                                                 {typeof change.newValue === 'object' ? JSON.stringify(change.newValue) : String(change.newValue)}
                                                                             </span>
                                                                         </div>
@@ -981,7 +1140,7 @@ export default function ProtocolDetail() {
                                                         );
                                                     } else {
                                                         return (
-                                                            <div className="text-xs text-center text-muted-foreground p-2 border rounded bg-muted/20 italic">
+                                                            <div className="text-xs text-center text-muted-foreground p-2 border rounded bg-slate-50/70 italic">
                                                                 无变量变化
                                                             </div>
                                                         );
@@ -1004,39 +1163,67 @@ export default function ProtocolDetail() {
                     {testResults.dispatcherResults && testResults.dispatcherResults.length > 0 ? (
                         <div className="space-y-4">
                             {testResults.dispatcherResults.map((result: any, index: number) => (
-                                <Card key={index}>
-                                    <CardHeader className="pb-2">
-                                        <CardTitle className="text-base">{result.strategyName || `策略 ${index + 1}`}</CardTitle>
-                                        <CardDescription>
-                                            处理点数: <Badge variant="secondary">{result.points?.length || 0}</Badge>
-                                        </CardDescription>
+                                <Card key={index} className="shadow-sm">
+                                    <CardHeader className="pb-2 pt-3 px-4 flex flex-row justify-between items-center">
+                                        <div>
+                                            <CardTitle className="text-base font-semibold">{result.strategyName || `策略 ${index + 1}`}</CardTitle>
+                                            <CardDescription className="text-xs">
+                                                处理点数: <Badge variant="outline" className="text-xs ml-1">{result.points?.length || 0}</Badge>
+                                            </CardDescription>
+                                        </div>
                                     </CardHeader>
                                     <CardContent className="p-0">
                                         {result.points && result.points.length > 0 ? (
-                                            <Table>
+                                            <Table className="text-xs">
                                                 <TableHeader>
                                                     <TableRow>
-                                                        <TableHead>设备</TableHead>
-                                                        <TableHead>字段</TableHead>
-                                                        <TableHead className="text-right">值</TableHead>
+                                                        <TableHead className="h-8 px-3">标签 (Tags)</TableHead>
+                                                        <TableHead className="h-8 px-3">字段 (Fields)</TableHead>
+                                                        <TableHead className="h-8 px-3 text-right">值</TableHead>
                                                     </TableRow>
                                                 </TableHeader>
                                                 <TableBody>
                                                     {result.points.map((point: any, pointIdx: number) => (
-                                                        <TableRow key={pointIdx}>
-                                                            <TableCell className="font-medium">{point.Device}</TableCell>
-                                                            <TableCell>
-                                                                {Object.keys(point.Field || {}).join(', ')}
+                                                        <TableRow key={pointIdx} className="hover:bg-muted/30">
+                                                            <TableCell className="font-medium py-1.5 px-3 align-top">
+                                                                {point.Tag && Object.keys(point.Tag).length > 0 ? (
+                                                                    <div className="flex flex-wrap gap-1">
+                                                                        {Object.entries(point.Tag).map(([key, value]) => (
+                                                                            <Badge
+                                                                                key={key}
+                                                                                variant="outline"
+                                                                                className="text-xs font-normal border-slate-300"
+                                                                                title={`${key}: ${String(value)}`}
+                                                                            >
+                                                                                <span className="font-medium text-slate-700">{key}:</span>
+                                                                                <span className="font-mono ml-1 text-slate-600 opacity-90">{String(value)}</span>
+                                                                            </Badge>
+                                                                        ))}
+                                                                    </div>
+                                                                ) : (
+                                                                    <span className="text-xs text-muted-foreground italic">无标签</span>
+                                                                )}
                                                             </TableCell>
-                                                            <TableCell className="text-right font-mono">
-                                                                {Object.values(point.Field || {}).join(', ')}
+                                                            <TableCell className="py-1.5 px-3 align-top">
+                                                                {point.Field && Object.keys(point.Field).length > 0 ? (
+                                                                    Object.keys(point.Field).join(', ')
+                                                                ) : (
+                                                                    <span className="text-xs text-muted-foreground italic">无字段</span>
+                                                                )}
+                                                            </TableCell>
+                                                            <TableCell className="text-right font-mono py-1.5 px-3 align-top">
+                                                                {point.Field && Object.keys(point.Field).length > 0 ? (
+                                                                    Object.values(point.Field).map(String).join(', ')
+                                                                ) : (
+                                                                    <span className="text-xs text-muted-foreground italic">无值</span>
+                                                                )}
                                                             </TableCell>
                                                         </TableRow>
                                                     ))}
                                                 </TableBody>
                                             </Table>
                                         ) : (
-                                            <div className="p-4 text-center text-muted-foreground">
+                                            <div className="p-3 text-center text-muted-foreground text-xs italic">
                                                 没有处理点数据
                                             </div>
                                         )}
@@ -1052,13 +1239,13 @@ export default function ProtocolDetail() {
                 </TabsContent>
 
                 <TabsContent value="raw">
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="text-sm">原始JSON数据</CardTitle>
-                            <CardDescription>完整的测试结果响应</CardDescription>
+                    <Card className="shadow-sm">
+                        <CardHeader className="pb-2 pt-3 px-4">
+                            <CardTitle className="text-sm font-semibold">原始JSON数据</CardTitle>
+                            <CardDescription className="text-xs">完整的测试结果响应</CardDescription>
                         </CardHeader>
-                        <CardContent>
-                            <ScrollArea className="h-[400px] rounded-md border p-4">
+                        <CardContent className="px-4 pb-3">
+                            <ScrollArea className="h-[400px] rounded-md border p-3 bg-muted/30">
                                 <pre className="text-xs font-mono whitespace-pre-wrap">
                                     {JSON.stringify(testResults, null, 2)}
                                 </pre>
@@ -1076,7 +1263,6 @@ export default function ProtocolDetail() {
                 <div className="flex justify-between items-start">
                     <div>
                         <h1 className="text-2xl font-bold">{protocol.name}</h1>
-                        <p className="text-muted-foreground">协议详情</p>
                     </div>
                     <div className="flex space-x-2">
                         <Button
@@ -1105,7 +1291,6 @@ export default function ProtocolDetail() {
                     <CardHeader className="flex flex-row items-center justify-between">
                         <div>
                             <CardTitle>版本列表</CardTitle>
-                            <CardDescription>管理该协议的不同版本。</CardDescription>
                         </div>
                         <Button asChild size="sm">
                             <Link to={`/protocols/${protocolId}/versions/new`}>
@@ -1122,7 +1307,6 @@ export default function ProtocolDetail() {
                     <CardHeader className="flex flex-row items-center justify-between">
                         <div>
                             <CardTitle>全局映射列表</CardTitle>
-                            <CardDescription>管理该协议的全局映射。</CardDescription>
                         </div>
                         <Button asChild size="sm">
                             <Link to={`/protocols/${protocolId}/globalmaps/new`}>
@@ -1216,6 +1400,39 @@ export default function ProtocolDetail() {
                                         使用十六进制格式 (0-9, A-F)，长度必须是偶数
                                     </p>
                                 </div>
+
+                                {/* Hex Data History UI */}
+                                {selectedVersion && hexHistory.length > 0 && (
+                                    <div className="mt-3 pt-3 border-t">
+                                        <div className="flex justify-between items-center mb-1.5">
+                                            <Label className="text-xs text-muted-foreground">历史记录 (版本: {selectedVersion.version}):</Label>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-6 px-1.5 text-xs text-muted-foreground hover:text-destructive"
+                                                onClick={clearHexDataHistory}
+                                                title="清空历史记录"
+                                            >
+                                                <TrashIcon className="h-3 w-3 mr-1" /> 清空
+                                            </Button>
+                                        </div>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {hexHistory.map((historyItem, index) => (
+                                                <Button
+                                                    key={index}
+                                                    variant="outline"
+                                                    size="sm" // Standard small size
+                                                    className="h-auto px-2 py-1 text-xs font-mono hover:bg-accent/80"
+                                                    onClick={() => setHexData(historyItem)}
+                                                    title={historyItem}
+                                                >
+                                                    {historyItem.length > 20 ? `${historyItem.substring(0, 18)}...` : historyItem}
+                                                </Button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                                {/* End Hex Data History UI */}
                             </TabsContent>
 
                             <TabsContent value="config" className="space-y-4">

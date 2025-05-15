@@ -2,11 +2,6 @@ import type { RouteProps } from "react-router";
 
 // --- Go Config 同步类型定义 ---
 
-interface GoDataFilter {
-    dev_filter: string;  // 注意: Go 中是下划线，TS 中保持一致或转换为驼峰取决于序列化/反序列化行为
-    tele_filter: string;
-}
-
 interface GoLogConfig {
     log_path: string;
     max_size: number;
@@ -21,12 +16,11 @@ interface GoLogConfig {
 interface GoStrategyConfig {
     type: string;
     enable: boolean;
-    filter: GoDataFilter[];
+    filter: string[];
     config: Record<string, any>; // map[string]interface{}
 }
 
 interface GoParserConfig {
-    type: string;
     config: Record<string, any>; // map[string]interface{}
 }
 
@@ -35,15 +29,10 @@ interface GoConnectorConfig {
     config: Record<string, any>; // map[string]interface{}
 }
 
-interface GoDispatcherConfig {
-    repeat_data_filter: GoDataFilter[];
-}
-
 // 主配置结构 (对应 Go Config, 排除 Others)
 export interface GatewayConfig {
     parser: GoParserConfig;
     connector: GoConnectorConfig;
-    dispatcher: GoDispatcherConfig;
     strategy: GoStrategyConfig[];
     version: string;
     log: GoLogConfig;

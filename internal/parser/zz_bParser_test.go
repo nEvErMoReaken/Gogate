@@ -360,7 +360,6 @@ func MockContext() context.Context {
 func mockConfig(protoFileName string, protoYAML string, globalMap map[string]interface{}, paraMap map[string]interface{}) (*pkg.Config, error) {
 	v := &pkg.Config{
 		Parser: pkg.ParserConfig{
-			Type: "byteParser",
 			Para: map[string]interface{}{},
 		},
 		Others: map[string]interface{}{},

@@ -73,9 +73,9 @@ func NewPipeline(ctx context.Context) (*Pipeline, error) {
 
 	// 4. 初始化Aggregator
 	var a *dispatcher.Dispatcher
-	a = dispatcher.New(ctx, &pkg.ConfigFromContext(ctx).Dispatcher)
+	a = dispatcher.New(ctx)
 
-	pkg.LoggerFromContext(ctx).Info(" Pipeline Info ", zap.Any("connector", pkg.ConfigFromContext(ctx).Connector.Type), zap.Any("parser", pkg.ConfigFromContext(ctx).Parser.Type), zap.Any("strategy", showList))
+	pkg.LoggerFromContext(ctx).Info(" Pipeline Info ", zap.Any("connector", pkg.ConfigFromContext(ctx).Connector.Type), zap.Any("strategy", showList))
 	return &Pipeline{
 		connector:  c,
 		dispatcher: a,

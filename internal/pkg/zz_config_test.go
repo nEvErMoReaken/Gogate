@@ -102,10 +102,6 @@ strategy:
 		t.Fatalf("InitCommon 函数调用失败: %v", err)
 	}
 
-	// 验证配置项是否正确解析
-	if config.Parser.Type != "ioReader" {
-		t.Errorf("期望解析器类型为 'ioReader'，但得到的是 %s", config.Parser.Type)
-	}
 	if config.Connector.Type != "mqtt" {
 		t.Errorf("期望连接器类型为 'mqtt'，但得到的是 %s", config.Connector.Type)
 	}
@@ -128,9 +124,7 @@ func TestWithConfigAndConfigFromContext(t *testing.T) {
 	// 创建一个测试配置
 	testConfig := &Config{
 		Version: "1.0.0",
-		Parser: ParserConfig{
-			Type: "json",
-		},
+		Parser:  ParserConfig{},
 	}
 
 	// 创建一个基础上下文
@@ -147,9 +141,6 @@ func TestWithConfigAndConfigFromContext(t *testing.T) {
 		t.Errorf("期望提取到的配置版本为 '1.0.0'，但得到的是 %s", extractedConfig.Version)
 	}
 
-	if extractedConfig.Parser.Type != "json" {
-		t.Errorf("期望解析器类型为 'json'，但得到的是 %s", extractedConfig.Parser.Type)
-	}
 }
 
 // TestInitCommonConfigFileNotFound 测试 InitCommon 函数当配置文件不存在时的错误处理
@@ -257,7 +248,5 @@ func TestConfigFromContextWithoutConfig(t *testing.T) {
 	if extractedConfig.Version != "" {
 		t.Errorf("期望提取到的版本为空字符串，但得到的是 %s", extractedConfig.Version)
 	}
-	if extractedConfig.Parser.Type != "" {
-		t.Errorf("期望解析器类型为空字符串，但得到的是 %s", extractedConfig.Parser.Type)
-	}
+
 }

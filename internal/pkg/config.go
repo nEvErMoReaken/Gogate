@@ -55,7 +55,6 @@ type StrategyConfig struct {
 }
 
 type ParserConfig struct {
-	Type string                 `mapstructure:"type"`
 	Para map[string]interface{} `mapstructure:"config"`
 }
 

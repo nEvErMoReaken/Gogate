@@ -27,9 +27,7 @@ connector:
     whiteList: false # 白名单模式
 # 解析器相关配置
 parser:
-  type: ioReader # ioReader|json
   config:
-    dir: ./script
     protoFile: proto-train2sam-v0.0.1 # 启用哪一份协议
 #    method: "ConvertOldGatewayTelemetry"
 # 后处理策略相关配置 可以有多个

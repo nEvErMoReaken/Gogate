@@ -550,7 +550,6 @@ func ExportProtocolVersionYaml(c *gin.Context) {
 		}
 		if parserConfigData == nil {
 			parserConfigData = map[string]interface{}{
-				"type":   "ByteParser",
 				"config": map[string]interface{}{"dir": "."},
 			}
 		}
