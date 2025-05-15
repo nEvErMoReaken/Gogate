@@ -36,12 +36,17 @@ if [ ! -f "$SCRIPT_DIR/.env" ]; then
 # 日志级别 (例如: debug, info, warn, error)
 LOG_LEVEL=info
 
+# Admin 服务配置
+ADMIN_MONGO_CONNECTION_STRING=mongodb://10.17.191.106:27017
+ADMIN_DATABASE_NAME=gateway_admin_v2
+ADMIN_SERVER_PORT=8080
+
 # 网络代理设置 (如果你的构建环境需要通过代理访问互联网, 请取消注释并配置以下变量)
 # HTTP_PROXY_URL=http://your-proxy-username:your-proxy-password@your-proxy-address:port
 # HTTPS_PROXY_URL=http://your-proxy-username:your-proxy-password@your-proxy-address:port
 # NO_PROXY_HOSTS=localhost,127.0.0.1,.your-internal-domain.com,192.168.0.0/16
 EOL
-    echo -e "${GREEN}已创建.env文件，请根据需要修改配置 (特别是代理设置)${NC}"
+    echo -e "${GREEN}已创建.env文件，请根据需要修改配置 (特别是代理和Admin服务配置)${NC}"
 fi
 
 # 构建选项

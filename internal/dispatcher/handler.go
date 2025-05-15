@@ -17,7 +17,7 @@ type TEnv struct {
 	Tag map[string]any
 }
 
-type handler struct {
+type Handler struct {
 	LatestTs           time.Time
 	LatestFrameId      string
 	pointList          []*pkg.PointPackage
@@ -48,8 +48,8 @@ func BuildTagExprOptions() []expr.Option {
 // 输出:
 //   - *handler: 新的处理器
 //   - error: 错误
-func NewHandler(strategyConfigs []pkg.StrategyConfig) (*handler, error) {
-	handler := &handler{
+func NewHandler(strategyConfigs []pkg.StrategyConfig) (*Handler, error) {
+	handler := &Handler{
 		LatestTs:           time.Time{},
 		LatestFrameId:      "",
 		pointList:          []*pkg.PointPackage{},
@@ -76,7 +76,7 @@ func NewHandler(strategyConfigs []pkg.StrategyConfig) (*handler, error) {
 //
 // 输出:
 //   - map[string]*pkg.PointPackage: 分发后的点包
-func (h *handler) Dispatch(pointList *pkg.PointPackage) (map[string]*pkg.PointPackage, error) {
+func (h *Handler) Dispatch(pointList *pkg.PointPackage) (map[string]*pkg.PointPackage, error) {
 	defer h.Clean()
 	h.LatestFrameId = pointList.FrameId
 	h.LatestTs = pointList.Ts
@@ -98,7 +98,7 @@ func (h *handler) Dispatch(pointList *pkg.PointPackage) (map[string]*pkg.PointPa
 //
 // 输出:
 //   - error: 错误
-func (h *handler) AddPoint(point *pkg.Point, readyPointPackage map[string]*pkg.PointPackage) error {
+func (h *Handler) AddPoint(point *pkg.Point, readyPointPackage map[string]*pkg.PointPackage) error {
 	var clonedPoint *pkg.Point
 
 	// 只遍历一次策略列表
@@ -147,7 +147,7 @@ func (h *handler) AddPoint(point *pkg.Point, readyPointPackage map[string]*pkg.P
 // 输入: 无
 //
 // 输出: 无
-func (h *handler) Clean() {
+func (h *Handler) Clean() {
 	h.LatestTs = time.Time{}
 	h.LatestFrameId = ""
 	for _, pointPackage := range h.pointList {

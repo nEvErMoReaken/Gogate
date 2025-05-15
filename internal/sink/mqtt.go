@@ -51,9 +51,6 @@ type MqttStrategy struct {
 	logger *zap.Logger
 }
 
-// maxReconnectAttempts 最大重连次数
-const maxReconnectAttempts = 5
-
 // NewMqttStrategy Step.0 Constructor
 func NewMqttStrategy(ctx context.Context) (Template, error) {
 	log := pkg.LoggerFromContext(ctx)

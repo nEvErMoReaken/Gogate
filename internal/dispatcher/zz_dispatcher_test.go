@@ -10,7 +10,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 )
 
-// Mock strategy configs, reflecting that Strategy field in handler is []pkg.StrategyConfig
+// Mock strategy configs, reflecting that Strategy field in Handler is []pkg.StrategyConfig
 var (
 	strategyAll = pkg.StrategyConfig{
 		Type:   "all",

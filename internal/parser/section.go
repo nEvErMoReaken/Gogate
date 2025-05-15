@@ -61,6 +61,8 @@ type Rule struct {
 	Program   *vm.Program
 }
 
+// Skip 定义了一个跳过指定字节数的处理器。
+// Deprecated 已废弃，后续版本移除
 type Skip struct {
 	Skip  int `mapstructure:"skip"`
 	index int // 当前 Section 的索引
@@ -92,7 +94,7 @@ func (s *Skip) ProcessWithRing(ctx context.Context, state *StreamState) (BProces
 	return next, err
 }
 
-func (s *Skip) Route(ctx context.Context, nodes []BProcessor) (BProcessor, error) {
+func (s *Skip) Route(_ context.Context, nodes []BProcessor) (BProcessor, error) {
 	if s.index+1 >= len(nodes) {
 		return nil, nil
 	}

@@ -1,13 +1,11 @@
 import React from 'react';
 import { useLoaderData, useNavigate, useParams } from "react-router";
-import type { Route, ProtocolVersion, Protocol, GatewayConfig } from "~/+types/protocols";
+import type { Route, ProtocolVersion, Protocol } from "~/+types/protocols";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
     Card,
     CardContent,
     CardDescription,
-    CardFooter,
     CardHeader,
     CardTitle,
 } from "@/components/ui/card";
@@ -23,14 +21,8 @@ import {
     MiniMap,
     Handle,
     Position,
-    applyNodeChanges,
-    applyEdgeChanges,
     useReactFlow,
-    MarkerType,
-    Panel,
     getBezierPath,
-    EdgeLabelRenderer,
-    getSmoothStepPath, // <-- Import getSmoothStepPath
 } from '@xyflow/react';
 import type {
     Node,
@@ -38,8 +30,6 @@ import type {
     NodeTypes,
     EdgeTypes,
     Connection,
-    EdgeProps,
-    NodeProps
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import yaml from 'js-yaml';
@@ -69,7 +59,7 @@ import {
 } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Trash2, PlusCircle, Plus, Settings2, Variable, ChevronDown, Play as PlayIcon, Binary, X } from 'lucide-react';
+import { PlusCircle, Plus, Settings2, Variable, Play as PlayIcon, Binary, X } from 'lucide-react';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -78,10 +68,9 @@ import {
     DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import dagre from '@dagrejs/dagre';
-import clsx from 'clsx';
-// --- MODIFIED: Uncomment LoopNode import ---
-import { LoopNode } from './LoopNode'; // <-- Import LoopNode
-// --- END MODIFICATION ---
+
+import { LoopNode } from './LoopNode';
+
 import { Badge } from "@/components/ui/badge"; // <-- 添加 Badge 导入
 
 // --- Top-Level Helper Function ---
@@ -196,11 +185,7 @@ interface EdgeData {
     [key: string]: any; // 添加索引签名以满足 Record<string, unknown> 约束
 }
 
-// 定义选中节点的状态类型
-interface SelectedNodeInfo {
-    id: string;
-    data: SectionNodeData | SkipNodeData | EndNodeData | StartNodeData | LoopNodeData; // <-- Added LoopNodeData
-}
+
 
 // 定义 Vars 表单条目类型
 interface VarEntry {
@@ -478,7 +463,7 @@ const getLayoutedElements = (nodes: Node<SectionNodeData | SkipNodeData | EndNod
         let currentRelativeX = relativeStartX;
         let currentRelativeY = relativeStartY;
 
-        children.forEach((child, index) => {
+        children.forEach((child) => {
             let childWidth = nodeWidth;
             let childHeight = nodeHeight;
             if (child.type === 'skip') childHeight = 60;
@@ -529,15 +514,7 @@ const getLayoutedElements = (nodes: Node<SectionNodeData | SkipNodeData | EndNod
 
 // 自定义节点组件 - Adjust layout and add Points/Vars icons
 const SectionNodeComponent = ({ data, id }: { data: SectionNodeData & { yamlIndex?: number, isHovered?: boolean, onAddConnectedNode?: Function, onAddAndCloneConnectedNode?: Function }, id: string }) => {
-    // console.log('SectionNode Data:', data); // <-- 移除日志
-    // 修改pointNames逻辑以提取所有Tag中的键名
-    let pointTagKeys: string[] = [];
-    if (data.Points && Array.isArray(data.Points)) {
-        // 从每个Point的Tag中收集所有键名
-        pointTagKeys = data.Points.flatMap(point =>
-            point.Tag ? Object.keys(point.Tag) : []
-        );
-    }
+
     const varNames = data.Vars ? Object.keys(data.Vars) : [];
     const isEditing = data.isEditing;
     const isHovered = data.isHovered;
@@ -921,7 +898,7 @@ const ConditionEdge = memo(({
     selected // 添加selected属性
 }: any) => {
     // --- MODIFIED: Use getBezierPath ---
-    const [edgePath, labelX, labelY] = getBezierPath({
+    const [edgePath, labelX] = getBezierPath({
         sourceX,
         sourceY,
         sourcePosition,
