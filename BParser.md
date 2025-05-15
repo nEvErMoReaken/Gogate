@@ -279,8 +279,7 @@ type Point struct {
     Field map[string]any // 字段数据 (如 msg_type: 01)
 }
 ```
-总结图：
-![dd](../_asset/exam1.png)
+
 
 ### 10.2 路由示例 (`route_proto`)
 本示例演示了如何根据从输入数据中提取的变量值，将处理流程导向不同的分支。
